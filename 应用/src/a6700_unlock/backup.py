@@ -160,7 +160,9 @@ def _new_path(directory, created_at):
 
 
 def _write_new(path: Path, data: bytes):
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    # O_BINARY is explicit: some Windows CRT environments translate 0x0A in
+    # text-mode descriptors, which would corrupt the archive bytes in place.
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
     try:
         with os.fdopen(fd, "wb") as out:
             out.write(data)
