@@ -27,7 +27,7 @@ class LocalImage:
         info = self.path.lstat()
         if not stat.S_ISREG(info.st_mode):
             raise InputError("Input must be a regular local file (no devices, FIFOs or symlinks)")
-        fd = os.open(self.path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
+        fd = os.open(self.path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0))
         try:
             self.initial = os.fstat(fd)
             if not stat.S_ISREG(self.initial.st_mode) or self.initial.st_size != self.expected_size:
