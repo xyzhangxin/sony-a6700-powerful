@@ -119,6 +119,72 @@ def load_device_profile(catalog):
     return DeviceProfile.from_dict(data, catalog)
 
 
+GUARD_VOLATILE_KIND = "guard-volatile-overlay"
+_guard_volatile_data = None
+
+
+def _load_guard_volatile_data():
+    global _guard_volatile_data
+    if _guard_volatile_data is None:
+        data = json.loads(files("a6700_unlock").joinpath("data/guard-volatile.json")
+                          .read_text(encoding="utf-8"))
+        if data.get("schema") != 1 or data.get("kind") != GUARD_VOLATILE_KIND:
+            raise CatalogError("Unsupported guard volatile overlay")
+        _guard_volatile_data = data
+    return _guard_volatile_data
+
+
+def guard_volatile_overlay(profile):
+    """Guard sectors whose pinned bytes include ext2 inode time fields.
+
+    The camera refreshes atime/ctime/mtime inside its own /usr inode table on
+    ordinary boots, so a full-sector pin of those guard sectors flags an
+    unmodified camera as changed. For the bound profile such guards compare
+    the sector with the time fields zeroed against a factory-normalized hash;
+    every other byte of the sector stays pinned byte-for-byte. Any other
+    profile (synthetic test fixtures, future revisions) gets no overlay.
+    """
+    data = _load_guard_volatile_data()
+    if data.get("profile_sha256") != profile.digest:
+        return {}
+    inode = data.get("inode_size")
+    fields = data.get("volatile_fields")
+    if (type(inode) is not int or not 0 < inode <= 512 or not isinstance(fields, list)
+            or any(not (isinstance(span, list) and len(span) == 2
+                        and type(span[0]) is int and type(span[1]) is int
+                        and 0 <= span[0] < span[1] <= inode) for span in fields)):
+        raise CatalogError("Invalid guard volatile field layout")
+    records = {}
+    entries = profile.entries
+    for key, record in (data.get("records") or {}).items():
+        try:
+            index = int(key)
+        except (TypeError, ValueError):
+            raise CatalogError("Invalid guard volatile index") from None
+        if not 0 <= index < len(entries):
+            raise CatalogError("Guard volatile index outside profile")
+        row = entries[index]
+        if (row.get("role") != "guard" or row.get("device") != record.get("device")
+                or row.get("device_offset") != record.get("device_offset")
+                or len(record.get("normalized_sha256", "")) != 64
+                or any(c not in "0123456789abcdef" for c in record["normalized_sha256"])):
+            raise CatalogError("Guard volatile record does not match profile entry")
+        records[index] = dict(inode_size=inode,
+                              fields=[tuple(span) for span in fields],
+                              normalized_sha256=record["normalized_sha256"])
+    return records
+
+
+def _zero_inode_times(sector, inode_size, fields):
+    if len(sector) % inode_size:
+        return bytes(sector)
+    normalized = bytearray(sector)
+    for base in range(0, len(normalized), inode_size):
+        for start, end in fields:
+            normalized[base + start:base + end] = b"\0" * (end - start)
+    return bytes(normalized)
+
+
 def _feature_selection(catalog, features):
     ids = [f["id"] for f in catalog.data["features"]]
     if features is None:
@@ -152,6 +218,7 @@ def inspect_sectors(profile: DeviceProfile, sectors: list[bytes], action="inspec
                      for r in profile.entries if r["role"] == "target"}
     issues = []
     masks = profile.masks()
+    volatile_guards = guard_volatile_overlay(profile)
     for row, sector, mask in zip(profile.entries, sectors, masks):
         if row["role"] == "target":
             if schema == 2:
@@ -175,6 +242,13 @@ def inspect_sectors(profile: DeviceProfile, sectors: list[bytes], action="inspec
         else:
             normalized = sector
             expected = row["sha256"]
+            overlay_row = volatile_guards.get(row["index"])
+            if overlay_row is not None:
+                # ext2 inode guard: the camera refreshes these time fields
+                # itself, so compare with them zeroed (see guard-volatile.json).
+                normalized = _zero_inode_times(sector, overlay_row["inode_size"],
+                                               overlay_row["fields"])
+                expected = overlay_row["normalized_sha256"]
         if hashlib.sha256(normalized).hexdigest() != expected:
             issues.append(dict(kind="sector-guard-mismatch", role=row["role"],
                                index=row["index"],
@@ -237,5 +311,6 @@ def inspect_sectors(profile: DeviceProfile, sectors: list[bytes], action="inspec
                 read_sectors=len(sectors), read_bytes=len(sectors) * 512,
                 changed_indices=changed, changed_sectors=len(changed),
                 changed_bytes=sum(sum(a != b for a, b in zip(sectors[i], after[i])) for i in changed),
-                hardware_validation=profile.data["hardware_validation"], full_backup=False)
+                hardware_validation=profile.data["hardware_validation"], full_backup=False,
+                guard_volatile=sorted(volatile_guards))
     return plan, [bytes(s) for s in after]
