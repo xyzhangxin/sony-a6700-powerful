@@ -1,5 +1,13 @@
 # 变更记录
 
+## 未发布 — Windows 可移植性地基（不含 USB 连接层）
+
+- `.gitattributes` 全量 `-text`：Windows 克隆不再因 autocrlf 改写 `transaction.c` 等源文件的换行符而触发运行时源码哈希校验失败；此前 Windows 克隆开箱即有约 84 项测试失败。
+- 核心模块跨平台化：设备锁以 msvcrt.locking 实现 Windows 等价（两把锁、非阻塞、错误文案与 fcntl 版一致）；目录条目 fsync 在非 POSIX 平台跳过（NTFS 元数据日志保证）；`planner` 的 `O_NONBLOCK/O_NOFOLLOW` 按可用性附加；Windows 状态/备份目录使用 `%LOCALAPPDATA%` 与 `~\Documents`。
+- 备份归档写入显式 `O_BINARY` 并新增字节精确回归测试（另一 Windows 移植在其冻结运行时观察到 0x0A 被改写为 0x0D 0x0A）。
+- 测试适配平台语义（POSIX 异常传播 vs Windows 结果报告、NTFS 时间戳粒度、打开文件不可替换），以 `tests/platform_lock.py` 提供跨平台持锁；CI 应用矩阵增加 windows-latest。
+- 本 PR 不含 Windows USB 连接层与驱动组件；`doctor` 平台检查维持现状。
+
 ## 0.2.0 — 2026-10-23
 
 - 修复 USB 身份切换和重连中的上下文／设备释放顺序，降低授权后服务异常退出和连接失效风险；简化 MSC 接管，移除多余的存储卷卸载。

@@ -43,6 +43,17 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _sync_directory(path: Path):
+    """Directory-entry fsync; impossible on Windows where NTFS journals it."""
+    if os.name != "posix":
+        return
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def _ensure_directory(path: Path):
     missing = []
     cursor = Path(path)
@@ -55,19 +66,11 @@ def _ensure_directory(path: Path):
         except FileExistsError:
             if not directory.is_dir():
                 raise
-        fd = os.open(directory.parent, os.O_RDONLY)
-        try:
-            os.fsync(fd)
-        finally:
-            os.close(fd)
+        _sync_directory(directory.parent)
 
 
 def _sync_file(path: Path):
-    fd = os.open(path.parent, os.O_RDONLY)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
+    _sync_directory(path.parent)
 
 
 def _feature_rows(plan):
@@ -157,7 +160,9 @@ def _new_path(directory, created_at):
 
 
 def _write_new(path: Path, data: bytes):
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    # O_BINARY is explicit: some Windows CRT environments translate 0x0A in
+    # text-mode descriptors, which would corrupt the archive bytes in place.
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
     try:
         with os.fdopen(fd, "wb") as out:
             out.write(data)

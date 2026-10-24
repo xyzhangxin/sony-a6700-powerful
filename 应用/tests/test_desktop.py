@@ -16,6 +16,8 @@ from a6700_unlock.desktop.controller import DesktopController, physical_environm
 from a6700_unlock.desktop.physical import PhysicalService
 from a6700_unlock.preparation import STEP_IDS
 from test_operations import sparse_fixture
+from platform_lock import lock_file
+from platform_lock import lock_file
 
 
 ENV = dict(ready=True, checks=[dict(id='synthetic', name='Test', ok=True,
@@ -562,7 +564,6 @@ class PhysicalDesktopTests(unittest.TestCase):
         self.assertTrue(self.backend.closed)
 
     def test_unlock_keeps_shared_lock_through_write_readback_and_exit(self):
-        import fcntl
         controller = self.physical_controller()
         self.prepare(controller)
         controller.operate('inspect')
@@ -571,8 +572,8 @@ class PhysicalDesktopTests(unittest.TestCase):
         def assert_locked(label):
             calls.append(label)
             with (self.directory/'host/.assistant.lock').open('a+') as file:
-                with self.assertRaises(BlockingIOError):
-                    fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                with self.assertRaises(OSError):
+                    lock_file(file)
         read, write = backend.read, backend.write
         def locked_read(*args):
             assert_locked('read')
@@ -587,10 +588,9 @@ class PhysicalDesktopTests(unittest.TestCase):
         self.assertTrue(controller.operate('unlock')['result']['success'])
         self.assertEqual(calls, ['read', 'write', 'read', 'exit'])
         with (self.directory/'host/.assistant.lock').open('a+') as file:
-            fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_file(file)
 
     def test_service_exit_failure_preserves_verified_result_and_releases_lock(self):
-        import fcntl
         controller = self.physical_controller()
         self.prepare(controller)
         controller.operate('inspect')
@@ -605,7 +605,7 @@ class PhysicalDesktopTests(unittest.TestCase):
         record = json.loads((Path(controller.last_report['run_directory'])/'session-exit.json').read_text())
         self.assertEqual(record['cleanup_status'], 'unconfirmed')
         with (self.directory/'host/.assistant.lock').open('a+') as file:
-            fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_file(file)
 
     def test_hidden_backup_directory_is_not_scanned_during_startup_or_inspect(self):
         controller = self.physical_controller()
@@ -640,12 +640,11 @@ class PhysicalDesktopTests(unittest.TestCase):
         self.assertTrue(backend.closed)
 
     def test_shared_lock_covers_authentication_and_reused_session_until_close(self):
-        import fcntl
         lock_path = self.directory / 'host/.assistant.lock'
         def assert_locked():
             with lock_path.open('a+') as file:
-                with self.assertRaises(BlockingIOError):
-                    fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                with self.assertRaises(OSError):
+                    lock_file(file)
         controller = self.physical_controller()
         factory = controller.service.backend_factory
         def locked_factory(*args, **kwargs):
@@ -658,22 +657,20 @@ class PhysicalDesktopTests(unittest.TestCase):
         self.assertTrue(controller.operate('inspect')['compatible'])
         controller.service.close_session()
         with lock_path.open('a+') as file:
-            fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_file(file)
 
     def test_busy_lock_prevents_capture_and_authentication(self):
-        import fcntl
         lock_path = self.directory / 'host/.assistant.lock'
         lock_path.parent.mkdir(parents=True)
         controller = self.physical_controller()
         self.prepare(controller)
         with lock_path.open('a+') as file:
-            fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_file(file)
             with self.assertRaisesRegex(Exception, '已有相机工具'):
                 controller.operate('inspect')
         self.assertIsNone(self.backend)
 
     def test_failed_authentication_is_not_automatically_retried_and_releases_lock(self):
-        import fcntl
         controller = self.physical_controller()
         attempts = []
         def factory(*args, **kwargs):
@@ -685,7 +682,7 @@ class PhysicalDesktopTests(unittest.TestCase):
             controller.operate('inspect')
         self.assertEqual(len(attempts), 1)
         with (self.directory/'host/.assistant.lock').open('a+') as file:
-            fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_file(file)
 
     def test_disconnected_session_is_closed_without_resending_or_resetting(self):
         controller = self.physical_controller()

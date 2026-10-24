@@ -98,7 +98,10 @@ class BundledTests(unittest.TestCase):
         from a6700_unlock.catalog import load_catalog
         from a6700_unlock.device_profile import load_device_profile
         library = Mock()
+        # The probe's subject is the bundled library itself, not platform
+        # gating; pin darwin so the fake bundle decides every check on any OS.
         with patch.object(legacy.ctypes, 'CDLL', return_value=library) as load, \
+             patch('sys.platform', 'darwin'), \
              patch.object(legacy.libusb1, 'get_backend', side_effect=AssertionError('early context')), \
              patch.object(legacy.usb.core, 'find', side_effect=AssertionError('enumeration')):
             report = diagnose(load_device_profile(load_catalog()))

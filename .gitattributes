@@ -1,0 +1,7 @@
+# Preserve exact bytes: payload source hashes are verified at runtime.
+* -text
+*.elf binary
+*.uf2 binary
+*.bin binary
+*.png binary
+*.icns binary
