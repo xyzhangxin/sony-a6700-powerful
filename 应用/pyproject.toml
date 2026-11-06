@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "a6700-unlock"
-version = "0.3.0"
+version = "0.3.1"
 description = "A6700 bundle unlock/close framework with sparse USB preflight and verification"
 requires-python = ">=3.10"
 dependencies = []

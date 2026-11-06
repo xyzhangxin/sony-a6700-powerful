@@ -45,10 +45,10 @@ class PlanningTests(unittest.TestCase):
         with self.assertRaises(DeviceError):plan_blocks(self.package,[bytes(data)],'unlock')
         data[4]=0;data[5]=1
         with self.assertRaises(DeviceError):plan_blocks(self.package,[bytes(data)],'unlock')
-    def test_close_retains_cp_support(self):
+    def test_close_restores_cp_support_to_original(self):
         recipe=synthetic();recipe['entries'][0]['device']=2
         p=SimpleNamespace(profile=Profile(recipe));value=bytearray(512);value[4]=1
-        self.assertEqual(plan_blocks(p,[bytes(value)],'close')[1],[bytes(value)])
+        self.assertEqual(plan_blocks(p,[bytes(value)],'close')[1],[bytes(512)])
 
 
 class ServiceTests(unittest.TestCase):
@@ -103,10 +103,115 @@ class ServiceTests(unittest.TestCase):
         with self.assertRaises(DeviceError):session.ap_values()
 
 
+class UninstallTests(unittest.TestCase):
+    """Exercise the real host orchestration with separate code/parameter stores."""
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.directory=Path(self.temp.name);self.events=[];self.fail=None
+        recipe=synthetic();recipe['entries'].append(dict(recipe['entries'][0],index=1,device=2))
+        self.spec=dict(key=123,bytes=2,before_sha256=sha(b'\0\0'),after_sha256=sha(b'\1\0'),
+                       edits=[dict(offset=0,disabled='00',enabled='01')])
+        recipe['cp_units']=[self.spec]
+        self.package=SimpleNamespace(recipe=recipe,profile=Profile(recipe),carrier=b'synthetic carrier')
+        self.code=[bytes(512),bytes(512)];self.unit=b'\0\0';self.mask=0
+        self.ap={hex(0x02cf036f):'00',hex(0x02cf0ccc):'00',hex(0x02cf0370):'00'*13}
+        outer=self
+        class Wire:
+            def send(_,category,cfg):
+                outer.events.append('save')
+                if outer.fail=='save':raise OSError('SAVE reply lost')
+                return 0,b''
+        self.backend=SimpleNamespace(channel=Wire(),_fl23_transport_uncertain=False)
+        class FakeSession:
+            def __init__(_,package,backend,invoke,directory):
+                _.package=package;_.backend=backend;_.directory=directory
+            def blocks(_,before=None,after=None):
+                if before is None:return list(outer.code)
+                if before!=outer.code:raise DeviceError('stale code')
+                if outer.fail=='code':raise DeviceError('code transaction failed')
+                if before[1]!=after[1] and after[1][4]==0:
+                    assert after[0][4]==0 and outer.unit==b'\0\0'
+                    outer.events.append('cp-code-original')
+                elif after[0][4]==0:outer.events.append('startup-original')
+                outer.code=list(after);return []
+            def units(_):return [outer.unit]
+            def cp_unit(_,row,value=None):
+                if value is None:return outer.unit
+                if value==b'\0\0':
+                    assert outer.code[0][4]==0
+                    outer.events.append('cp-parameter-original')
+                else:outer.events.append('cp-parameter-enabled')
+                outer.unit=value
+                return b''
+            def selection(_):return int(outer.ap[hex(0x02cf036f)],16)
+            def ap_values(_):return dict(outer.ap)
+            def file(_,op=0,offset=0,data=b'',length=0):
+                if outer.fail=='unknown-file' and op==5:raise DeviceError('unknown file')
+                if op==1:outer.mask|=2;outer.upload=b''
+                elif op==2:outer.upload+=data
+                elif op==3:
+                    assert outer.upload==outer.package.carrier;outer.mask=(outer.mask|1)&~2
+                elif op==6:
+                    assert all(c[4]==0 for c in outer.code) and outer.unit==b'\0\0'
+                    outer.events.append('file-cleanup')
+                    if outer.fail=='cleanup':raise DeviceError('unlink failed')
+                    outer.mask=0
+                return dict(present=bool(outer.mask&1),mask=outer.mask,
+                            data=outer.package.carrier[offset:offset+length] if length else b'')
+        self.fake_session=FakeSession
+    def installed(self,startup=True,mask=1):
+        self.code=[]
+        for on in (startup,True):
+            b=bytearray(512);b[4]=int(on);self.code.append(bytes(b))
+        self.unit=b'\1\0';self.mask=mask
+    def perform(self,action='close'):
+        import contextlib
+        import a6700_unlock.fl23_package as package
+        @contextlib.contextmanager
+        def files(*_):yield None
+        with mock.patch.object(package,'Package',return_value=self.package),mock.patch.object(package,'Session',self.fake_session),mock.patch.object(package,'service_files',files):
+            return package.perform(self.backend,action,self.directory)
+    def test_full_close_restores_startup_then_parameters_then_code_then_files(self):
+        self.installed();ap=dict(self.ap);r=self.perform()
+        self.assertEqual(r['status'],'completed');self.assertTrue(r['verified'])
+        self.assertEqual(self.events,['startup-original','cp-parameter-original','save','cp-code-original','file-cleanup'])
+        self.assertTrue(all(c==bytes(512) for c in self.code));self.assertEqual(self.unit,b'\0\0')
+        self.assertEqual(self.mask,0);self.assertEqual(self.ap,ap)
+        self.assertEqual(r['final_features'][0]['state'],'disabled')
+    def test_old_retained_cp_and_off_file_are_not_reported_as_already_closed(self):
+        self.installed(startup=False,mask=4);r=self.perform()
+        self.assertEqual(r['status'],'completed');self.assertTrue(r['verified']);self.assertEqual(self.mask,0)
+        self.assertIn('cp-code-original',self.events)
+    def test_unknown_file_and_nonstock_custom_reference_stop_before_writes(self):
+        for failure in ('unknown-file','custom-reference'):
+            self.installed();self.events=[]
+            self.fail=failure if failure=='unknown-file' else None
+            self.ap[hex(0x02cf0ccc)]='11' if failure=='custom-reference' else '00'
+            r=self.perform()
+            self.assertEqual(r['status'],'error');self.assertFalse(r['write_attempted'])
+            self.assertEqual(self.events,[]);self.assertEqual(self.unit,b'\1\0')
+    def test_save_loss_leaves_cp_code_and_files_and_never_claims_success(self):
+        self.installed();self.fail='save';r=self.perform()
+        self.assertEqual(r['status'],'uncertain');self.assertFalse(r['verified'])
+        self.assertEqual(self.events.count('save'),1)
+        self.assertEqual(self.code[1][4],1);self.assertEqual(self.mask,1)
+        self.assertTrue(self.backend._fl23_transport_uncertain)
+    def test_cleanup_failure_is_not_reported_as_fully_removed(self):
+        self.installed();self.fail='cleanup';r=self.perform()
+        self.assertEqual(r['status'],'uncertain');self.assertFalse(r['verified'])
+        self.assertEqual(self.mask,1);self.assertTrue(all(c==bytes(512) for c in self.code))
+    def test_complete_install_close_roundtrip_and_idempotence(self):
+        self.assertEqual(self.perform('unlock')['status'],'completed')
+        self.assertEqual(self.perform()['status'],'completed')
+        self.events=[];r=self.perform()
+        self.assertEqual(r['status'],'no-op');self.assertFalse(r['write_attempted'])
+        self.assertEqual(self.events,[])
+
+
 class FileMachine(native.Machine):
     def __init__(self,binary,config,filesystem,fail=None):
         super().__init__(SimpleNamespace(entries=[]),binary,config,[])
-        self.fs=filesystem;self.fail=fail;self.written=[];self.renamed=[]
+        self.fs=filesystem;self.fail=fail;self.written=[];self.renamed=[];self.unlinked=[]
     def syscall(self,u,number,data):
         nr=u.reg_read(native.UC_ARM64_REG_X8);a,b,c,d=[u.reg_read(r) for r in (native.UC_ARM64_REG_X0,native.UC_ARM64_REG_X1,native.UC_ARM64_REG_X2,native.UC_ARM64_REG_X3)]
         rc=0
@@ -128,6 +233,13 @@ class FileMachine(native.Machine):
         if nr==57:
             if a not in self.fds:raise AssertionError('double close')
             del self.fds[a]
+        elif nr==35:
+            path=self.cstring(b)
+            if a!=(1<<64)-100 or c or path not in ('/setting/fl23','/setting/fl23.new','/setting/fl23.off'):
+                raise AssertionError('unbounded unlink')
+            if self.fail=='unlink':rc=-5
+            elif path not in self.fs:rc=-2
+            else:del self.fs[path];self.unlinked.append(path)
         elif nr==38:
             source=self.cstring(b);dest=self.cstring(d)
             if (source,dest) not in (('/setting/fl23.new','/setting/fl23'),('/setting/fl23','/setting/fl23.off')):
@@ -188,6 +300,27 @@ class FileNativeTests(unittest.TestCase):
         self.assertEqual((status,present,data),(0,1,self.carrier))
         self.assertEqual(self.run_job(fs,4)[0],0);self.assertNotIn('/setting/fl23',fs)
         self.assertEqual(bytes(fs['/setting/fl23.off']),self.carrier)
+    def test_complete_cleanup_removes_only_three_verified_fixed_paths(self):
+        paths=('/setting/fl23','/setting/fl23.new','/setting/fl23.off')
+        fs={p:bytearray(self.carrier) for p in paths};fs['/setting/unrelated']=bytearray(b'keep')
+        self.assertEqual(self.run_job(fs,5)[:2],(0,7))
+        status,mask,_,vm=self.run_job(fs,6)
+        self.assertEqual((status,mask),(0,0));self.assertEqual(vm.unlinked,list(paths))
+        self.assertEqual(fs,{'/setting/unrelated':bytearray(b'keep')})
+        self.assertEqual(self.run_job(fs,6)[:2],(0,0))
+    def test_unknown_or_partial_file_blocks_cleanup_before_any_unlink(self):
+        for bad in ('/setting/fl23','/setting/fl23.new','/setting/fl23.off'):
+            fs={p:bytearray(self.carrier) for p in ('/setting/fl23','/setting/fl23.new','/setting/fl23.off')}
+            fs[bad]=bytearray(b'unknown or partial');before={k:bytes(v) for k,v in fs.items()}
+            self.assertNotEqual(self.run_job(fs,5)[0],0)
+            status,_,_,vm=self.run_job(fs,6)
+            self.assertNotEqual(status,0);self.assertEqual(vm.unlinked,[])
+            self.assertEqual({k:bytes(v) for k,v in fs.items()},before)
+    def test_unlink_and_directory_sync_errors_are_reported(self):
+        fs={'/setting/fl23':bytearray(self.carrier)}
+        self.assertNotEqual(self.run_job(fs,6,fail='unlink')[0],0)
+        self.assertIn('/setting/fl23',fs)
+        self.assertNotEqual(self.run_job(fs,6,fail='sync')[0],0)
     def test_wrong_append_offset_never_mutates_existing_staging(self):
         fs={'/setting/fl23.new':bytearray(b'old')};before=bytes(fs['/setting/fl23.new'])
         self.assertEqual(self.run_job(fs,2,data=b'other')[0],1);self.assertEqual(bytes(fs['/setting/fl23.new']),before)

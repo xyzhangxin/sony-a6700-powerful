@@ -154,6 +154,8 @@ def build(recipe_path,carrier_path,sha_header,*,destination=None):
     # Complete generated C sources stay next to the corresponding binaries;
     # no internal research paths are needed to rebuild these transactions.
     for name,raw in native_sources.items():(destination/name).write_bytes(raw)
+    runtime=destination/'runtime/manifest.json'
+    if runtime.is_file():manifest['runtime_source_sha256']=sha(runtime.read_bytes())
     (destination/'recipe.json').write_text(json.dumps(recipe,indent=2)+'\n')
     (destination/'carrier.bin').write_bytes(carrier)
     (destination/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
