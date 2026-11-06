@@ -23,6 +23,8 @@ class PhysicalService:
         self.backup_dir = (Path(backup_dir) if backup_dir is not None
                            else default_backup_dir())
         self.backend_factory = backend_factory
+        from ..fl23_package import available
+        self.fl23_available = backend_factory is None and available()
         self.connected = False
         self.simulation = False
         # Keep one authenticated USB session open for this app process. The
@@ -81,6 +83,13 @@ class PhysicalService:
     def perform(self, action, progress=lambda _message: None, backup_id=None, features=None):
         if action not in ("inspect", "unlock", "close", "backup", "restore"):
             raise ValueError("未知设备操作；当前支持检查、解锁、关闭、功能状态备份与恢复")
+        # Reject package feature injection before acquiring/authenticating USB.
+        # The fixed-sector backend cannot install startup packages.
+        supported=set(self.profile.catalog.available_features)|({'fl23'} if self.fl23_available else set())
+        if features is not None and not set(features) <= supported:
+            raise ValueError('所选功能暂未开放实机写入。')
+        if features is not None and 'fl23' in features and action not in ('unlock','close'):
+            raise ValueError('FL2／FL3 当前仅支持解锁或关闭。')
         from ..operations import (_execute_session, _backup_session, _restore_session,
                                   default_state_dir, device_lock)
         directory = self.state_dir if self.state_dir is not None else default_state_dir()
@@ -100,7 +109,12 @@ class PhysicalService:
         backend = self._session_backend
         backend.progress = progress
         try:
-            if action == "backup":
+            if features is not None and 'fl23' in features and len(set(features))>1:
+                result=self._perform_combined(backend,action,directory,progress,features)
+            elif features is not None and set(features)=={'fl23'}:
+                from ..fl23_package import perform
+                result=perform(backend,action,directory,progress)
+            elif action == "backup":
                 result = _backup_session(self.profile, backend, self.backup_dir,
                                          directory, progress, manage_backend=False)
             elif action == "restore":
@@ -110,6 +124,14 @@ class PhysicalService:
             else:
                 result = _execute_session(self.profile, backend, action, directory,
                                           progress, features=features, manage_backend=False)
+                if action=='inspect' and result.get('status')=='inspected' and self.fl23_available:
+                    from ..fl23_package import perform
+                    package_result=perform(backend,'inspect',directory,progress)
+                    result['fl23_inspection']=package_result
+                    result['plan']['features'].extend(package_result.get('plan',{}).get('features',[]))
+                    if package_result.get('status')!='inspected':
+                        result['plan']['compatible']=False
+                        result['error']=package_result.get('error','FL23 实机预检未通过')
         except BaseException:
             self.close_session()
             raise
@@ -128,4 +150,70 @@ class PhysicalService:
                 result['cleanup_warning'] = getattr(backend, 'cleanup_warning', None)
         self.connected = self._session_backend is not None and result.get('status') in (
             'inspected', 'dry-run', 'completed', 'no-op', 'backup-completed', 'restored')
+        return result
+
+    def _perform_combined(self, backend, action, directory, progress, features):
+        """Serialize existing installers under the same session lock.
+
+        Each installer reads fresh state and independently verifies its own
+        writes. A failed or unknown result stops the batch without replay.
+        Successful earlier work is reported explicitly, never called rolled back.
+        """
+        import uuid
+        from ..operations import _execute_session, make_directory, save_json
+        from ..fl23_package import perform as package_perform
+        ordinary=sorted(set(features)-{'fl23'})
+        selected=ordinary+['fl23']
+        names={r['id']:r['name'] for r in self.profile.catalog.data['features']}
+        names['fl23']='FL2／FL3'
+        describe=lambda ids:'、'.join(names.get(i,i) for i in ids)
+        run=Path(directory)/'runs'/('combined-'+uuid.uuid4().hex)
+        make_directory(run)
+        result=dict(action=action,status='error',device_access=True,write_attempted=False,
+                    verified=False,full_backup=False,run_directory=str(run),
+                    selected_features=selected,completed_features=[],remaining_features=selected[:],
+                    components=[],plan=dict(compatible=True,features=[],selected_features=selected,
+                                            read_sectors=0,read_bytes=0,changed_bytes=0))
+        save_json(run/'intent.json',dict(action=action,selected_features=selected,order=['ordinary','fl23']))
+        for name, ids in (('ordinary',ordinary),('fl23',['fl23'])):
+            progress('正在处理所选功能：'+describe(ids))
+            try:
+                part=(package_perform(backend,action,directory,progress) if name=='fl23' else
+                      _execute_session(self.profile,backend,action,directory,progress,
+                                       features=ids,manage_backend=False))
+            except BaseException as exc:
+                # An unexpected exception cannot establish whether this stage wrote.
+                part=dict(status='uncertain',verified=False,write_attempted=True,
+                          error=str(exc) or type(exc).__name__)
+            result['components'].append(dict(name=name,features=ids,result=part))
+            result['write_attempted'] |= bool(part.get('write_attempted'))
+            plan=part.get('plan',{})
+            result['plan']['features'].extend(plan.get('features',[]))
+            for key in ('read_sectors','read_bytes','changed_bytes'):
+                result['plan'][key]+=plan.get(key,0)
+            if part.get('status') not in ('completed','no-op') or not part.get('verified'):
+                result['status']='partial' if result['completed_features'] else part.get('status','error')
+                result['error']=('已确认完成：'+describe(result['completed_features'])+'；' if result['completed_features'] else '')+\
+                    '未完成：'+describe(result['remaining_features'])+'。'+part.get('error',part.get('status','操作未确认'))
+                break
+            result['completed_features'].extend(ids)
+            result['remaining_features']=[i for i in selected if i not in result['completed_features']]
+            save_json(run/('completed-'+name+'.json'),result)
+        else:
+            # The second installer may share sectors with the first. Re-read the
+            # ordinary feature state after FL23, using its original reader.
+            check=_execute_session(self.profile,backend,'inspect',directory,progress,
+                                   features=ordinary,manage_backend=False)
+            result['preservation_check']=check
+            target='enabled' if action=='unlock' else 'disabled'
+            rows={r['id']:r for r in check.get('plan',{}).get('features',[])}
+            if (check.get('status')=='inspected' and check.get('plan',{}).get('compatible') and
+                    all(rows.get(i,{}).get('state')==target for i in ordinary)):
+                result['verified']=True
+                result['status']='completed' if result['write_attempted'] else 'no-op'
+                result['final_features']=list(rows.values())+result['components'][-1]['result'].get('final_features',[])
+            else:
+                result['status']='uncertain'
+                result['error']='分步操作已完成，但最终原有功能保持检查未通过，请重新读取状态；未自动重发或回滚。'
+        save_json(run/'result.json',result)
         return result

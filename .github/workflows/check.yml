@@ -45,6 +45,12 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
+      - name: 安装原生测试编译器（Linux）
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang lld
+      - name: 安装原生测试链接器（macOS）
+        if: runner.os == 'macOS'
+        run: brew install lld
       - name: 安装开发依赖
         run: python -m pip install 'setuptools>=77' wheel '.[usb,test]'
       - name: 合成测试及原生 ELF 仿真，不访问相机

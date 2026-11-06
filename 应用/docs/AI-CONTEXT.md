@@ -4,9 +4,15 @@
 
 dev19 交互入口：`A6700Preview.swift` 管应用外壳；`WorkspaceView.swift` 管功能与备份恢复；`OperationViews.swift` 管进度及结果；`DesignSystem.swift` 管显示样式。准备声明通过固定 `confirm_preparation` 命令一次确认四个稳定 ID；`restart_preparation` 结束原会话并使准备／兼容失效，不跳过预检。
 
+dev34：解锁／关闭的已核验结果进入独立结果页；`desktop/aftercare.py` 统一提供断电步骤及四项功能的检查路径／成功标准，SwiftUI 不复制这些元数据。物理事务及独立回读结束后关闭 USB 会话并释放锁；会话退出异常与写入结果分别呈现。模拟及物理的旧准备／兼容结论均失效，必须经 `restart_preparation`、重新声明及 inspect 才可继续。无需修改及失败／不确定结果不得伪装成已写入或机身验收成功。
+
+dev35：`usb/legacy.py` 刷新／清空缓存不得直接调用 `libusb_exit` 或对仍被 Device 引用的 PyUSB backend 强行 finalize；交由 PyUSB 对象寿命管理，见 `test_usb.py` 的上下文终结器回归。`PreviewModel.serviceExited` 将服务死亡与活动事务分开：显示中断页并允许只重启本机服务，不能保留假 busy、自动重发请求或把未知写入结果改成失败／成功。进程 generation 和已退出标志共同拦截迟到状态。
+
+dev36 补充：PyUSB 1.2.1 的底层 `_Device`／`_DevIterator` 不保留 backend，ResourceManager 销毁时 backend 仍可能先于 native device 释放。`_OwnedLibUSB` 在枚举和父设备返回的原生包装对象上保留 owner，确保 unref/free-list 在上下文退出前完成；不改第三方全局，不永久积累上下文。两项真实包装对象＋合成 C 函数回归覆盖该顺序。后续升级 PyUSB 必须重验这些私有接口。断电指引现为六步，`usb-out` 是独立稳定 ID；仍由 `aftercare.py` 统一提供。
+
 ## 稳定产品约束
 
-- 最终交付可双击运行的桌面应用；当前提供 SwiftUI 桌面预览、源码／wheel 和可选真实 USB 桌面模式；已提供 Apple Silicon macOS 内置环境构建；使用临时签名、尚未公证。历史 dev25 已由维护者实机验收；0.2 继续扩大实机样本，跨机身与长期稳定性未全面验证。
+- 最终交付可双击运行的桌面应用；当前提供 SwiftUI 桌面预览、源码／wheel 和可选真实 USB 桌面模式；已提供 Apple Silicon macOS 内置环境构建；正式签名、公证与真实写入闭环验收尚未完成。
 - 桌面只展示解锁所选功能和关闭所选功能；备份与恢复入口暂时隐藏，待完整备份恢复实现并验证后再展示。现有稀疏备份恢复的核心服务、开发者命令和测试保留。dev14 支持按功能勾选与“全选缺失”，dev15 将电子快门声音并入；未选中功能保持不变；备份／恢复为稀疏的 260 个固定扇区（含 `/dev/nflasha8` CP 目标）；整盘／分区／固件镜像仍未实现，不能称为整机备份。
 - 当前测试清单只开放原生 FTP、关机快门帘／静音联动、灵活曝光、电子快门声音（sound-after-exposure 验证基线；与灵活曝光无字段依赖）；位移多帧合成与动态增强防抖保留识别但暂禁用，不能修改；按实际字段状态、依赖和用户选择增量补齐，不按用户声称的版本放行。
 - 配置向导必须在设备操作前运行；正常 USB 日常管理与 Pico 救砖为独立通路，不共用接线说明。
@@ -36,7 +42,7 @@ dev19 交互入口：`A6700Preview.swift` 管应用外壳；`WorkspaceView.swift
 
 `桌面预览（模拟）→ 本地 JSON bridge → DesktopController → preparation / SimulationService → 共用 _execute_session + 内存设备`。
 
-`桌面预览（真实）→ physical_bridge → DesktopController → preparation / PhysicalService → operations.execute／execute_backup／execute_restore（设备锁）→ USB backend`。真实模式不是把模拟标签改成“真实”，而是复用物理 CLI 的执行、锁和事务边界；历史 dev25 已由维护者实机验收；0.2 打包不新增实机验收结论。
+`桌面预览（真实）→ physical_bridge → DesktopController → preparation / PhysicalService → operations.execute／execute_backup／execute_restore（设备锁）→ USB backend`。真实模式不是把模拟标签改成“真实”，而是复用物理 CLI 的执行、锁和事务边界；其实机写入闭环仍待验收。
 
 规划器和准备状态可以在无相机环境单独调用。`preparation.assess` 返回机器可读状态；人工确认只表示准备完成，`compatibility_verified` 仍为 false。`operations.execute` 始终读取当前目标与结构守卫后再判断兼容性。
 
@@ -55,5 +61,3 @@ dev19 交互入口：`A6700Preview.swift` 管应用外壳；`WorkspaceView.swift
 公开材料范围更新（2026-10-21）：三份历史固件数组载荷仅内部保留，不应恢复到发布目录。源码构建的已知块／路径检查与合成测试见 `scripts/build_source.py`、`test_public_distribution.py`；当前运行代码和 dev25 二进制未因此改变。维护者已选择保留 USB 临时 root 教程、受校验的功能修改与应用范围，定位为个人学习记录；不删除仍存在于二进制的对应源码，不把学习定位当法律免责，见[发布边界](公开发布边界.md)及[声明与使用边界](声明与使用边界.md)。
 
 2026-10-22 dev33：MSC 发现与端点／固件适配分离；不要求磁盘卷或驱动、不先重置、不扫描卸载无关磁盘、不整套自动重试。共享锁覆盖整个已认证物理会话，结束会话才释放；实际执行复用既有锁内事务函数。物理普通快照不再枚举已隐藏的备份目录，避免文件系统阻塞被误判为 USB 错误；显式备份恢复仍可访问。参见 USB-TROUBLESHOOTING.md 与 VALIDATION.md。
-
-2026-10-23 0.2：USB 原生对象持有上下文，刷新缓存不手动提前退出 libusb；参见 `usb/legacy.py` 与 `test_usb.py`。`desktop/aftercare.py` 统一菜单检查与六步断电引导；事务结束退出服务／释放锁，结果页继续操作使兼容状态失效。Swift worker EOF 清理读句柄并显示中断页；本机服务重启不自动认证／重放操作。默认相机模式只检查环境，保留演示。

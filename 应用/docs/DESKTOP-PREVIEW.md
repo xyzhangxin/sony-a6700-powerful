@@ -52,7 +52,7 @@ python3 scripts/check_macos_app.py 'dist/Powerful6700.app'
 |---|---|
 | `desktop/macos/A6700Preview.swift` | 三步应用外壳、固定导航栏、模式与帮助 |
 | `desktop/macos/WorkspaceView.swift` | 功能选择与操作预览；备份视图保留但无桌面入口 |
-| `desktop/macos/OperationViews.swift` | 当前进度、一次取消、成功回执、失败引导 |
+| `desktop/macos/OperationViews.swift` | 当前进度、一次取消、独立结果页与断电验收、失败引导；检查说明由 `desktop/aftercare.py` 提供 |
 | `desktop/macos/DesignSystem.swift` | 共用样式与功能显示名称，不包含补丁或地址 |
 | `desktop/macos/PreviewModel.swift` | 类型化快照、进程生命周期、异步 JSON 事件；不实现补丁逻辑 |
 | `desktop/macos/OperationWindowGuard.swift` | 操作期间阻止关窗，保留原窗口委托；正常退出由应用委托检查同一繁忙状态 |

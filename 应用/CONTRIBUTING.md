@@ -4,7 +4,7 @@
 
 ## 独立开始
 
-在应用源码目录运行（克隆仓库时进入 `应用/`，独立源码包直接进入解压目录），无需研究目录、私人固件或真实相机。阅读 [AI 上下文](docs/AI-CONTEXT.md) 找到需要修改的模块，然后创建自己的开发分支。
+将本工程作为仓库根目录，无需研究目录、私人固件或真实相机。阅读 [AI 上下文](docs/AI-CONTEXT.md) 找到需要修改的模块，然后创建自己的开发分支。
 
 ```sh
 python3 -m venv .venv
@@ -45,7 +45,7 @@ python -m pip install 'setuptools>=77' wheel
 python scripts/build_wheel.py --offline
 ```
 
-将相同版本源码包和二进制放在同一发布位置，保留许可证与第三方归属。当前 wheel 属于开发交付；SwiftUI 桌面模拟预览可用 `python scripts/build_macos_preview.py` 在 macOS 构建，真实 USB 模式已接入；内置环境版使用 `scripts/build_macos_app.py`，真实写入仍待实机验收。
+将相同版本源码包和二进制放在同一发布位置，保留许可证与第三方归属。当前 wheel 属于开发交付；SwiftUI 桌面模拟预览可用 `python scripts/build_macos_preview.py` 在 macOS 构建，真实 USB 模式已接入；内置环境版使用 `scripts/build_macos_app.py`，维护者已验收当前macOS应用；更多机身与故障边界继续验证。
 
 工作流 Action 用法参考官方 [checkout](https://github.com/actions/checkout) 和 [setup-python](https://github.com/actions/setup-python) 文档。CI 使用 `pull_request`，只授予代码读取权限，不使用真实相机、私人备份或设备凭据。不要把 PR 验证改成直接访问维护者电脑或插着相机的自托管 runner。
 

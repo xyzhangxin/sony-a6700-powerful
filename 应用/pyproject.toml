@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "a6700-unlock"
-version = "0.2.0"
+version = "0.3.0"
 description = "A6700 bundle unlock/close framework with sparse USB preflight and verification"
 requires-python = ">=3.10"
 dependencies = []
@@ -23,4 +23,4 @@ a6700-unlock = "a6700_unlock.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-a6700_unlock = ["data/*.json", "data/legal/*.txt", "data/legal/*.md", "data/native/*.json", "data/native/*.elf", "native/*.c", "native/*.m", "usb/reference/sony_pmca/*.txt"]
+a6700_unlock = ["data/*.json", "data/legal/*.txt", "data/legal/*.md", "data/native/*.json", "data/native/*.elf", "data/fl23/*", "data/fl23/runtime/*.json", "data/fl23/runtime/*/*", "native/*.c", "native/*.h", "native/*.m", "usb/reference/sony_pmca/*.txt"]

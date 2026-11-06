@@ -1,0 +1,1 @@
+SECTIONS { . = 0x378b900; fl23_boot_start = .; .gate : { trigger.o(.text) } . = 0x378baa0; .text : { *(.text.entry) *(.text*) } .rodata (READONLY) : { *(.rodata*) *(.got*) } fl23_boot_end = .; /DISCARD/ : { *(.comment) *(.eh_frame*) } }

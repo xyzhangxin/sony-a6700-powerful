@@ -159,13 +159,14 @@ struct OperationProgressView: View {
         case "backup": return "正在保存功能状态"
         case "restore": return "正在恢复所选功能"
         case "close": return "正在关闭所选功能"
+        case "takeover": return "正在接管相机连接"
         default: return "正在解锁所选功能"
         }
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             PageTitle(title: title, subtitle: physical
-                      ? (model.state?.action == "inspect"
+                      ? (model.state?.action == "takeover" ? "正在处理已确认的本机占用进程；此步骤不写入相机。" : model.state?.action == "inspect"
                          ? "授权后会从 MSC 切换到维护服务；MSC 提示可能消失，请保持连接，等待应用确认结果。"
                          : "请保持相机开机和 USB 连接，等待明确结果。")
                       : "正在运行演示流程，不会访问真实相机。")
@@ -177,7 +178,7 @@ struct OperationProgressView: View {
                             .font(.system(size: 16, weight: .semibold))
                             .fixedSize(horizontal: false, vertical: true)
                         TimelineView(.periodic(from: started, by: 1)) { context in
-                            Text("已用 \(max(0, Int(context.date.timeIntervalSince(started)))) 秒 · " + (physical ? "请勿拔线或关机" : "演示步骤会短暂停留"))
+                            Text("已用 \(max(0, Int(context.date.timeIntervalSince(started)))) 秒 · " + (model.state?.action == "takeover" ? "等待本机工具退出" : physical ? "请勿拔线或关机" : "演示步骤会短暂停留"))
                                 .font(.system(size: 11)).foregroundColor(UI.muted)
                         }
                     }
@@ -196,13 +197,13 @@ struct OperationProgressView: View {
                     }.font(.system(size: 11)).foregroundColor(UI.muted)
                 }
             }
-            HStack(spacing: 14) {
+            if model.state?.action != "takeover" { HStack(spacing: 14) {
                 Button(cancelled ? "正在等待结果…" : "请求取消") {
                     cancelled = true; model.send("cancel")
                 }.buttonStyle(PrimaryStyle(secondary: true)).disabled(cancelled)
                 Text("取消不会强制中断已发送的写入，请等待核验结果。")
                     .font(.system(size: 11)).foregroundColor(UI.muted)
-            }
+            } }
         }
     }
     private var currentStep: String {
@@ -215,6 +216,7 @@ struct OperationFailureView: View {
     @ObservedObject var model: PreviewModel
     let physical: Bool
     @State private var details = false
+    @State private var confirmingTakeover = false
     private var status: String { model.state?.result?.status ?? "error" }
     private var uncertain: Bool { ["uncertain", "verification-failed", "recovery-required"].contains(status) }
     var body: some View {
@@ -223,7 +225,7 @@ struct OperationFailureView: View {
                       subtitle: uncertain ? "先核实当前状态，再决定下一步。" : "处理下面的问题后，可以重新连接并检查。")
             Panel {
                 HStack(alignment: .top, spacing: 16) {
-                    Image(systemName: uncertain ? "questionmark.circle.fill" : "exclamationmark.circle.fill")
+                    Image(systemName: status == "connection-released" ? "checkmark.circle.fill" : uncertain ? "questionmark.circle.fill" : "exclamationmark.circle.fill")
                         .font(.system(size: 31)).foregroundColor(UI.amber)
                     VStack(alignment: .leading, spacing: 10) {
                         Text(model.state?.result?.detail ?? "当前状态无法确认，请重新检查。")
@@ -251,6 +253,18 @@ struct OperationFailureView: View {
             }
             HStack {
                 Button("重新准备并检查") { model.send("restart_preparation") }.buttonStyle(PrimaryStyle())
+                if physical, let takeover = model.state?.result?.takeover, takeover.available {
+                    Button("强制接管…") { confirmingTakeover = true }
+                        .buttonStyle(.bordered).tint(UI.amber)
+                        .alert("强制接管相机连接？", isPresented: $confirmingTakeover) {
+                            Button("取消", role: .cancel) {}
+                            Button("确认无任务，强制接管", role: .destructive) {
+                                model.send("takeover", extra: ["confirmation": takeover.confirmation, "confirmed": true])
+                            }
+                        } message: {
+                            Text("将结束 \(takeover.owner)（PID \(takeover.pid)）。请先检查其他相机软件，确认没有正在拍摄、传输或写入固件。若仍有任务，强制接管可能中断任务或导致相机异常。接管后需要重新连接检查。")
+                        }
+                }
                 if !physical { Text("也可在右上角“演示设置”切换场景。").font(.system(size: 11)).foregroundColor(UI.muted) }
                 Spacer()
             }
@@ -272,6 +286,8 @@ struct OperationFailureView: View {
             }
         }
         switch status {
+        case "connection-busy": return "可先退出其他相机软件后重连。确认没有进行中的任务时，也可使用强制接管。"
+        case "connection-released": return "点击“重新准备并检查”，重新确认连接后读取当前相机状态。"
         case "blocked": return "请核对机型、固件和已有修改。不要跳过兼容检查或重复尝试写入。"
         case "uncertain", "verification-failed", "recovery-required": return "请保留本次记录，检查相机状态，必要时拔线并重启相机。"
         case "cancelled": return "本次操作已结束。重新确认相机准备状态后，可以再次检查。"

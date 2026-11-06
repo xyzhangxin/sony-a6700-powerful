@@ -9,6 +9,8 @@ from ..catalog import load_catalog
 from ..device_profile import load_device_profile
 from ..preparation import assess, STEPS
 from ..notice import operation_notice
+from ..creative_looks import feature_definitions, pending_rows
+from ..connection_takeover import TakeoverManager
 from ..usb.backend import payloads
 from .physical import PhysicalService
 from .simulation import SCENARIOS, SimulationService
@@ -31,6 +33,7 @@ SIMULATION_RESULT_LABELS = {
 }
 
 PHYSICAL_RESULT_LABELS = {
+    'partial': ('部分功能已完成', '已停止后续操作；下方列出已完成和未完成的功能，请先重新检查状态。'),
     'completed': ('操作完成', '写入与独立回读通过，待机身验收。请按下方步骤断电重启并检查菜单。'),
     'no-op': ('已经是目标状态', '没有重复发送写入器。'),
     'blocked': ('兼容性检查未通过', '设备内容或结构守卫与预期不一致，所选功能修改已停止。'),
@@ -100,9 +103,12 @@ class DesktopController:
             self.scenario = ''
             self.scenarios = {}
             self.result_labels = PHYSICAL_RESULT_LABELS
+        self.takeover_manager = TakeoverManager(physical_state_dir) if mode == 'physical' else None
         self._initialize_state()
 
     def _initialize_state(self):
+        if self.takeover_manager is not None:
+            self.takeover_manager.pending = None
         self.confirmed = set()
         self.environment = dict(ready=False, checks=[], device_access=False)
         self.checked = self.compatible = False
@@ -114,7 +120,7 @@ class DesktopController:
         self.action = ''
         self.backup_id = None
         self.inspect_summary = None
-        self.selected_features = set(self.service.profile.catalog.available_features)
+        self.selected_features = set(self._feature_ids())
         self.device_access = False
         self.write_attempted = False
         self.cancel.clear()
@@ -154,7 +160,7 @@ class DesktopController:
             self.confirmed.clear()
             self.compatible = False
             self.features = []
-            self.selected_features = set(self.service.profile.catalog.available_features)
+            self.selected_features = set(self._feature_ids())
             self.inspect_summary = None
             self.result = None
             self.phase = 'notice'
@@ -170,7 +176,7 @@ class DesktopController:
                 self.confirmed.clear()
                 self.compatible = False
                 self.features = []
-                self.selected_features = set(self.service.profile.catalog.available_features)
+                self.selected_features = set(self._feature_ids())
                 self.inspect_summary = None
             self.revision += 1
         return self.snapshot()
@@ -230,7 +236,7 @@ class DesktopController:
             self.confirmed.clear()
             self.compatible = False
             self.features = []
-            self.selected_features = set(self.service.profile.catalog.available_features)
+            self.selected_features = set(self._feature_ids())
             self.inspect_summary = None
             if self.busy:
                 self.cancel.set()
@@ -250,7 +256,7 @@ class DesktopController:
             self.confirmed.clear()
             self.compatible = False
             self.features = []
-            self.selected_features = set(self.service.profile.catalog.available_features)
+            self.selected_features = set(self._feature_ids())
             self.inspect_summary = None
             self.result = None
             self.phase = self._preparation_phase()
@@ -265,13 +271,26 @@ class DesktopController:
                 self.confirmed.clear()
                 self.compatible = False
                 self.features = []
-                self.selected_features = set(self.service.profile.catalog.available_features)
+                self.selected_features = set(self._feature_ids())
                 self.phase = 'notice'
             self.revision += 1
         return self.snapshot()
 
     def _feature_ids(self):
-        return list(self.service.profile.catalog.available_features)
+        return [row['id'] for row in self._feature_definitions() if row.get('available', True)]
+
+    def _feature_definitions(self):
+        return feature_definitions(self.service.profile.catalog, simulation=self.mode == 'simulation',
+                                   fl23_available=getattr(self.service,'fl23_available',False))
+
+    def _feature_rows(self, rows):
+        # Sparse physical inspection cannot observe external package state.
+        # Display its options without inventing a disabled/enabled result.
+        rows = [row for row in rows if row['id']!='creative_look_names']
+        if self.mode == 'physical':
+            known = {row['id'] for row in rows}
+            rows.extend(row for row in pending_rows(fl23_available=getattr(self.service,'fl23_available',False)) if row['id'] not in known)
+        return rows
 
     def _require_selection_editable(self):
         if self.busy or self.phase != 'home' or not self.compatible:
@@ -374,6 +393,36 @@ class DesktopController:
             self.result = None
             self.revision += 1
 
+    def reserve_takeover(self, confirmation, confirmed):
+        with self.lock:
+            if (self.mode != 'physical' or self.busy or not self.result
+                    or self.result.get('status') != 'connection-busy'
+                    or not self.result.get('takeover', {}).get('available')
+                    or confirmed is not True):
+                raise ValueError('请先检查当前连接占用，并明确确认强制接管。')
+            self.takeover_request = (confirmation, confirmed)
+            self.busy = True
+            self.action = 'takeover'
+            self.phase = 'running'
+            self.revision += 1
+
+    def run_takeover(self, progress):
+        with self.lock:
+            if not self.busy or self.action != 'takeover':
+                raise ValueError('没有已确认的连接接管操作。')
+        self.takeover_manager.execute(*self.takeover_request, progress=progress)
+        with self.lock:
+            self.busy = self.compatible = self.device_access = self.write_attempted = False
+            self.confirmed.clear()
+            self.features = []
+            self.inspect_summary = None
+            self.phase = 'result'
+            self.result = dict(status='connection-released', title='连接占用已释放',
+                detail='请重新准备并连接相机，应用会重新读取当前状态。', success=False,
+                error='', simulation=False, device_access=False, write_attempted=False)
+            self.revision += 1
+        return self.snapshot()
+
     def _display_progress(self, message):
         if self.mode != 'simulation':
             return message
@@ -412,7 +461,7 @@ class DesktopController:
             self.write_attempted = bool(result.get('write_attempted', False))
             if action == 'inspect' and status == 'inspected':
                 self.compatible = result['plan']['compatible']
-                self.features = result['plan']['features']
+                self.features = self._feature_rows(result['plan']['features'])
                 self.selected_features = {row['id'] for row in self.features
                                           if row['id'] in self._feature_ids() and row.get('state') != 'enabled'}
                 self.inspect_summary = dict(
@@ -427,10 +476,10 @@ class DesktopController:
                 self.compatible = (status in ('completed', 'restored', 'no-op', 'backup-completed')
                                    and result.get('verified', False))
                 if action == 'backup':
-                    self.features = result.get('features', result.get('plan', {}).get('features', []))
+                    self.features = self._feature_rows(result.get('features', result.get('plan', {}).get('features', [])))
                 else:
-                    self.features = result.get('final_features', result.get('plan', {}).get(
-                        'features', [])) if self.compatible else []
+                    self.features = self._feature_rows(result.get('final_features', result.get('plan', {}).get(
+                        'features', []))) if self.compatible else []
                 title, detail = self.result_labels.get(status, ('操作未完成', '请重新检查状态。'))
                 error = result.get('error', '')
                 if self.mode == 'simulation':
@@ -479,7 +528,7 @@ class DesktopController:
                 ready=prepared['ready'] and self.notice_acknowledged, compatible=self.compatible, connected=connected,
                 features=[dict(row, selected=row['id'] in self.selected_features,
                                requires=next((f.get('requires', []) for f in
-                                   self.service.profile.catalog.data['features'] if f['id'] == row['id']), []))
+                                   self._feature_definitions() if f['id'] == row['id']), []))
                           for row in self.features],
                 inspect_summary=self.inspect_summary,
                 backups=backups, backup_dir=str(self.service.backup_dir),
