@@ -64,7 +64,7 @@ def check_worker(resources, physical):
                 assert state['simulation'] and not state['device_access'] and not state['write_attempted']
                 assert state['result']['status']=='completed',state['result']
                 assert state['result']['aftercare']['simulation']
-                assert len(state['result']['aftercare']['features'])==4
+                assert len(state['result']['aftercare']['features'])==5
                 assert not state['compatible'] and not state['ready']
                 send('restart_preparation');state_until(lambda s:s['phase']=='preparation')
                 send('confirm_preparation',value=True);state_until(lambda s:s['ready'])

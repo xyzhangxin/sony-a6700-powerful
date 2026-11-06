@@ -1,0 +1,1 @@
+#define A1_TRIGGER_CAVE 0x378b900

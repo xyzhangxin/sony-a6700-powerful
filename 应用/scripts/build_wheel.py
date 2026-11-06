@@ -53,12 +53,16 @@ def main():
             for required in ("data/legal/LICENSE.txt", "data/legal/NOTICE.txt", "data/legal/THIRD_PARTY_NOTICES.md",
                              "data/device-profile.json", "data/native/reader.elf", "data/native/writer.elf",
                              "data/native/manifest.json", "native/mac_capture.m",
-                             "usb/reference/sony_pmca/LICENSE.txt", "usb/reference/sony_pmca/LICENSE-python-sha1.txt"):
+                             "usb/reference/sony_pmca/LICENSE.txt", "usb/reference/sony_pmca/LICENSE-python-sha1.txt",
+                             "data/fl23/manifest.json", "data/fl23/recipe.json", "data/fl23/carrier.bin",
+                             "data/fl23/reader.elf", "data/fl23/writer.elf", "data/fl23/files.elf",
+                             "data/fl23/runtime/manifest.json"):
                 if "a6700_unlock/" + required not in names:
                     raise RuntimeError("Missing device runtime resource: " + required)
             if not any(n.endswith(".dist-info/licenses/LICENSE") for n in names):
                 raise RuntimeError("Distribution GPL license missing")
-            if any(Path(n).suffix in (".bin", ".raw", ".so", ".plain", ".ext2") for n in names):
+            if any(Path(n).suffix in (".bin", ".raw", ".so", ".plain", ".ext2")
+                   and n != "a6700_unlock/data/fl23/carrier.bin" for n in names):
                 raise RuntimeError("Unexpected firmware/backup binary in the wheel")
         args.output_dir.mkdir(parents=True, exist_ok=True)
         destination = args.output_dir / wheel.name

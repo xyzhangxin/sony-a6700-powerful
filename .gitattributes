@@ -1,0 +1,3 @@
+# Frozen FL23 sources are SHA-bound; preserve their exact bytes.
+应用/src/a6700_unlock/data/fl23/runtime/** -text
+应用/src/a6700_unlock/data/fl23/runtime/core/main-preparation-profile.h whitespace=-blank-at-eof

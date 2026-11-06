@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "feature": "fl23",
+  "profile_sha256": "4e9da22a80f683db83f5a635106fad81ce7a3526796ec6385791b6d22b06745f",
+  "carrier_sha256": "ccfc1b585a2787181b86b478ce9451d5e68b446b2810000a1880ada9fca3a61f",
+  "carrier_bytes": 951800,
+  "deployment": "file-carrier",
+  "names": false,
+  "hardware_validation": "pending",
+  "payloads": {
+    "reader": {
+      "bytes": 169472,
+      "sha256": "a1bb33e1a9286e362f9f4cfbb183fa4197be5691d2ee9a603aaee66f6ac929fd"
+    },
+    "writer": {
+      "bytes": 171584,
+      "sha256": "005ce182d2caa9529654584c19131654dc8d66f8672b5f2e5ca3480e1789a449"
+    },
+    "files": {
+      "bytes": 7968,
+      "sha256": "f3233a5336b10ba393ee144b56729e2e145171bff8c15b4c2b84181659cdccfa"
+    }
+  },
+  "source_sha256": {
+    "transaction.c": "44565da1ac34b8751d4e2edf59765e0cd72748650aba24cdcd26803e0e4c36ec",
+    "profile.h": "c1f399ef8e38b883dbaf5effa6612756846e296ee57c58d13f807b875d7097d4",
+    "sha256.h": "85dc96693857e6f4b9f9035e5c5b02b80a49ab44082f0c19dc46cd5c0400238e",
+    "fl23_files.c": "2421cb94d3e235b95e18e5ba580b9dd90101f051ede3afd9670c8efdd855e935",
+    "file-profile.h": "473500b603135bb491405f9da574967d860ccb6a97335488c10c2aa67f3536ed"
+  },
+  "upstream_source_sha256": {
+    "native/transaction.c": "53cd3393c07dfdb7a219cf73906862ac389df9d853a90d762deec777c0e37e82",
+    "native/fl23_files.c": "2421cb94d3e235b95e18e5ba580b9dd90101f051ede3afd9670c8efdd855e935",
+    "native/fl23_sha256.h": "85dc96693857e6f4b9f9035e5c5b02b80a49ab44082f0c19dc46cd5c0400238e"
+  },
+  "runtime_source_sha256": "637bbe6f0f382eb0b54729063d735a2fc3ce050be2fa39fbc3a51dabea5f0903",
+  "validation_channel": "maintainer-test"
+}

@@ -26,3 +26,9 @@ captures/
 # 仅随对应源码提供的固定自编 ARM64 载荷
 !应用/src/a6700_unlock/data/native/reader.elf
 !应用/src/a6700_unlock/data/native/writer.elf
+
+# Fixed FL23 runtime and bounded self-built installers; matching sources included
+!应用/src/a6700_unlock/data/fl23/carrier.bin
+!应用/src/a6700_unlock/data/fl23/reader.elf
+!应用/src/a6700_unlock/data/fl23/writer.elf
+!应用/src/a6700_unlock/data/fl23/files.elf

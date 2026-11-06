@@ -53,7 +53,7 @@ def main():
     # backups, validation reports, virtualenvs, build trees or firmware images.
     paths = [ROOT / name for name in ('README.md', 'AGENTS.md', 'CONTRIBUTING.md', 'CHANGELOG.md', 'pyproject.toml', 'LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md',
                                       '.gitignore', 'start.sh', '启动工具.command')]
-    suffixes = {'.py', '.json', '.elf', '.c', '.m', '.txt', '.md', '.sh', '.yml', '.yaml', '.swift', '.png', '.icns'}
+    suffixes = {'.py', '.json', '.elf', '.bin', '.c', '.h', '.S', '.ld', '.m', '.txt', '.md', '.sh', '.yml', '.yaml', '.swift', '.png', '.icns'}
     for folder in ('src/a6700_unlock', 'tests', 'docs', 'scripts', 'verified', '.github', 'desktop'):
         for path in (ROOT / folder).rglob('*'):
             relative = path.relative_to(ROOT)
@@ -66,7 +66,10 @@ def main():
             raise RuntimeError('Source must be a regular file: ' + str(path.relative_to(ROOT)))
         validate_public_file(path, path.relative_to(ROOT))
         if path.suffix == '.elf' and path.parent != ROOT / 'src/a6700_unlock/data/native':
-            raise RuntimeError('Unexpected executable resource')
+            if path.parent!=ROOT/'src/a6700_unlock/data/fl23' or path.name not in ('reader.elf','writer.elf','files.elf'):
+                raise RuntimeError('Unexpected executable resource')
+        if path.suffix=='.bin' and path!=ROOT/'src/a6700_unlock/data/fl23/carrier.bin':
+            raise RuntimeError('Unexpected binary resource')
     args.output_dir.mkdir(parents=True, exist_ok=True)
     destination = args.output_dir / f'a6700-unlock-{__version__}-source.zip'
     with destination.open('xb') as output:

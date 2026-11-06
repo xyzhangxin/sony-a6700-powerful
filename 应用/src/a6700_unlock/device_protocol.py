@@ -12,6 +12,12 @@ class DeviceError(RuntimeError):
     pass
 
 
+class DeviceBusyError(DeviceError):
+    def __init__(self, message, lock_path):
+        super().__init__(message)
+        self.lock_path = lock_path
+
+
 def request(profile, nonce, before=None, after=None):
     if len(nonce) != 16:
         raise ValueError("Nonce must be 16 bytes")

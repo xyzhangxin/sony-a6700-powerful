@@ -13,6 +13,7 @@ from ..catalog import Catalog
 from ..device_profile import DeviceProfile, inspect_sectors
 from ..device_protocol import DeviceError
 from ..operations import _backup_session, _execute_session, _restore_session
+from ..creative_looks import FEATURES
 
 
 SCENARIOS = {
@@ -33,7 +34,8 @@ def fixture():
     digest = hashlib.sha256(bytes(512)).hexdigest()
     features = [dict(id='ftp', name='原生 FTP'), dict(id='shutter', name='关机快门帘与静音联动'),
                 dict(id='exposure', name='灵活曝光'), dict(id='sound', name='电子快门声音'),
-                dict(id='pixel_shift', name='位移多帧合成'), dict(id='dynamic_active', name='动态增强防抖')]
+                dict(id='pixel_shift', name='位移多帧合成'), dict(id='dynamic_active', name='动态增强防抖'),
+                *[dict(row) for row in FEATURES]]
     for feature in features:
         feature['available'] = feature['id'] not in ('pixel_shift', 'dynamic_active')
         if not feature['available']:
@@ -41,7 +43,7 @@ def fixture():
     edits = [dict(id=f'demo-{feature}-{image}', image=image, offset=offset,
                   disabled='00', enabled='01', known_values=['00', '01'],
                   feature=feature, purpose='synthetic preview field')
-             for image in ('app', 'wbi') for feature, offset in [('ftp', 10), ('shutter', 20), ('exposure', 30), ('sound', 40), ('pixel_shift', 50), ('dynamic_active', 60)]]
+             for image in ('app', 'wbi') for feature, offset in [('ftp', 10), ('shutter', 20), ('exposure', 30), ('sound', 40), ('pixel_shift', 50), ('dynamic_active', 60), ('fl23', 70), ('creative_look_names', 80)]]
     catalog = Catalog.from_dict(dict(schema_version=1, catalog_id='synthetic-desktop-preview',
         bundle_version='preview', model='Synthetic A6700', firmware='preview', sector_size=512,
         scope='offline-known-snapshot-only', device_write_supported=False,

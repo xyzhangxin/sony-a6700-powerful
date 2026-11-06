@@ -46,6 +46,10 @@ struct OperationResult: Decodable {
     let status: String; let title: String; let detail: String; let success: Bool; let error: String
     let backup_path: String?; let backup_sha256: String?; let backup_id: String?
     let aftercare: Aftercare?; let cleanup_warning: String?
+    let takeover: ConnectionTakeover?
+}
+struct ConnectionTakeover: Decodable {
+    let available: Bool; let confirmation: String; let owner: String; let pid: Int; let detail: String
 }
 struct RestartStep: Decodable, Identifiable {
     let id: String; let title: String; let detail: String
@@ -238,12 +242,12 @@ final class PreviewModel: ObservableObject {
             send("prepare")
             return
         }
-        if ["inspect", "unlock", "close", "backup", "restore"].contains(command) {
+        if ["inspect", "unlock", "close", "backup", "restore", "takeover"].contains(command) {
             guard !isBusy else { return }
             pendingAction = command
         }
         error = ""
-        if ["inspect", "unlock", "close", "backup", "restore", "reset", "environment"].contains(command) { progress = [] }
+        if ["inspect", "unlock", "close", "backup", "restore", "takeover", "reset", "environment"].contains(command) { progress = [] }
         var request = extra; request["command"] = command
         guard let bytes = try? JSONSerialization.data(withJSONObject: request), let input = input else {
             pendingAction = nil

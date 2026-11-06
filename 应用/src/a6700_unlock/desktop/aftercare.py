@@ -7,6 +7,16 @@ from __future__ import annotations
 
 
 MENU_CHECKS = {
+    'fl23': dict(
+        path='MENU → 曝光/颜色 → 色调 → 创意外观',
+        unlock='主列表出现独立 FL2、FL3；图标、预览、说明、拍摄保存和回放正常。',
+        close='主列表不再出现 FL2、FL3；原有十种外观和六个自定义槽仍可使用。',
+        note='本版保留 ST、FL2、FL3 等简称。冷启动后等待自动加载，再检查图标、说明和拍摄；中文全称将在后续版本提供。'),
+    'creative_look_names': dict(
+        path='MENU → 曝光/颜色 → 色调 → 创意外观（含编号 1～6）',
+        unlock='中文界面显示 ST(标准)、FL(胶片) 等完整名称，编号 1～6 的列表与调节页一致。',
+        close='恢复原有简称；现有创意外观、图标、调整值和说明保持可用。',
+        note='名称使用相机当前语言的原生文字；此选项不强制更改相机语言或成像。'),
     'ftp': dict(
         path='MENU → 网络 → 传输/远程 → FTP传输功能',
         unlock='能打开 FTP传输功能，并看到 FTP功能、服务器设置等项目。',

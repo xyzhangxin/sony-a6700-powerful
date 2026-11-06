@@ -13,6 +13,7 @@ import sys
 from threading import Lock, Thread
 
 from .controller import DesktopController
+from ..device_protocol import DeviceBusyError
 
 
 def main():
@@ -40,7 +41,8 @@ def main():
         def progress(message):
             emit('progress', message=message)
         try:
-            emit('state', state=controller.run_reserved(progress))
+            emit('state', state=(controller.run_takeover(progress) if controller.action == 'takeover'
+                                  else controller.run_reserved(progress)))
         except (Exception, KeyboardInterrupt) as exc:
             with controller.lock:
                 controller.busy = False
@@ -55,6 +57,18 @@ def main():
                     title='连接检查已取消' if cancelled else '真实设备服务发生错误',
                     detail=detail, success=False,
                     error=detail, simulation=False, device_access=True, write_attempted=False)
+                if isinstance(exc, DeviceBusyError):
+                    try:
+                        takeover = controller.takeover_manager.prepare(exc.lock_path)
+                    except (OSError, ValueError):
+                        takeover = dict(available=False, confirmation='', owner='', pid=0,
+                                        detail='无法确认占用者，请先退出其他相机软件再连接。')
+                    controller.device_access = False
+                    controller.result.update(status='connection-busy', title='相机连接正被其他工具使用',
+                        detail=takeover['detail'], device_access=False, takeover=takeover)
+                elif controller.action == 'takeover':
+                    controller.device_access = False
+                    controller.result.update(title='未完成连接接管', device_access=False)
             emit('state', state=controller.snapshot())
 
     emit('state', state=controller.snapshot())
@@ -66,6 +80,12 @@ def main():
             if not isinstance(request, dict):
                 raise ValueError('无效请求。')
             command = request.get('command')
+            if command == 'takeover':
+                controller.reserve_takeover(request.get('confirmation'), request.get('confirmed'))
+                emit('state', state=controller.snapshot())
+                thread = Thread(target=run, daemon=True)
+                thread.start()
+                continue
             if command in ('inspect', 'unlock', 'close', 'backup', 'restore'):
                 controller.reserve(command, request.get('backup_id') if command == 'restore' else None)
                 emit('state', state=controller.snapshot())

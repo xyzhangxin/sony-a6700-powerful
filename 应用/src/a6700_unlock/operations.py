@@ -11,7 +11,7 @@ import uuid
 
 from .backup import Backup, create_backup, default_backup_dir, restore_plan
 from .device_profile import inspect_sectors
-from .device_protocol import DeviceError
+from .device_protocol import DeviceError, DeviceBusyError
 
 
 def default_state_dir():
@@ -83,7 +83,7 @@ def device_lock(directory):
             try:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as exc:
-                raise DeviceError("本机已有相机工具运行，请等待其完成；更换记录目录不会绕过设备锁") from exc
+                raise DeviceBusyError("本机已有相机工具运行，请等待其完成；更换记录目录不会绕过设备锁", path) from exc
         yield
 
 

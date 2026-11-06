@@ -86,6 +86,8 @@ extension FeatureRow {
         case "sound": return "解锁电子快门声音与音量选项"
         case "pixel_shift": return "解锁 Pixel Shift 菜单，成像效果待完整验证"
         case "dynamic_active": return "新增录像防抖「动态增强」，保留原有拍摄条件限制"
+        case "fl23": return "新增独立 FL2／FL3、图标及完整说明；可与其他功能一起选择，保留简称"
+        case "creative_look_names": return "主列表和编号 1～6 显示完整名称，可独立启用"
         default: return "按当前适配管理此功能"
         }
     }
@@ -96,10 +98,12 @@ extension FeatureRow {
         case "exposure": return "slider.horizontal.3"
         case "sound": return "speaker.wave.2"
         case "dynamic_active": return "viewfinder"
+        case "fl23": return "camera.filters"
+        case "creative_look_names": return "character.bubble"
         default: return "square.3.layers.3d"
         }
     }
-    var stateText: String { state == "enabled" ? "已解锁" : state == "disabled" ? "未解锁" : "部分解锁" }
+    var stateText: String { state == "unknown" ? "尚未读取" : state == "enabled" ? "已解锁" : state == "disabled" ? "未解锁" : "部分解锁" }
 }
 extension BackupRow {
     var dateText: String {
