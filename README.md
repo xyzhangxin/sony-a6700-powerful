@@ -40,3 +40,8 @@
 - [Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE)：USB 维护协议与认证参考。
 
 自有代码与文档采用 GPL-3.0-only；第三方来源及许可状态见 [NOTICE](NOTICE) 与[应用第三方归属](应用/THIRD_PARTY_NOTICES.md)。请勿上传固件、私人备份、机身数据或凭据。
+
+## 贡献者与致谢
+
+- [@zhuorantiancheng](https://github.com/zhuorantiancheng)：通过 [PR #7](https://github.com/xyzhangxin/sony-a6700-powerful/pull/7) 修复 ext2 inode 时间戳漂移导致的兼容性检查误报。
+- [@wanghm105](https://github.com/wanghm105)：提供相机重启后兼容性检查失败的实机问题报告，帮助定位上述问题。
