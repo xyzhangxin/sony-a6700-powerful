@@ -13,7 +13,7 @@
 
 **Powerful6700 0.3.1** 继续面向更多用户测试，安装包仅支持 Apple Silicon、macOS 13+，内置运行环境，保留演示模式。开放 FL2／FL3、FTP、关机快门帘、灵活曝光和电子快门声音，可一起勾选、逐项解锁／关闭。位移多帧合成、动态增强防抖暂禁用。
 
-<img width="1100" height="798" alt="1792660874815000_F84B856F-BAF4-4711-8F70-52066802C66B" src="https://github.com/user-attachments/assets/4ebb305d-47a4-4b22-a701-74a275fe5532" />
+<img width="1100" alt="Powerful6700 功能管理界面：FL2／FL3 与创意外观中文名称独立开关" src="图片/Powerful6700功能管理.png" />
 
 
 0.3新增FL2／FL3独立创意外观、完整图标和帮助说明，开机状态就绪后自主加载；中文名称后续补充；关闭FL23会完整撤回专属依赖。合入[PR #7](https://github.com/xyzhangxin/sony-a6700-powerful/pull/7)的inode时间戳守卫修复，改进连接占用提示及强制接管。完整备份恢复尚未提供；软件路线仅修改清单内功能字段，不提供任意固件刷入。更新详情见[变更记录](应用/CHANGELOG.md)。
