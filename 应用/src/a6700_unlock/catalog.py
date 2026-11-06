@@ -131,6 +131,11 @@ class Catalog:
                 raise CatalogError(f"Overlapping edits: {left.id}, {right.id}")
         if any(not any(e.feature == f and e.disabled != e.enabled for e in edits) for f in feature_ids):
             raise CatalogError("Every feature must have at least one active edit")
+        from .feature_updates import validate_updates
+        try:
+            validate_updates(data["features"], edits)
+        except ValueError as exc:
+            raise CatalogError(str(exc)) from exc
         # Own a JSON copy: callers cannot invalidate the parsed object via input mutation.
         canonical = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
         return cls(json.loads(canonical), tuple(edits), hashlib.sha256(canonical).hexdigest())

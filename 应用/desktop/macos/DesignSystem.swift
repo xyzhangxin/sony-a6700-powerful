@@ -103,7 +103,7 @@ extension FeatureRow {
         default: return "square.3.layers.3d"
         }
     }
-    var stateText: String { state == "unknown" ? "尚未读取" : state == "enabled" ? "已解锁" : state == "disabled" ? "未解锁" : "部分解锁" }
+    var stateText: String { update_available == true ? "已解锁 · 可更新" : state == "unknown" ? "尚未读取" : state == "enabled" ? "已解锁" : state == "disabled" ? "未解锁" : "部分解锁" }
 }
 extension BackupRow {
     var dateText: String {

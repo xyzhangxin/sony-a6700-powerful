@@ -99,13 +99,15 @@ class PhysicalService:
         if self._session_backend is None:
             # Claim the shared lock before capture/auth and keep it until the
             # authenticated session is closed. Calls below must not lock twice.
-            lock = device_lock(directory)
+            lock = device_lock(directory, observe_returned_settings=True)
             lock.__enter__()
             self._session_lock = lock
             try:
                 backend = self._backend(progress, capture=True)
                 backend.__enter__()
                 self._session_backend = backend
+                from ..close_setting import verify_pending_settings
+                verify_pending_settings(backend,directory)
             except BaseException:
                 self.close_session()
                 raise
@@ -139,7 +141,9 @@ class PhysicalService:
             self.close_session()
             raise
         self._last_run_directory = Path(result['run_directory'])
-        if action in ('unlock', 'close') or result.get('status') in ('error', 'uncertain'):
+        if action in ('unlock', 'close') or result.get('status') in (
+                'error', 'uncertain', 'close-preparation-required',
+                'close-preparation-uncertain', 'close-preparation-cancelled', 'close-preparation-restart-required'):
             try:
                 self.close_session()
             except Exception as exc:
@@ -152,7 +156,7 @@ class PhysicalService:
                 result['cleanup_status'] = getattr(backend, 'cleanup_status', None)
                 result['cleanup_warning'] = getattr(backend, 'cleanup_warning', None)
         self.connected = self._session_backend is not None and result.get('status') in (
-            'inspected', 'dry-run', 'completed', 'no-op', 'backup-completed', 'restored')
+            'inspected', 'dry-run', 'completed', 'no-op', 'backup-completed', 'restored', 'settings-prepared')
         return result
 
     def _perform_combined(self, backend, action, directory, progress, features):
@@ -165,6 +169,7 @@ class PhysicalService:
         import uuid
         from ..operations import _execute_session, make_directory, save_json
         from ..fl23_package import perform as package_perform
+        from ..close_preparation import prepare_close, attach_preparation
         package_ids=[f for f in ('fl23','creative_look_names') if f in features]
         ordinary=sorted(set(features)-set(package_ids))
         selected=ordinary+package_ids
@@ -174,12 +179,41 @@ class PhysicalService:
         describe=lambda ids:'、'.join(names.get(i,i) for i in ids)
         run=Path(directory)/'runs'/('combined-'+uuid.uuid4().hex)
         make_directory(run)
-        result=dict(action=action,status='error',device_access=True,write_attempted=False,
+        result=dict(action=action,status='error',device_access=True,write_attempted=False,settings_write_attempted=False,
                     verified=False,full_backup=False,run_directory=str(run),
                     selected_features=selected,completed_features=[],remaining_features=selected[:],
                     components=[],plan=dict(compatible=True,features=[],selected_features=selected,
                                             read_sectors=0,read_bytes=0,changed_bytes=0))
         save_json(run/'intent.json',dict(action=action,selected_features=selected,order=['ordinary','fl23']))
+        if action=='close':
+            # Validate BOTH installers before changing any setting or firmware.
+            # Their ordinary execution still re-reads and re-plans afterwards.
+            try:
+                ordinary_check=_execute_session(self.profile,backend,'close',directory,progress,
+                    dry_run=True,features=ordinary,manage_backend=False)
+                result['ordinary_close_preflight']=ordinary_check
+                if ordinary_check.get('close_preparation') is not None:
+                    result['close_preparation']=ordinary_check['close_preparation']
+                if ordinary_check.get('status')!='dry-run':
+                    result.update(status=ordinary_check.get('status','error'),
+                                  error=ordinary_check.get('error','普通功能关闭前检查未通过'))
+                    save_json(run/'result.json',result)
+                    return result
+                package_check=package_perform(backend,'inspect',directory,progress,
+                                               features=package_ids,validate_close=True)
+                result['package_close_preflight']=package_check
+                if package_check.get('status')!='inspected' or not package_check.get('close_ready'):
+                    result.update(status='close-preparation-required',
+                                  error=package_check.get('error','创意外观关闭前检查未通过'))
+                    save_json(run/'result.json',result)
+                    return result
+                if not attach_preparation(result,prepare_close(backend,ordinary,run,progress)):
+                    save_json(run/'result.json',result)
+                    return result
+            except (Exception,KeyboardInterrupt) as exc:
+                result.update(status='close-preparation-required',error='关闭前检查未完成：'+str(exc))
+                save_json(run/'result.json',result)
+                return result
         for name, ids in (('ordinary',ordinary),('fl23',package_ids)):
             progress('正在处理所选功能：'+describe(ids))
             try:
@@ -192,11 +226,12 @@ class PhysicalService:
                           error=str(exc) or type(exc).__name__)
             result['components'].append(dict(name=name,features=ids,result=part))
             result['write_attempted'] |= bool(part.get('write_attempted'))
+            result['settings_write_attempted'] |= bool(part.get('settings_write_attempted'))
             plan=part.get('plan',{})
             result['plan']['features'].extend(plan.get('features',[]))
             for key in ('read_sectors','read_bytes','changed_bytes'):
                 result['plan'][key]+=plan.get(key,0)
-            if part.get('status') not in ('completed','no-op') or not part.get('verified'):
+            if part.get('status') not in ('completed','no-op','settings-prepared') or not part.get('verified'):
                 result['status']='partial' if result['completed_features'] else part.get('status','error')
                 result['error']=('已确认完成：'+describe(result['completed_features'])+'；' if result['completed_features'] else '')+\
                     '未完成：'+describe(result['remaining_features'])+'。'+part.get('error',part.get('status','操作未确认'))
@@ -215,7 +250,8 @@ class PhysicalService:
             if (check.get('status')=='inspected' and check.get('plan',{}).get('compatible') and
                     all(rows.get(i,{}).get('state')==target for i in ordinary)):
                 result['verified']=True
-                result['status']='completed' if result['write_attempted'] else 'no-op'
+                result['status']=('completed' if result['write_attempted'] else
+                                  'settings-prepared' if result['settings_write_attempted'] else 'no-op')
                 result['final_features']=list(rows.values())+result['components'][-1]['result'].get('final_features',[])
             else:
                 result['status']='uncertain'

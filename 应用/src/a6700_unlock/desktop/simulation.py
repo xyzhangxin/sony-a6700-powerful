@@ -6,6 +6,7 @@ Addresses below belong to a synthetic catalogue, never the camera catalogue.
 from __future__ import annotations
 
 import hashlib
+from copy import deepcopy
 from pathlib import Path
 
 from ..backup import find_backup, list_backups, load_backup
@@ -18,6 +19,7 @@ from ..creative_looks import FEATURES
 
 SCENARIOS = {
     'enabled': '已完整解锁',
+    'close-active': '关闭前：相关功能正在使用',
     'original': '尚未解锁',
     'partial': '已有 FTP，待补快门功能',
     'disconnected': '设备未连接',
@@ -70,6 +72,31 @@ class MemoryDevice:
         self.writes = 0
         self.cleanup_warning = None
         self.cleanup_status = 'simulation-only'
+        from ..close_preparation import RULES
+        self.automatic_close_settings = frozenset(RULES)
+        self.close_settings = {identifier: dict(current=rule.safe[0], saved=rule.safe[0], verified=True)
+                               for identifier, rule in RULES.items()}
+        self.close_settings['ftp'].update(transfer_idle=True, connection_idle=True, media_released=True)
+        self.close_settings['exposure']['recall_inactive'] = True
+        self.close_setting_writes = []
+        if scenario == 'close-active':
+            for identifier, rule in RULES.items():
+                self.close_settings[identifier].update(current=rule.active[0], saved=rule.active[0])
+            self.close_settings['ftp'].update(transfer_idle=False, connection_idle=False, media_released=False)
+
+    def read_close_state(self, features, nonce):
+        if not self.connected:
+            raise DeviceError('模拟设备连接已断开')
+        return dict(nonce=nonce, camera_idle=True, features={key: deepcopy(self.close_settings[key]) for key in features})
+
+    def reset_close_setting(self, feature, target):
+        from ..close_preparation import RULES
+        if feature not in RULES or target != RULES[feature].target:
+            raise DeviceError('不允许的模拟关闭前设置')
+        self.close_setting_writes.append((feature, target))
+        self.close_settings[feature].update(current=target, saved=target)
+        if feature == 'ftp':
+            self.close_settings[feature].update(transfer_idle=True, connection_idle=True, media_released=True)
 
     def __enter__(self):
         if not self.connected:
@@ -109,7 +136,7 @@ class SimulationService:
         if scenario not in SCENARIOS:
             raise ValueError('Unknown simulation scenario')
         self.profile, sectors = fixture()
-        if scenario == 'enabled':
+        if scenario in ('enabled', 'close-active'):
             _, sectors = inspect_sectors(self.profile, sectors, 'unlock')
         elif scenario == 'partial':
             for index in (0, 1):
@@ -141,6 +168,8 @@ class SimulationService:
                                       self.directory, progress, features=features)
         result['simulation'] = True
         result['simulated_write_attempted'] = result['write_attempted']
+        result['simulated_settings_write_attempted'] = result.get('settings_write_attempted', False)
+        result['settings_write_attempted'] = False
         result['write_attempted'] = False
         result['device_access'] = False
         return result

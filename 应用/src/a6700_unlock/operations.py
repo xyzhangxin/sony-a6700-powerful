@@ -12,6 +12,7 @@ import uuid
 from .backup import Backup, create_backup, default_backup_dir, restore_plan
 from .device_profile import inspect_sectors
 from .device_protocol import DeviceError, DeviceBusyError
+from .close_preparation import prepare_close, attach_preparation, recheck_preparation
 
 
 def default_state_dir():
@@ -69,7 +70,7 @@ def host_lock_path():
 
 
 @contextlib.contextmanager
-def device_lock(directory):
+def device_lock(directory, *, observe_returned_settings=False):
     try:
         import fcntl
     except ImportError as exc:
@@ -84,6 +85,8 @@ def device_lock(directory):
                 fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as exc:
                 raise DeviceBusyError("本机已有相机工具运行，请等待其完成；更换记录目录不会绕过设备锁", path) from exc
+        from .close_setting import guard_pending_settings
+        guard_pending_settings(directory,observe_returned=observe_returned_settings)
         yield
 
 
@@ -91,7 +94,7 @@ def execute(profile, backend, action, state_dir=None, progress=lambda message: N
     if action not in ("inspect", "unlock", "close"):
         raise DeviceError("未知设备操作；当前支持检查、解锁、关闭、功能状态备份与恢复")
     directory = Path(state_dir) if state_dir else default_state_dir()
-    with device_lock(directory):
+    with device_lock(directory, observe_returned_settings=True):
         return _execute_session(profile, backend, action, directory, progress, dry_run, features, manage_backend)
 
 
@@ -103,7 +106,7 @@ def execute_backup(profile, backend, backup_dir=None, state_dir=None,
     if not dry_run:
         # Fail before opening the device if the destination is unusable.
         make_directory(target)
-    with device_lock(directory):
+    with device_lock(directory, observe_returned_settings=True):
         return _backup_session(profile, backend, target, directory, progress, dry_run, manage_backend)
 
 
@@ -113,7 +116,7 @@ def execute_restore(profile, backend, backup: Backup, state_dir=None,
     if not isinstance(backup, Backup):
         raise DeviceError("请选择一个已验证的本机功能状态备份")
     directory = Path(state_dir) if state_dir else default_state_dir()
-    with device_lock(directory):
+    with device_lock(directory, observe_returned_settings=True):
         return _restore_session(profile, backend, backup, directory, progress, dry_run, features, manage_backend)
 
 
@@ -128,6 +131,9 @@ def _backup_session(profile, backend, backup_directory, directory, progress, dry
     try:
         result["device_access"] = True
         with (backend if manage_backend else contextlib.nullcontext()):
+            if getattr(backend, "native_settings_adapter", False):
+                from .close_setting import verify_pending_settings
+                verify_pending_settings(backend, directory)
             progress(f"正在读取功能状态备份范围（{len(profile.entries)} 个固定扇区，"
                      "不是整盘镜像）…")
             sectors = backend.read(uuid.uuid4().bytes)
@@ -171,7 +177,7 @@ def _restore_session(profile, backend, backup, directory, progress, dry_run=Fals
     result = dict(action="restore", backup_kind="sparse-feature-state",
                   backup_id=backup.id, backup_path=str(backup.path),
                   backup_sha256=backup.archive_sha256, device_access=False,
-                  write_attempted=False, verified=False, full_backup=False,
+                  write_attempted=False, settings_write_attempted=False, verified=False, full_backup=False,
                   profile_sha256=profile.digest, cleanup_warning=None)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:10]
     run_dir = directory / "runs" / run_id
@@ -180,11 +186,29 @@ def _restore_session(profile, backend, backup, directory, progress, dry_run=Fals
     try:
         result["device_access"] = True
         with (backend if manage_backend else contextlib.nullcontext()):
+            if getattr(backend, "native_settings_adapter", False):
+                from .close_setting import verify_pending_settings
+                verify_pending_settings(backend, directory)
             progress("正在读取当前功能状态，准备从备份恢复…")
             before = backend.read(uuid.uuid4().bytes)
             plan, after = restore_plan(profile, backup, before, features)
             save_json(run_dir / "plan.json", plan)
             result["plan"] = plan
+            if plan['compatible']:
+                closing = [row['id'] for row in backup.features
+                           if row['id'] in plan.get('selected_features', ()) and row['state'] != 'enabled']
+                preparation = prepare_close(backend, closing, run_dir, progress, apply=not dry_run)
+                if not attach_preparation(result, preparation):
+                    return result
+                if result['settings_write_attempted']:
+                    before = backend.read(uuid.uuid4().bytes)
+                    plan, after = restore_plan(profile, backup, before, features)
+                    save_json(run_dir / 'plan-after-close-preparation.json', plan)
+                    result['plan'] = plan
+                    preparation = recheck_preparation(backend, preparation)
+                    save_json(run_dir / 'close-preparation-recheck.json', preparation)
+                    if not attach_preparation(result, preparation):
+                        return result
             if not plan["compatible"]:
                 result["status"] = "blocked"
                 result["error"] = "备份与当前设备内容不匹配，未执行写入"
@@ -194,7 +218,7 @@ def _restore_session(profile, backend, backup, directory, progress, dry_run=Fals
                 progress(f"恢复预检完成：预计写回 {plan['changed_bytes']} 字节／"
                          f"{plan['changed_sectors']} 个扇区；未写入。")
             elif not plan["changed_indices"]:
-                result.update(status="no-op", verified=True,
+                result.update(status="settings-prepared" if result['settings_write_attempted'] else "no-op", verified=True,
                               final_features=plan["features"])
                 progress("当前状态已与备份一致，无需恢复。")
             else:
@@ -263,13 +287,14 @@ def _restore_session(profile, backend, backup, directory, progress, dry_run=Fals
     return result
 
 
-def _execute_session(profile, backend, action, directory, progress, dry_run=False, features=None, manage_backend=True):
+def _execute_session(profile, backend, action, directory, progress, dry_run=False, features=None,
+                     manage_backend=True, update_plan_builder=None):
     """Shared transaction; physical caller must hold device_lock.
 
     The desktop simulator calls this with an in-memory backend and a private
     temporary directory. It never acquires the physical-device lock.
     """
-    result = dict(action=action, device_access=False, write_attempted=False, verified=False,
+    result = dict(action=action, device_access=False, write_attempted=False, settings_write_attempted=False, verified=False,
                   full_backup=False, profile_sha256=profile.digest, cleanup_warning=None)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:10]
     run_dir = directory / "runs" / run_id
@@ -278,11 +303,39 @@ def _execute_session(profile, backend, action, directory, progress, dry_run=Fals
     try:
         result["device_access"] = True
         with (backend if manage_backend else contextlib.nullcontext()):
+            if getattr(backend, "native_settings_adapter", False):
+                from .close_setting import verify_pending_settings
+                verify_pending_settings(backend, directory)
             progress("正在读取补丁目标和结构守卫…")
             before = backend.read(uuid.uuid4().bytes)
-            plan, after = inspect_sectors(profile, before, action, features)
+            if action == "update":
+                from .feature_updates import plan_update
+                selected = [features] if isinstance(features, str) else features
+                if not isinstance(selected, (list, tuple)) or len(selected) != 1:
+                    raise ValueError("更新操作必须明确选择一个已解锁功能")
+                if update_plan_builder is None:
+                    plan, after = plan_update(profile, before, selected[0])
+                else:
+                    plan, after = update_plan_builder(profile, before)
+            else:
+                plan, after = inspect_sectors(profile, before, action, features)
             save_json(run_dir / "plan.json", plan)
             result["plan"] = plan
+            if plan['compatible'] and action == 'close':
+                preparation = prepare_close(backend, plan.get('selected_features', ()),
+                                            run_dir, progress, apply=not dry_run)
+                if not attach_preparation(result, preparation):
+                    return result
+                if result['settings_write_attempted']:
+                    progress('关闭前设置已确认，正在重新读取固件目标与结构守卫…')
+                    before = backend.read(uuid.uuid4().bytes)
+                    plan, after = inspect_sectors(profile, before, action, features)
+                    save_json(run_dir / 'plan-after-close-preparation.json', plan)
+                    result['plan'] = plan
+                    preparation = recheck_preparation(backend, preparation)
+                    save_json(run_dir / 'close-preparation-recheck.json', preparation)
+                    if not attach_preparation(result, preparation):
+                        return result
             if not plan["compatible"]:
                 result["status"] = "blocked"
                 progress("内容或布局不匹配，已停止；没有写入功能目标。")
@@ -290,8 +343,10 @@ def _execute_session(profile, backend, action, directory, progress, dry_run=Fals
                 result["status"] = "inspected" if action == "inspect" else "dry-run"
                 progress(f"检查完成：预计修改 {plan['changed_bytes']} 字节／{plan['changed_sectors']} 个扇区。")
             elif not plan["changed_indices"]:
-                result.update(status="no-op", verified=True)
-                progress("已处于目标状态，无需重复写入。")
+                result.update(status="settings-prepared" if result['settings_write_attempted'] else "no-op",
+                              verified=True, final_features=plan['features'])
+                progress("机身设置已恢复，固件无需重复修改。" if result['settings_write_attempted']
+                         else "已处于目标状态，无需重复写入。")
             else:
                 # Save only the sparse operation window, NOT a full backup.
                 save_json(run_dir / "preimages.json", dict(profile_sha256=profile.digest,
@@ -304,7 +359,8 @@ def _execute_session(profile, backend, action, directory, progress, dry_run=Fals
                 save_json(run_dir / "write-intent.json", dict(nonce=nonce.hex(), action=action,
                           profile_sha256=profile.digest, changed_indices=plan["changed_indices"]))
                 result["write_attempted"] = True
-                progress(f"正在执行所选功能{'解锁' if action == 'unlock' else '关闭'}："
+                verb = {"unlock": "解锁", "close": "关闭", "update": "更新"}[action]
+                progress(f"正在执行所选功能{verb}："
                          f"{plan['changed_sectors']} 个扇区；相机内会再次校验写前内容。")
                 native = backend.write(before, after, nonce)
                 result["native_result"] = {k: v for k, v in native.items() if k != "sectors"}

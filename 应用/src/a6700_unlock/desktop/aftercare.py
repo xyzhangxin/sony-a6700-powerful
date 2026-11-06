@@ -60,7 +60,7 @@ RESTART_STEPS = [
 def build_aftercare(action, report, selected, simulation):
     """Only verified unlock/close results receive a camera check guide."""
     if (action not in ('unlock', 'close') or not report.get('verified')
-            or report.get('status') not in ('completed', 'no-op')):
+            or report.get('status') not in ('completed', 'no-op', 'settings-prepared')):
         return None
     target = 'enabled' if action == 'unlock' else 'disabled'
     before = {row['id']: row for row in report.get('plan', {}).get('features', [])}
@@ -73,8 +73,9 @@ def build_aftercare(action, report, selected, simulation):
         menu = MENU_CHECKS.get(identifier)
         if menu is None:
             continue
-        unchanged = report['status'] == 'no-op' or before.get(identifier, {}).get('state') == target
-        verb = '解锁' if action == 'unlock' else '关闭'
+        updating=action=='unlock' and before.get(identifier,{}).get('update_available',False)
+        unchanged = report['status'] == 'no-op' or (before.get(identifier, {}).get('state') == target and not updating)
+        verb = '更新' if updating else '解锁' if action == 'unlock' else '关闭'
         row = final.get(identifier, before.get(identifier, {}))
         checks.append(dict(id=identifier, name=row.get('name', identifier), path=menu['path'],
                            expected=menu[action], note=(menu.get('close_note', menu['note'])
@@ -87,5 +88,5 @@ def build_aftercare(action, report, selected, simulation):
         startup_notice = FL23_STARTUP_NOTICE
         steps[-1].update(title='开机并等待',
                          detail='开机后等待约 40 秒，待 FL2／FL3 加载后再按下方路径检查。')
-    return dict(simulation=simulation, restart_required=report['status'] == 'completed',
+    return dict(simulation=simulation, restart_required=report['status'] != 'no-op',
                 steps=steps, features=checks, startup_notice=startup_notice)

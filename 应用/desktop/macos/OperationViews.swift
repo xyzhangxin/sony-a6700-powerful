@@ -32,7 +32,10 @@ struct OperationSuccessView: View {
     private var result: OperationResult? { model.state?.result }
     private var guide: Aftercare? { result?.aftercare }
     private var title: String {
-        if result?.status == "no-op" { return "已经是目标状态" }
+        if result?.status == "settings-prepared" { return (physical ? "" : "模拟") + "固件已关闭，设置已恢复" }
+        if result?.status == "no-op" {
+            return model.state?.action == "close" ? "所选功能固件已关闭" : "已经是目标状态"
+        }
         let verb = model.state?.action == "close" ? "关闭完成" : "解锁完成"
         return physical ? verb : "模拟" + verb
     }
@@ -43,6 +46,22 @@ struct OperationSuccessView: View {
                 PageTitle(title: title, subtitle: subtitle)
                 Spacer()
                 StatusPill(text: physical ? "待机身验收" : "仅演示结果")
+            }
+            if let preparation = result?.close_preparation {
+                ClosePreparationPanel(preparation: preparation, physical: physical)
+            }
+            if model.state?.action == "close" {
+                Panel {
+                    Label("机身设置：已恢复目标状态并独立回读", systemImage: "checkmark.circle")
+                        .font(.system(size: 13, weight: .medium))
+                    Label(result?.status == "completed"
+                          ? "固件功能：本次已关闭并独立回读"
+                          : "固件功能：此前已关闭，本次未重复写入", systemImage: "checkmark.circle")
+                        .font(.system(size: 13, weight: .medium)).padding(.top, 10)
+                    Text("菜单不会在设置恢复后立即消失；必须完成下方完全断电重启。")
+                        .font(.system(size: 11)).foregroundColor(UI.amber).padding(.top, 12)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             if let warning = result?.cleanup_warning, !warning.isEmpty {
                 Label("USB 服务退出未确认。写入结果已保留；请按下方断电步骤重启，再重新连接。", systemImage: "exclamationmark.triangle")
@@ -118,7 +137,41 @@ struct OperationSuccessView: View {
     }
     private var subtitle: String {
         if !physical { return "合成数据演示已完成；真实相机没有被访问或修改。" }
+        if result?.status == "settings-prepared" { return "固件此前已关闭，本次仅恢复机身设置并回读确认。菜单仍需完全断电重启后才会更新。" }
+        if model.state?.action == "close" {
+            return result?.status == "no-op"
+                ? "所选功能的固件已经关闭，未重复写入。请完全断电重启后检查菜单。"
+                : "机身设置和固件功能均已处理，写入与独立回读通过。请完全断电重启后检查菜单。"
+        }
         return result?.status == "no-op" ? "所选功能已符合目标，未重复写入。请在相机上确认实际表现。" : "写入与独立回读通过，实际功能还需在相机上确认。"
+    }
+}
+
+struct ClosePreparationPanel: View {
+    let preparation: ClosePreparation
+    let physical: Bool
+    var body: some View {
+        Panel {
+            Text(physical ? "关闭前机身状态" : "模拟关闭前机身状态")
+                .font(.system(size: 14, weight: .semibold))
+            ForEach(preparation.checks) { check in
+                let completed = preparation.completed.contains(check.id)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(check.name + "：" + (completed ? "已恢复为“\(check.target_label)”并回读" :
+                        check.status == "safe" ? "已确认，无需调整" : "尚未确认可安全关闭"))
+                        .font(.system(size: 12, weight: .medium))
+                    if !check.reason.isEmpty {
+                        Text(check.reason).font(.system(size: 11)).foregroundColor(UI.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }.padding(.top, 12)
+            }
+            if preparation.settings_write_attempted && preparation.status != "ready" {
+                Text("已发生设置调整或尝试，请核对上方完成范围；不会自动重新开启已停用的功能。")
+                    .font(.system(size: 11)).foregroundColor(UI.amber)
+                    .fixedSize(horizontal: false, vertical: true).padding(.top, 12)
+            }
+        }
     }
 }
 
@@ -225,11 +278,14 @@ struct OperationFailureView: View {
     @State private var details = false
     @State private var confirmingTakeover = false
     private var status: String { model.state?.result?.status ?? "error" }
-    private var uncertain: Bool { ["uncertain", "verification-failed", "recovery-required"].contains(status) }
+    private var uncertain: Bool { ["uncertain", "verification-failed", "recovery-required", "close-preparation-uncertain"].contains(status) }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             PageTitle(title: model.state?.result?.title ?? "操作未完成",
                       subtitle: uncertain ? "先核实当前状态，再决定下一步。" : "处理下面的问题后，可以重新连接并检查。")
+            if let preparation = model.state?.result?.close_preparation {
+                ClosePreparationPanel(preparation: preparation, physical: physical)
+            }
             Panel {
                 HStack(alignment: .top, spacing: 16) {
                     Image(systemName: status == "connection-released" ? "checkmark.circle.fill" : uncertain ? "questionmark.circle.fill" : "exclamationmark.circle.fill")
@@ -297,6 +353,8 @@ struct OperationFailureView: View {
             }
         }
         switch status {
+        case "close-preparation-required": return "只在运行状态与保存值均可确认时继续。接口尚未验证时会保留功能，请先查看具体原因。"
+        case "close-preparation-uncertain", "close-preparation-cancelled": return "核对已完成和未确认的设置调整；本次未开始固件修改，已停用的功能不会自动重新开启。"
         case "connection-busy": return "可先退出其他相机软件后重连。确认没有进行中的任务时，也可使用强制接管。"
         case "connection-released": return "点击“重新准备并检查”，重新确认连接后读取当前相机状态。"
         case "blocked": return "请核对机型、固件和已有修改。不要跳过兼容检查或重复尝试写入。"

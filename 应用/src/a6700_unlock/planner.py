@@ -129,11 +129,14 @@ def analyze(catalog: Catalog, paths: dict[str, Path], action: str = "inspect") -
                                              "edit_id": edit.id, "offset": edit.offset,
                                              "actual": value.hex(),
                                              "accepted": [v.hex() for v in edit.known_values]})
+        from .feature_updates import revision_status
+        edit_states = {e.id: state for e, _, state in observations}
         for feature in catalog.data["features"]:
             states = [s for e, _, s in observations if e.feature == feature["id"]]
             result["features"].append({**feature, "id": feature["id"], "name": feature["name"],
                                         "state": _combined_state(states),
-                                        "field_states": {s: states.count(s) for s in sorted(set(states))}})
+                                        "field_states": {s: states.count(s) for s in sorted(set(states))},
+                                        **revision_status(feature, catalog.edits, edit_states)})
         result["compatible"] = not result["issues"]
         result["bundle_state"] = (_combined_state([s for _, _, s in observations])
                                     if result["compatible"] else "unknown")

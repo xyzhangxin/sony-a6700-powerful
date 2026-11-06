@@ -29,6 +29,8 @@ struct PreparationRow: Decodable, Identifiable {
 struct FeatureRow: Decodable, Identifiable {
     let id: String; let name: String; let state: String; let selected: Bool?
     let unlock_notice: String?
+    let update_available: Bool?
+    let close_notice: String?
     let requires: [String]?
     let available: Bool?; let unavailable_reason: String?
     var isAvailable: Bool { available != false }
@@ -47,7 +49,16 @@ struct OperationResult: Decodable {
     let status: String; let title: String; let detail: String; let success: Bool; let error: String
     let backup_path: String?; let backup_sha256: String?; let backup_id: String?
     let aftercare: Aftercare?; let cleanup_warning: String?
+    let close_preparation: ClosePreparation?
     let takeover: ConnectionTakeover?
+}
+struct ClosePreparationCheck: Decodable, Identifiable {
+    let id: String; let name: String; let status: String
+    let target_label: String; let reason: String
+}
+struct ClosePreparation: Decodable {
+    let status: String; let completed: [String]; let checks: [ClosePreparationCheck]
+    let settings_write_attempted: Bool
 }
 struct ConnectionTakeover: Decodable {
     let available: Bool; let confirmation: String; let owner: String; let pid: Int; let detail: String

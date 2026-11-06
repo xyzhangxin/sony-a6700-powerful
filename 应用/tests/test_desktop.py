@@ -55,6 +55,29 @@ class DesktopTests(unittest.TestCase):
         self.prepare(scenario)
         return self.controller.operate('inspect')
 
+    def test_fl23_update_button_ignores_other_selected_features_and_rejects_current(self):
+        self.inspect('enabled')
+        self.controller.select_features('all')
+        row=next(r for r in self.controller.features if r['id']=='fl23')
+        with self.assertRaisesRegex(ValueError,'没有可更新'):self.controller.reserve_fl23_update()
+        row.update(update_available=True,installed_revision=1,target_revision=2)
+        self.controller.select_features('missing')
+        self.assertEqual(self.controller.selected_features,{'fl23'})
+        self.controller.select_features('all')
+        self.controller.reserve_fl23_update()
+        self.assertTrue(self.controller.busy);self.assertEqual(self.controller.action,'unlock')
+        self.assertEqual(self.controller.selected_features,{'fl23'})
+
+    def test_fl23_update_receipt_describes_update_and_requires_restart(self):
+        from a6700_unlock.desktop.aftercare import build_aftercare
+        row=dict(id='fl23',name='FL2／FL3',state='enabled',update_available=True)
+        report=dict(status='completed',verified=True,package_updated=True,
+            plan=dict(features=[row]),final_features=[dict(row,update_available=False)])
+        guide=build_aftercare('unlock',report,['fl23'],False)
+        self.assertTrue(guide['restart_required'])
+        self.assertEqual(guide['features'][0]['outcome'],'已更新 · 回读通过')
+        self.assertIsNotNone(guide['startup_notice'])
+
     def resume(self):
         # Reconnect without resetting the simulated device's actual state.
         self.controller.restart_preparation()
@@ -504,6 +527,8 @@ class PhysicalDesktopTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name)
+        state_patch = patch("a6700_unlock.operations.default_state_dir", return_value=self.directory)
+        state_patch.start(); self.addCleanup(state_patch.stop)
         self.profile, self.sectors = sparse_fixture()
         self.backend = None
         lock_patch = patch('a6700_unlock.operations.host_lock_path',
@@ -565,7 +590,7 @@ class PhysicalDesktopTests(unittest.TestCase):
         package_features=package_features or ['fl23']
         service.names_available='creative_look_names' in package_features
         calls=[]
-        def package(backend,requested,directory,progress,features=None):
+        def package(backend,requested,directory,progress,features=None,validate_close=False):
             from a6700_unlock.operations import device_lock
             # The ordinary transaction and package share the original lock.
             from a6700_unlock.device_protocol import DeviceBusyError
@@ -573,6 +598,10 @@ class PhysicalDesktopTests(unittest.TestCase):
                 with device_lock(directory):pass
             calls.append(requested)
             self.assertEqual(features or ['fl23'],package_features)
+            if validate_close:
+                self.assertEqual(requested,'inspect')
+                self.assertEqual(action,'close')
+                return dict(status='inspected',close_ready=True,write_attempted=False)
             if drift:backend.sectors=list(self.sectors)
             rows=[dict(id=f,name=f,state='enabled' if action=='unlock' else 'disabled') for f in package_features]
             return dict(status=package_status,verified=package_status in ('completed','no-op'),
@@ -633,7 +662,7 @@ class PhysicalDesktopTests(unittest.TestCase):
 
     def test_mixed_close_and_noop_use_the_same_serialized_path(self):
         result,calls=self.mixed_case(package_status='no-op',action='close')
-        self.assertEqual(calls,['close'])
+        self.assertEqual(calls,['inspect','close'])
         self.assertEqual(result['status'],'no-op')
         self.assertFalse(result['write_attempted'])
         self.assertTrue(result['verified'])
