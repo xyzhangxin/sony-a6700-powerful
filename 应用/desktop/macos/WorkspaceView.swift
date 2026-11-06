@@ -129,6 +129,15 @@ struct WorkspaceView: View {
                     .font(.system(size: 11)).foregroundColor(UI.amber)
                     .fixedSize(horizontal: false, vertical: true).padding(.bottom, 14)
             }
+            if action == "unlock" {
+                ForEach(selected) { feature in
+                    if let notice = feature.unlock_notice, !notice.isEmpty {
+                        Label(notice, systemImage: "clock")
+                            .font(.system(size: 12)).foregroundColor(UI.amber)
+                            .fixedSize(horizontal: false, vertical: true).padding(.bottom, 14)
+                    }
+                }
+            }
             Button { model.send(action) } label: {
                 Text((physical ? "" : "演示：") + (action == "unlock" ? "解锁 \(affected.count) 项" : "关闭 \(affected.count) 项"))
                     .frame(maxWidth: .infinity)

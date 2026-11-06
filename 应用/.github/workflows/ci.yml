@@ -1,0 +1,48 @@
+name: Camera-free checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-package:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.10'
+          - os: ubuntu-latest
+            python: '3.13'
+          - os: macos-latest
+            python: '3.13'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install native test compiler (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang lld
+      - name: Install native test linker (macOS)
+        if: runner.os == 'macOS'
+        run: brew install lld
+      - name: Install development dependencies
+        run: python -m pip install 'setuptools>=77' wheel '.[usb,test]'
+      - name: Run tests including native emulation, with no skipped tests
+        run: python scripts/check.py --native --strict
+      - name: Build wheel without downloading build dependencies
+        run: python scripts/build_wheel.py --offline
+      - name: Build source archive, including contributor workflows
+        run: python scripts/build_source.py
+      - name: Compile native desktop simulator preview (macOS only)
+        if: runner.os == 'macOS'
+        run: python scripts/build_macos_preview.py

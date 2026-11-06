@@ -73,6 +73,13 @@ struct OperationSuccessView: View {
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }.padding(.top, 20)
+                if let notice = guide?.startup_notice, !notice.isEmpty {
+                    Label(notice, systemImage: "clock")
+                        .font(.system(size: 13, weight: .medium)).foregroundColor(UI.amber)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(UI.amber.opacity(0.06)).cornerRadius(10).padding(.top, 16)
+                }
             }
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -251,11 +258,15 @@ struct OperationFailureView: View {
                         .fixedSize(horizontal: false, vertical: true).padding(.top, 12)
                 }.font(.system(size: 11)).foregroundColor(UI.muted).padding(.top, 15)
             }
-            HStack {
-                Button("重新准备并检查") { model.send("restart_preparation") }.buttonStyle(PrimaryStyle())
+            HStack(spacing: 12) {
+                Button { model.send("restart_preparation") } label: {
+                    Text("重新准备并检查").frame(minWidth: 112)
+                }.buttonStyle(PrimaryStyle())
                 if physical, let takeover = model.state?.result?.takeover, takeover.available {
-                    Button("强制接管…") { confirmingTakeover = true }
-                        .buttonStyle(.bordered).tint(UI.amber)
+                    Button { confirmingTakeover = true } label: {
+                        Text("强制接管…").frame(minWidth: 112)
+                    }
+                        .buttonStyle(PrimaryStyle(secondary: true))
                         .alert("强制接管相机连接？", isPresented: $confirmingTakeover) {
                             Button("取消", role: .cancel) {}
                             Button("确认无任务，强制接管", role: .destructive) {

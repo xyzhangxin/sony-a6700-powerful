@@ -206,6 +206,82 @@ class UninstallTests(unittest.TestCase):
         self.events=[];r=self.perform()
         self.assertEqual(r['status'],'no-op');self.assertFalse(r['write_attempted'])
         self.assertEqual(self.events,[])
+    def test_new_options_keep_full_cleanup_of_old_retained_cp_and_off_file(self):
+        from a6700_unlock.fl23_package import perform_options
+        import a6700_unlock.fl23_package as module
+        import contextlib
+        self.package.carriers={1:self.package.carrier,2:b'names',3:b'both'}
+        self.installed(startup=False,mask=4)
+        @contextlib.contextmanager
+        def files(*_):yield None
+        with mock.patch.object(module,'Session',self.fake_session),mock.patch.object(module,'service_files',files):
+            result=perform_options(self.package,self.backend,'close',self.directory,lambda _:None,['fl23'])
+        self.assertTrue(result['verified'],result);self.assertEqual(self.mask,0)
+        self.assertEqual(self.unit,b'\0\0');self.assertTrue(all(c==bytes(512) for c in self.code))
+
+
+class IndependentOptionsTests(unittest.TestCase):
+    def test_every_independent_transition_preserves_other_flag_and_cp(self):
+        import contextlib
+        import a6700_unlock.fl23_package as module
+        import itertools
+        for flags,feature,action in itertools.product(range(4),('fl23','creative_look_names'),('unlock','close')):
+            with self.subTest(flags=flags,feature=feature,action=action),tempfile.TemporaryDirectory() as tmp:
+                recipe=synthetic();recipe['entries'].append(dict(recipe['entries'][0],index=1,device=2))
+                spec=dict(key=123,bytes=2,before_sha256=sha(b'\0\0'),after_sha256=sha(b'\1\0'),
+                          edits=[dict(offset=0,disabled='00',enabled='01')]);recipe['cp_units']=[spec]
+                package=SimpleNamespace(recipe=recipe,profile=Profile(recipe),
+                    carriers={i:bytes([i])*1100 for i in (1,2,3)})
+                bit=1 if feature=='fl23' else 2
+                wanted=flags|bit if action=='unlock' else flags&~bit
+                state=dict(flags=flags,startup=bool(flags),cp=bool(flags&1),unit=bytes([int(bool(flags&1)),0]),events=[])
+                class Channel:
+                    def send(self,*_):state['events'].append('save');return 0,b''
+                backend=SimpleNamespace(channel=Channel())
+                class Fake:
+                    def __init__(self,p,b,i,d):self.package=p;self.backend=b;self.directory=Path(d)
+                    def blocks(self,before=None,after=None):
+                        actual=[]
+                        for on in (state['startup'],state['cp']):
+                            v=bytearray(512);v[4]=int(on);actual.append(bytes(v))
+                        if before is None:return actual
+                        if before!=actual:raise DeviceError('stale preimage')
+                        if after[1][4]!=actual[1][4]:
+                            if state['startup']:raise AssertionError('CP changed with active startup')
+                            state['events'].append('cp-code')
+                        state['startup']=bool(after[0][4]);state['cp']=bool(after[1][4]);return []
+                    def units(self):return [state['unit']]
+                    def cp_unit(self,row,value=None):
+                        if value is None:return state['unit']
+                        if state['startup']:raise AssertionError('CP parameters changed before startup disabled')
+                        state['events'].append('cp-unit');state['unit']=value;return b''
+                    def selection(self):return 0
+                    def ap_values(self):return {hex(0x02cf036f):'00',hex(0x02cf0ccc):'00',hex(0x02cf0370):'00'*13}
+                    def file(self,op=0,offset=0,data=b'',length=0,flags=1):
+                        if op in (1,2,3,6) and state['startup']:raise AssertionError('carrier changed with active startup')
+                        if op==1:state['upload']=b''
+                        elif op==2:state['upload']+=data
+                        elif op==3:
+                            if state['upload']!=package.carriers[flags]:raise AssertionError('wrong variant')
+                            state['flags']=flags
+                        elif op==6:
+                            if state['cp'] or state['unit']!=b'\0\0':raise AssertionError('cleanup before complete CP removal')
+                            state['flags']=0
+                        actual=state['flags']
+                        return dict(present=bool(actual),mask=int(bool(actual)),flags=actual,
+                            data=package.carriers[actual][offset:offset+length] if actual and length else b'')
+                @contextlib.contextmanager
+                def files(*_):yield None
+                with mock.patch.object(module,'Session',Fake),mock.patch.object(module,'service_files',files):
+                    result=module.perform_options(package,backend,action,Path(tmp),lambda _:None,[feature])
+                self.assertTrue(result['verified'],result);self.assertEqual(state['flags'],wanted)
+                self.assertEqual(result['status'],'no-op' if wanted==flags else 'completed')
+                self.assertEqual(result['write_attempted'],wanted!=flags)
+                self.assertEqual(state['startup'],bool(wanted));self.assertEqual(state['cp'],bool(wanted&1))
+                self.assertEqual(state['unit'],bytes([int(bool(wanted&1)),0]))
+                if feature=='creative_look_names':self.assertEqual(state['events'],[])
+                self.assertEqual({r['id']:r['state'] for r in result['final_features']},dict(
+                    fl23='enabled' if wanted&1 else 'disabled',creative_look_names='enabled' if wanted&2 else 'disabled'))
 
 
 class FileMachine(native.Machine):
@@ -284,8 +360,8 @@ class FileNativeTests(unittest.TestCase):
         cls.binary=(cls.out/'files.elf').read_bytes();cls.profile=Profile(recipe)
     @classmethod
     def tearDownClass(cls):cls.temp.cleanup()
-    def run_job(self,fs,op=0,offset=0,data=b'',length=0,fail=None):
-        nonce=bytes(range(16));config=struct.pack('<4sI16s32s4I',b'A67F',1,nonce,bytes.fromhex(self.recipe['profile_sha256']),op,offset,len(data) if op==2 else length,0)+data
+    def run_job(self,fs,op=0,offset=0,data=b'',length=0,fail=None,flags=0):
+        nonce=bytes(range(16));config=struct.pack('<4sI16s32s4I',b'A67F',1,nonce,bytes.fromhex(self.recipe['profile_sha256']),op,offset,len(data) if op==2 else length,flags)+data
         vm=FileMachine(self.binary,config,fs,fail);raw=vm.run()
         h=struct.unpack_from('<4sI16s5I',raw)
         self.assertEqual(h[:3],(b'A67F',1,nonce));self.assertEqual(len(raw),44+h[4])
@@ -344,6 +420,56 @@ class FileNativeTests(unittest.TestCase):
             path.write_bytes(b'X'+before[1:])
             with self.assertRaises(DeviceError):Package(self.out)
         finally:path.write_bytes(before)
+
+
+@unittest.skipUnless(native.AVAILABLE,'native emulator unavailable')
+class FileVariantNativeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp=tempfile.TemporaryDirectory();p=Path(cls.temp.name);cls.recipe=synthetic()
+        cls.carriers={f:bytes([f])*n for f,n in ((1,1100),(2,1300),(3,1500))}
+        (p/'recipe.json').write_text(json.dumps(cls.recipe));(p/'carrier.bin').write_bytes(cls.carriers[1])
+        cls.out=p/'out';variants=cls.out/'variants'
+        for f in (2,3):
+            folder=variants/str(f);(folder/'runtime').mkdir(parents=True)
+            (folder/'carrier.bin').write_bytes(cls.carriers[f]);(folder/'runtime/manifest.json').write_text('{"files":{}}')
+        builder.build(p/'recipe.json',p/'carrier.bin',ROOT/'src/a6700_unlock/native/fl23_sha256.h',destination=cls.out,variants_path=variants)
+        cls.binary=(cls.out/'files.elf').read_bytes()
+    @classmethod
+    def tearDownClass(cls):cls.temp.cleanup()
+    run_job=FileNativeTests.run_job
+    def test_all_variants_are_identified_and_atomic_switch_preserves_live_until_commit(self):
+        for old in (1,2,3):
+            for new in (1,2,3):
+                fs={'/setting/fl23':bytearray(self.carriers[old])}
+                status,detail,data,_=self.run_job(fs,length=len(self.carriers[old]))
+                self.assertEqual((status,detail>>8,data),(0,old,self.carriers[old]))
+                self.assertEqual(self.run_job(fs,1,flags=new)[0],0)
+                self.assertEqual(self.run_job(fs,2,data=self.carriers[new],flags=new)[0],0)
+                self.assertEqual(bytes(fs['/setting/fl23']),self.carriers[old])
+                self.assertEqual(self.run_job(fs,3,flags=new)[0],0)
+                self.assertEqual(bytes(fs['/setting/fl23']),self.carriers[new])
+    def test_wrong_requested_variant_and_unknown_content_cannot_commit(self):
+        fs={'/setting/fl23':bytearray(self.carriers[1]),'/setting/fl23.new':bytearray(self.carriers[2])}
+        status,_,_,vm=self.run_job(fs,3,flags=3)
+        self.assertEqual(status,1);self.assertEqual(vm.renamed,[])
+        self.assertEqual(fs['/setting/fl23'],self.carriers[1])
+        fs['/setting/fl23']=bytearray(b'unknown')
+        self.assertEqual(self.run_job(fs,3,flags=2)[0],1)
+    def test_cleanup_accepts_known_mixed_variants_but_preserves_unknown_before_unlink(self):
+        fs={path:bytearray(self.carriers[f]) for path,f in zip(('/setting/fl23','/setting/fl23.new','/setting/fl23.off'),(1,2,3))}
+        self.assertEqual(self.run_job(fs,5)[:2],(0,7))
+        fs['/setting/fl23.off'][0]=99
+        status,_,_,vm=self.run_job(fs,6)
+        self.assertEqual(status,1);self.assertFalse(vm.unlinked);self.assertEqual(len(fs),3)
+        fs['/setting/fl23.off']=bytearray(self.carriers[3])
+        self.assertEqual(self.run_job(fs,6)[:2],(0,0));self.assertEqual(fs,{})
+    def test_read_and_append_bounds_follow_actual_and_requested_variant(self):
+        fs={'/setting/fl23':bytearray(self.carriers[1])}
+        self.assertEqual(self.run_job(fs,offset=1099,length=2)[0],2)
+        self.assertEqual(self.run_job(fs,1,flags=2)[0],0)
+        self.assertEqual(self.run_job(fs,2,offset=1300,data=b'x',flags=2)[0],2)
+        self.assertEqual(self.run_job(fs,1,flags=4)[0],2)
 
 
 if __name__=='__main__':unittest.main()

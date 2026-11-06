@@ -68,7 +68,8 @@ def main():
         if path.suffix == '.elf' and path.parent != ROOT / 'src/a6700_unlock/data/native':
             if path.parent!=ROOT/'src/a6700_unlock/data/fl23' or path.name not in ('reader.elf','writer.elf','files.elf'):
                 raise RuntimeError('Unexpected executable resource')
-        if path.suffix=='.bin' and path!=ROOT/'src/a6700_unlock/data/fl23/carrier.bin':
+        if path.suffix=='.bin' and path not in {ROOT/'src/a6700_unlock/data/fl23/carrier.bin',
+                ROOT/'src/a6700_unlock/data/fl23/variants/2/carrier.bin',ROOT/'src/a6700_unlock/data/fl23/variants/3/carrier.bin'}:
             raise RuntimeError('Unexpected binary resource')
     args.output_dir.mkdir(parents=True, exist_ok=True)
     destination = args.output_dir / f'a6700-unlock-{__version__}-source.zip'

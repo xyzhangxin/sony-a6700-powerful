@@ -6,13 +6,18 @@ entries are not all described in Sony's unmodified A6700 help guide.
 from __future__ import annotations
 
 
+FL23_STARTUP_NOTICE = ('每次取出电池并重新装入后，开机需等待约 40 秒，'
+                       '待 FL2／FL3 自动加载后再使用。刚开机时未显示这两项，请先等待加载。')
+
+
 MENU_CHECKS = {
     'fl23': dict(
         path='MENU → 曝光/颜色 → 色调 → 创意外观',
         unlock='主列表出现独立 FL2、FL3；图标、预览、说明、拍摄保存和回放正常。',
-        close='断电重启后不再出现 FL2、FL3；其CP代码、参数、AP／WBI入口和功能包已撤回，原有外观仍可使用。',
+        close='断电重启后不再出现 FL2、FL3，原有外观仍可使用；未关闭的中文名称保持。',
         close_note='完整卸载后立即按步骤断电重启，先不要继续选择RAM中尚未退出的新增外观。其他未选功能保持原状；本操作不是整机恢复出厂。',
-        note='本版保留 ST、FL2、FL3 等简称。冷启动后等待自动加载，再检查图标、说明和拍摄；中文全称将在后续版本提供。'),
+        note='名称由“创意外观中文名称”选项独立控制。开机后等待约 40 秒加载，再检查图标、说明和拍摄。',
+        unlock_notice=FL23_STARTUP_NOTICE),
     'creative_look_names': dict(
         path='MENU → 曝光/颜色 → 色调 → 创意外观（含编号 1～6）',
         unlock='中文界面显示 ST(标准)、FL(胶片) 等完整名称，编号 1～6 的列表与调节页一致。',
@@ -76,5 +81,11 @@ def build_aftercare(action, report, selected, simulation):
                                                        if action == 'close' else menu['note']),
                            outcome=('原已%s，未重复写入' % verb if unchanged
                                     else '已%s · 回读通过' % verb)))
+    steps = [dict(step) for step in RESTART_STEPS]
+    startup_notice = None
+    if action == 'unlock' and any(row['id'] == 'fl23' for row in checks):
+        startup_notice = FL23_STARTUP_NOTICE
+        steps[-1].update(title='开机并等待',
+                         detail='开机后等待约 40 秒，待 FL2／FL3 加载后再按下方路径检查。')
     return dict(simulation=simulation, restart_required=report['status'] == 'completed',
-                steps=RESTART_STEPS, features=checks)
+                steps=steps, features=checks, startup_notice=startup_notice)

@@ -112,7 +112,7 @@ def compile(source,destination,work,name,*,defines=()):
     return dict(bytes=len(data),sha256=sha(data))
 
 
-def build(recipe_path,carrier_path,sha_header,*,destination=None):
+def build(recipe_path,carrier_path,sha_header,*,destination=None,variants_path=None):
     destination=destination or ROOT/'src/a6700_unlock/data/fl23'
     destination.mkdir(parents=True,exist_ok=True)
     recipe=json.loads(Path(recipe_path).read_bytes())
@@ -136,10 +136,22 @@ def build(recipe_path,carrier_path,sha_header,*,destination=None):
     text=text.replace('if(!same(buf,before,512)) { status=1;failed=i;goto rollback; }',
                       'if(!current_preimage(i,buf,before)) { status=1;failed=i;goto rollback; }')
     text=text.replace('touched[i]=1;written++;','if(!touched[i])written++;touched[i]=1;')
+    if variants_path is None and (destination/'variants').is_dir():
+        variants_path=destination/'variants'
+    variants={1:carrier}
+    if variants_path:
+        vr=Path(variants_path)
+        for flags in (2,3):
+            variants[flags]=(vr/str(flags)/'carrier.bin').read_bytes()
+            if not 1024<=len(variants[flags])<=2098176:raise ValueError('Creative Look variant exceeds carrier bounds')
+    file_header=(f'#define FILE_BYTES {max(map(len,variants.values()))}u\nstatic const u8 FILE_SHA[32]='+array(bytes.fromhex(sha(carrier)))+';\n'+
+                 'static const u8 PROFILE_SHA[32]='+array(bytes.fromhex(digest))+';\n')
+    if len(variants)>1:
+        file_header+=('struct FileVariant {u32 flags,bytes;u8 digest[32];};\n#define FILE_VARIANT_COUNT 3u\n'+
+            'static const struct FileVariant FILE_VARIANTS[]={'+','.join('{%du,%du,%s}'%(f,len(v),array(bytes.fromhex(sha(v)))) for f,v in variants.items())+'};\n')
     native_sources={'transaction.c':text.encode(),'profile.h':header(recipe),'sha256.h':Path(sha_header).read_bytes(),
         'fl23_files.c':(ROOT/'src/a6700_unlock/native/fl23_files.c').read_bytes(),
-        'file-profile.h':(f'#define FILE_BYTES {len(carrier)}u\nstatic const u8 FILE_SHA[32]='+array(bytes.fromhex(sha(carrier)))+';\n'+
-            'static const u8 PROFILE_SHA[32]='+array(bytes.fromhex(digest))+';\n').encode()}
+        'file-profile.h':file_header.encode()}
     manifest=dict(schema=1,feature='fl23',profile_sha256=digest,carrier_sha256=sha(carrier),carrier_bytes=len(carrier),
         deployment='file-carrier',names=False,hardware_validation='pending',payloads={},
         source_sha256={n:sha(raw) for n,raw in native_sources.items()})
@@ -156,6 +168,9 @@ def build(recipe_path,carrier_path,sha_header,*,destination=None):
     for name,raw in native_sources.items():(destination/name).write_bytes(raw)
     runtime=destination/'runtime/manifest.json'
     if runtime.is_file():manifest['runtime_source_sha256']=sha(runtime.read_bytes())
+    if len(variants)>1:
+        manifest['variants']={str(f):dict(bytes=len(v),sha256=sha(v),
+            runtime_sha256=sha((destination/'variants'/str(f)/'runtime/manifest.json').read_bytes())) for f,v in variants.items() if f!=1}
     (destination/'recipe.json').write_text(json.dumps(recipe,indent=2)+'\n')
     (destination/'carrier.bin').write_bytes(carrier)
     (destination/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
@@ -165,4 +180,5 @@ def build(recipe_path,carrier_path,sha_header,*,destination=None):
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--recipe',type=Path,required=True)
     p.add_argument('--carrier',type=Path,required=True);p.add_argument('--sha-header',type=Path,required=True)
-    a=p.parse_args();print(json.dumps(build(a.recipe,a.carrier,a.sha_header),indent=2))
+    p.add_argument('--variants',type=Path)
+    a=p.parse_args();print(json.dumps(build(a.recipe,a.carrier,a.sha_header,variants_path=a.variants),indent=2))
