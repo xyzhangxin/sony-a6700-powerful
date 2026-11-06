@@ -38,6 +38,15 @@ static int verify(long fd){
  u8 tail,digest[32];if(sc(67,fd,(long)&tail,1,FILE_BYTES)!=0)return 0;
  sha_end(&h,digest);return same(digest,FILE_SHA,32);
 }
+static const char *const owned[]={live,fresh,closed};
+static u32 audit(u32 *mask){
+ *mask=0;
+ for(u32 i=0;i<3;i++){
+  long fd=open_file(owned[i],0);if(fd==-2)continue;if(fd<0)return 3;
+  int ok=verify(fd);long rc=sc(57,fd,0,0,0);
+  if(rc)return 9;if(!ok)return 1;*mask|=1u<<i;
+ }return 0;
+}
 static void finish(u32 status,u32 bytes,u32 detail){
  output[0]='A';output[1]='6';output[2]='7';output[3]='F';put32(4,1);
  for(u32 i=0;i<16;i++)output[8+i]=input[8+i];
@@ -50,7 +59,7 @@ __attribute__((constructor))static void run(void){
  if(fd<0)return;
  int valid=io(63,fd,input,HEADER,0);u32 op=get32(56),off=get32(60),n=get32(64);
  if(!valid||!same(input,(const u8*)"A67F",4)||get32(4)!=1||!same(input+24,PROFILE_SHA,32)||
-    get32(68)||op>4||off>FILE_BYTES||n>CHUNK||n>FILE_BYTES-off||
+    get32(68)||op>6||off>FILE_BYTES||n>CHUNK||n>FILE_BYTES-off||
     (op!=0&&op!=2&&(off||n))|| (op==2&&!n))valid=0;
  if(valid&&op==2)valid=io(63,fd,input+HEADER,n,0);
  if(valid&&sc(63,fd,(long)&tail,1,0)!=0)valid=0;
@@ -77,6 +86,18 @@ __attribute__((constructor))static void run(void){
   if(!sync(fd)){status=6;goto done;}
   if(sc(57,fd,0,0,0)){fd=-1;status=9;goto done;}fd=open_file(fresh,0);
   if(fd<0||!io(67,fd,buffer,n,off)||!same(buffer,input+HEADER,n))status=7;
+ }else if(op>=5){
+  /* Audit every fixed path before the first unlink. Unknown content remains. */
+  status=audit(&detail);if(status||op==5)goto done;
+  for(u32 i=0;i<3;i++)if(detail&(1u<<i)){
+   fd=open_file(owned[i],0);if(fd<0){status=3;goto done;}
+   if(!verify(fd)){status=1;goto done;}
+   if(sc(57,fd,0,0,0)){fd=-1;status=9;goto done;}fd=-1;
+   if(sc(35,-100,(long)owned[i],0,0)){status=5;goto done;}
+  }
+  fd=sc(56,-100,(long)"/setting",0x84000,0);
+  if(fd<0||!sync(fd)){status=6;goto done;}
+  status=audit(&detail);if(!status&&detail)status=7;
  }else{
   const char *source=op==3?fresh:live,*dest=op==3?live:closed;
   fd=open_file(source,0);if(fd<0){status=3;goto done;}

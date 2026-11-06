@@ -96,9 +96,7 @@ def plan_blocks(package,sectors,action):
             allowed=(old,new,*(bytes.fromhex(v) for v in edit.get('legacy',[])))
             if len(old)!=len(new) or actual not in allowed:raise DeviceError('FL23 当前代码不是已支持状态')
             states.append((row['device'],'enabled' if actual==new else 'disabled' if actual==old else 'legacy'))
-            # Closing FL23 removes only its startup entry; CP support is
-            # retained for safe re-enabling and never alters current settings.
-            desired=new if action=='unlock' else old if action=='close' and row['device']!=2 else actual
+            desired=new if action=='unlock' else old if action=='close' else actual
             target[at:at+len(old)]=desired
         changes+=sum(a!=b for a,b in zip(raw,target));after.append(bytes(target))
     ap=[state for dev,state in states if dev!=2];cp=[state for dev,state in states if dev==2]
@@ -172,7 +170,7 @@ class Session:
             if magic!=b'A67F' or version!=1 or returned!=nonce or len(raw)!=44+n or n>65536:
                 raise DeviceError('FL23 文件事务版本／nonce／长度不匹配')
             if status:raise DeviceError('FL23 文件事务拒绝：'+str(status))
-            return dict(present=bool(detail),data=raw[44:])
+            return dict(present=bool(detail&1),mask=detail,data=raw[44:])
         return self.exchange('files',cfg,parse)
     def cp_unit(self,row,value=None):
         key=row['key'];writing=value is not None
@@ -221,13 +219,57 @@ class Session:
 
 def inspect(session):
     before=session.blocks();detail,_=plan_blocks(session.package,before,'inspect')
-    units=session.units();file=session.file();selected=session.selection()
+    units=session.units();file=session.file();audit=session.file(5);selected=session.selection()
+    file['owned_mask']=audit['mask']
     unit_enabled=all(sha(value)==row['after_sha256'] for row,value in zip(session.package.recipe['cp_units'],units))
+    unit_original=all(sha(value)==row['before_sha256'] for row,value in zip(session.package.recipe['cp_units'],units))
     enabled=detail['startup']=='enabled' and detail['cp']=='enabled' and unit_enabled and file['present']
-    disabled=detail['startup']=='disabled' and not file['present']
+    disabled=detail['startup']=='disabled' and detail['cp']=='disabled' and unit_original and not file['owned_mask']
     state='enabled' if enabled else 'disabled' if disabled else 'partial'
     row=dict(id='fl23',name='FL2／FL3 创意外观',state=state,available=True)
     return row,detail,before,units,file,selected
+
+
+def require_stock_values(values):
+    # Preserve custom settings, rather than clearing an entire settings bank.
+    for key,value in values.items():
+        raw=bytes.fromhex(value)
+        if len(raw)==1 and raw[0]>(15 if key==hex(0x02cf036f) else 9):
+            raise DeviceError('请先将当前外观及使用FL2／FL3的自定义槽切回原有外观，再完整卸载。')
+
+
+def update_units(session,units,action):
+    """Restore or enable only fixed CP deltas, preserving original AP/MR values."""
+    wanted='after_sha256' if action=='unlock' else 'before_sha256'
+    destination='enabled' if action=='unlock' else 'disabled'
+    source='disabled' if action=='unlock' else 'enabled'
+    specs=session.package.recipe['cp_units']
+    if all(sha(value)==row[wanted] for row,value in zip(specs,units)):return
+    ap_before=session.ap_values()
+    if action=='close':require_stock_values(ap_before)
+    save_json(session.directory/'ap-before.json',ap_before)
+    for row,current in zip(specs,units):
+        if sha(current)==row[wanted]:continue
+        if session.cp_unit(row)!=current:raise DeviceError('FL23 CP 参数写前发生变化')
+        target=bytearray(current)
+        for edit in row['edits']:
+            at=edit['offset'];old=bytes.fromhex(edit[source]);new=bytes.fromhex(edit[destination])
+            if target[at:at+len(old)]!=old:raise DeviceError('FL23 CP 参数字段变化')
+            target[at:at+len(old)]=new
+        if sha(target)!=row[wanted]:raise DeviceError('FL23 CP 参数目标校验失败')
+        session.cp_unit(row,bytes(target))
+        if session.cp_unit(row)!=target:raise DeviceError('FL23 CP 参数独立回读失败')
+    cfg=struct.pack('<HHH',0x603,3,0x2a4)
+    save_json(session.directory/'cp-save-intent.json',dict(action=action,request_hex=cfg.hex(),unit_sha256=[r[wanted] for r in specs]))
+    try:code,body=session.backend.channel.send(0x40,cfg)
+    except BaseException:
+        session.backend._fl23_transport_uncertain=True;raise
+    if code or body:raise DeviceError('FL23 CP 保存回复未确认')
+    saved=session.units()
+    if any(sha(value)!=row[wanted] for row,value in zip(specs,saved)):
+        raise DeviceError('FL23 保存后 CP 参数状态不一致')
+    ap_after=session.ap_values();save_json(session.directory/'ap-after.json',ap_after)
+    if ap_after!=ap_before:raise DeviceError('FL23 CP 保存改变了原有外观／MR 设置')
 
 
 def perform(backend,action,directory,progress=lambda _:None):
@@ -248,8 +290,9 @@ def perform(backend,action,directory,progress=lambda _:None):
                 result.update(status='no-op',verified=True,final_features=[row])
             else:
                 if action=='close' and selected in (17,18):raise DeviceError('请先在相机把创意外观切回 ST，再关闭 FL2／FL3。')
-                if action=='close' and not file['present'] and detail['startup']!='disabled':
+                if action=='close' and not file['owned_mask'] and detail['startup']!='disabled':
                     raise DeviceError('当前是旧研究启动版本，请先完成 FL2／FL3 安装迁移，再使用本版关闭。')
+                if action=='close':require_stock_values(session.ap_values())
                 detail,after=plan_blocks(package,before,action)
                 save_json(run/'preimages.json',dict(sectors=[s.hex() for s in before],cp_units=[v.hex() for v in units],full_backup=False))
                 save_json(run/'write-intent.json',dict(action=action,profile_sha256=package.profile.digest,changed_bytes=detail['changed_bytes']))
@@ -263,39 +306,27 @@ def perform(backend,action,directory,progress=lambda _:None):
                     # the installed carrier before any startup entry changes.
                     observed=b''.join(session.file(0,at,length=min(65536,len(package.carrier)-at))['data'] for at in range(0,len(package.carrier),65536))
                     if observed!=package.carrier:raise DeviceError('FL23 载荷独立回读失败')
-                    changed=False
-                    needs_units=any(sha(value)!=spec['after_sha256'] for spec,value in zip(package.recipe['cp_units'],units))
-                    ap_before=session.ap_values() if needs_units else None
-                    if ap_before is not None:save_json(run/'ap-before.json',ap_before)
-                    for spec,current in zip(package.recipe['cp_units'],units):
-                        if sha(current)==spec['after_sha256']:continue
-                        if session.cp_unit(spec)!=current:raise DeviceError('FL23 CP 参数写前发生变化')
-                        target=bytearray(current)
-                        for edit in spec['edits']:
-                            at=edit['offset'];old=bytes.fromhex(edit['disabled']);new=bytes.fromhex(edit['enabled'])
-                            if target[at:at+len(old)]!=old:raise DeviceError('FL23 CP 参数字段变化')
-                            target[at:at+len(old)]=new
-                        if sha(target)!=spec['after_sha256']:raise DeviceError('FL23 CP 参数目标校验失败')
-                        session.cp_unit(spec,bytes(target));changed=True
-                        if session.cp_unit(spec)!=target:raise DeviceError('FL23 CP 参数独立回读失败')
-                    if changed:
-                        cfg=struct.pack('<HHH',0x603,3,0x2a4)
-                        save_json(run/'cp-save-intent.json',dict(request_hex=cfg.hex(),unit_sha256=[r['after_sha256'] for r in package.recipe['cp_units']]))
-                        try:code,body=backend.channel.send(0x40,cfg)
-                        except BaseException:
-                            backend._fl23_transport_uncertain=True;raise
-                        if code or body:raise DeviceError('FL23 CP 保存回复未确认')
-                        saved=session.units()
-                        if any(sha(value)!=spec['after_sha256'] for spec,value in zip(package.recipe['cp_units'],saved)):
-                            raise DeviceError('FL23 保存后 CP 参数状态不一致')
-                        ap_after=session.ap_values();save_json(run/'ap-after.json',ap_after)
-                        if ap_after!=ap_before:raise DeviceError('FL23 CP 保存改变了原有外观／MR 设置')
+                    update_units(session,units,'unlock')
                 else:
-                    if file['present']:session.file(4)
+                    # Make persistent startup inert before removing its CP
+                    # dependencies. All stages remain in this locked session.
+                    inert=[target if row['device']!=2 else current
+                           for row,current,target in zip(package.profile.entries,before,after)]
+                    if inert!=before:
+                        progress('正在撤回 FL23 AP／WBI 启动入口…')
+                        session.blocks(before,inert)
+                        if session.blocks()!=inert:raise DeviceError('FL23 启动入口撤回独立回读失败')
+                        before=inert
+                    progress('正在恢复 FL23 专属 CP 参数…')
+                    update_units(session,units,'close')
                 if before!=after:
                     progress('正在提交 FL2／FL3 代码与启动入口…')
                     session.blocks(before,after)
                     if session.blocks()!=after:raise DeviceError('FL23 代码独立回读不一致')
+                if action=='close':
+                    progress('正在清除已校验的 FL23 功能包及停用副本…')
+                    session.file(6)
+                    if session.file(5)['mask']:raise DeviceError('FL23 功能包清除后仍有残留')
                 final,_,_,_,_,_=inspect(session)
                 wanted='enabled' if action=='unlock' else 'disabled'
                 if final['state']!=wanted:raise DeviceError('FL23 最终安装状态不一致')
