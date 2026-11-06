@@ -49,14 +49,16 @@ def compile_role(role,source,meta,output):
             start=min(s['sh_addr'] for s in sections);end=max(s['sh_addr']+s['sh_size'] for s in sections);blob=bytearray(end-start)
             for s in sections:blob[s['sh_addr']-start:s['sh_addr']-start+s['sh_size']]=s.data()
             generated={name+'.elf':raw,name+'.bin':bytes(blob)}
-        elif role=='core':
+        elif role=='core' or role in ('names-module','names-bootstrap'):
+            spec=meta['roles'][role]
+            source_name=spec.get('source','core.c');entry=spec.get('entry','fl23_self_publish_core');stem=spec.get('stem','core')
             run([clang,'-target','aarch64-none-elf','-O2','-mgeneral-regs-only','-mstrict-align',
                 '-fPIC','-fvisibility=hidden','-ffreestanding','-fno-builtin','-fno-stack-protector',
-                '-I',str(work),'-c','core.c','-o','component.o'],work)
+                '-I',str(work),'-c',source_name,'-o','component.o'],work)
             run([linker,'-shared','-Bsymbolic','-z','defs','-z','noexecstack','-z','max-page-size=4096',
-                '--build-id=none','--entry=fl23_self_publish_core','-o','core.elf','component.o'],work)
-            raw=(work/'core.elf').read_bytes();container,_=pack(raw,'fl23_self_publish_core')
-            generated={'core.elf':raw,'core.a1':container}
+                '--build-id=none','--entry='+entry,'-o',stem+'.elf','component.o'],work)
+            raw=(work/(stem+'.elf')).read_bytes();container,_=pack(raw,entry)
+            generated={stem+'.elf':raw,stem+'.a1':container}
         elif role=='worker':
             for name in ('thread','loader'):
                 run([clang,'-target','aarch64-none-elf','-O2','-Wall','-Werror','-Wno-logical-op-parentheses',
@@ -71,14 +73,17 @@ def compile_role(role,source,meta,output):
             target=output/role;target.mkdir(exist_ok=True);(target/name).write_bytes(data)
 
 
-def rebuild(destination):
-    source=ROOT/'src/a6700_unlock/data/fl23/runtime';meta=json.loads((source/'manifest.json').read_bytes())
+def rebuild(destination,flags=1):
+    if flags not in (1,2,3):raise ValueError('Unknown Creative Look flags')
+    base=ROOT/'src/a6700_unlock/data/fl23'
+    source=(base if flags==1 else base/'variants'/str(flags))/'runtime';meta=json.loads((source/'manifest.json').read_bytes())
     for name,digest in meta['files'].items():
         path=Path(name)
         if path.is_absolute() or '..' in path.parts or sha((source/path).read_bytes())!=digest:raise ValueError('Runtime source differs: '+name)
     if destination.exists():raise ValueError('Choose a new output directory')
     destination.mkdir(parents=True)
-    for role in ('resident','core','worker','stage'):compile_role(role,source/role,meta,destination)
+    for role in ('names-module','names-bootstrap','resident','core','worker','stage'):
+        if role in meta['roles']:compile_role(role,source/role,meta,destination)
     stage=(destination/'stage/stage.bin').read_bytes();receipt=bytes.fromhex(meta['receipt_hex'])
     carrier=bytes(512)+receipt+stage
     if len(receipt)!=512 or sha(carrier)!=meta['carrier_sha256']:raise ValueError('Rebuilt carrier differs')
@@ -88,4 +93,5 @@ def rebuild(destination):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',type=Path,required=True)
-    rebuild(p.parse_args().output)
+    p.add_argument('--flags',type=int,choices=(1,2,3),default=1)
+    a=p.parse_args();rebuild(a.output,a.flags)

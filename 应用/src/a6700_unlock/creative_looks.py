@@ -1,8 +1,7 @@
 """Independent Creative Look options and package planning; no device access.
 
-These options belong to a startup package, not the fixed-sector catalogue.
-The public USB backend does not yet install that package. Synthetic desktop
-data exercises selection only and must never authorize a physical write.
+These independent options share a startup package, outside the fixed-sector
+catalogue. Physical availability requires the complete verified components.
 """
 from __future__ import annotations
 
@@ -16,29 +15,28 @@ FEATURES = (
          description='主列表和编号 1～6 显示完整名称；不要求启用 FL2／FL3。'),
 )
 FEATURE_IDS = tuple(row['id'] for row in FEATURES)
-PREPARING = 'FL2／FL3 实机安装组件缺失或校验未通过，请使用本版完整应用。'
+PREPARING = '创意外观安装组件缺失或校验未通过，请使用本版完整应用。'
 
 
-def feature_definitions(catalog, *, simulation=False, fl23_available=False):
+def feature_definitions(catalog, *, simulation=False, fl23_available=False, names_available=False):
     """Add package options without changing the bound fixed-sector catalogue."""
     rows = [dict(row) for row in catalog.data['features']]
     existing = {row['id'] for row in rows}
     for feature in FEATURES:
-        if not simulation and feature['id']=='creative_look_names':
-            continue  # Deferred from this release; no physical placeholder.
         if feature['id'] not in existing:
-            available=simulation or (feature['id']=='fl23' and fl23_available)
+            available=simulation or (fl23_available if feature['id']=='fl23' else names_available)
             rows.append(dict(feature, available=available,
                              **({} if available else {'unavailable_reason': PREPARING})))
-    return [row for row in rows if row['id']!='creative_look_names']
+    return rows
 
 
-def pending_rows(*, fl23_available=False):
+def pending_rows(*, fl23_available=False, names_available=False):
     # An old sparse inspection has no evidence about these options. In
     # particular, do not call an already modified camera "not installed".
-    return [dict(feature, state='unknown', available=fl23_available,
-                 **({} if fl23_available else {'unavailable_reason': PREPARING}))
-            for feature in FEATURES if feature['id']=='fl23']
+    return [dict(feature, state='unknown', available=available,
+                 **({} if available else {'unavailable_reason': PREPARING}))
+            for feature in FEATURES
+            for available in [fl23_available if feature['id']=='fl23' else names_available]]
 
 
 @dataclass(frozen=True)

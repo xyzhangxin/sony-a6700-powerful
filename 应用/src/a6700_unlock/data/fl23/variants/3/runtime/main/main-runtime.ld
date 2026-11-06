@@ -1,0 +1,2 @@
+PHDRS { code PT_LOAD FLAGS(5); data PT_LOAD FLAGS(6); }
+SECTIONS { . = 0; .text : { *(.text*) } :code .rodata : ALIGN(16) { *(.rodata*) } :code .dynsym : { *(.dynsym) } :code .dynstr : { *(.dynstr) } :code .hash : { *(.hash) *(.gnu.hash) } :code .rela.dyn : { *(.rela*) } :code . = ALIGN(4096); .data : { *(.data*) *(.bss*) } :data .dynamic : { *(.dynamic) } :data .got : { *(.got*) } :data /DISCARD/ : { *(.comment) *(.note*) *(.eh_frame*) } }

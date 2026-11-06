@@ -28,6 +28,7 @@ struct PreparationRow: Decodable, Identifiable {
 }
 struct FeatureRow: Decodable, Identifiable {
     let id: String; let name: String; let state: String; let selected: Bool?
+    let unlock_notice: String?
     let requires: [String]?
     let available: Bool?; let unavailable_reason: String?
     var isAvailable: Bool { available != false }
@@ -60,6 +61,7 @@ struct FeatureCheck: Decodable, Identifiable {
 }
 struct Aftercare: Decodable {
     let simulation: Bool; let restart_required: Bool
+    let startup_notice: String?
     let steps: [RestartStep]; let features: [FeatureCheck]
 }
 struct Snapshot: Decodable {

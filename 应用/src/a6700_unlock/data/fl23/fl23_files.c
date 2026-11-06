@@ -31,12 +31,31 @@ static int io(long nr,long fd,u8*p,u32 n,u32 off){
 static int sync(long fd){for(u32 i=0;i<16;i++){long rc=sc(82,fd,0,0,0);if(!rc)return 1;if(rc!=-4)return 0;}return 0;}
 /* Target AArch64 UAPI: O_NOFOLLOW=0100000, O_CLOEXEC=02000000. */
 static long open_file(const char*p,int writing){return sc(56,-100,(long)p,writing?0x88001:0x88000,0600);}
+#ifndef FILE_VARIANT_COUNT
+#define FILE_VARIANT_COUNT 1u
+struct FileVariant {u32 flags,bytes;u8 digest[32];};
+static const struct FileVariant FILE_VARIANTS[]={{1,FILE_BYTES,{0}}};
+#define FILE_SINGLE 1
+#endif
+static u32 target_bytes(u32 flags){
+ for(u32 i=0;i<FILE_VARIANT_COUNT;i++)if(FILE_VARIANTS[i].flags==flags)return FILE_VARIANTS[i].bytes;
+ return 0;
+}
 static int verify(long fd){
- SHA256 h;sha_init(&h);
- for(u32 at=0;at<FILE_BYTES;){u32 n=FILE_BYTES-at;if(n>CHUNK)n=CHUNK;
+ long end=sc(62,fd,0,2,0);if(end<0||end>FILE_BYTES)return 0;
+ u32 bytes=(u32)end;int candidate=0;
+ for(u32 i=0;i<FILE_VARIANT_COUNT;i++)if(bytes==FILE_VARIANTS[i].bytes)candidate=1;
+ if(!candidate)return 0;SHA256 h;sha_init(&h);
+ for(u32 at=0;at<bytes;){u32 n=bytes-at;if(n>CHUNK)n=CHUNK;
   if(!io(67,fd,buffer,n,at))return 0;sha_add(&h,buffer,n);at+=n;}
- u8 tail,digest[32];if(sc(67,fd,(long)&tail,1,FILE_BYTES)!=0)return 0;
- sha_end(&h,digest);return same(digest,FILE_SHA,32);
+ u8 tail,digest[32];if(sc(67,fd,(long)&tail,1,bytes)!=0)return 0;
+ sha_end(&h,digest);
+#ifdef FILE_SINGLE
+ return same(digest,FILE_SHA,32)?1:0;
+#else
+ for(u32 i=0;i<FILE_VARIANT_COUNT;i++)if(bytes==FILE_VARIANTS[i].bytes&&same(digest,FILE_VARIANTS[i].digest,32))return FILE_VARIANTS[i].flags;
+ return 0;
+#endif
 }
 static const char *const owned[]={live,fresh,closed};
 static u32 audit(u32 *mask){
@@ -57,9 +76,11 @@ static void finish(u32 status,u32 bytes,u32 detail){
 __attribute__((constructor))static void run(void){
  u32 status=0,size=0,detail=0;long fd=sc(56,-100,(long)exchange,0,0);u8 tail;
  if(fd<0)return;
- int valid=io(63,fd,input,HEADER,0);u32 op=get32(56),off=get32(60),n=get32(64);
+ int valid=io(63,fd,input,HEADER,0);u32 op=get32(56),off=get32(60),n=get32(64),flags=get32(68);
+ if(!flags)flags=1;u32 limit=target_bytes(flags);
  if(!valid||!same(input,(const u8*)"A67F",4)||get32(4)!=1||!same(input+24,PROFILE_SHA,32)||
-    get32(68)||op>6||off>FILE_BYTES||n>CHUNK||n>FILE_BYTES-off||
+    !limit||op>6||off>FILE_BYTES||n>CHUNK||n>FILE_BYTES-off||
+    (op==2&&(off>limit||n>limit-off))||
     (op!=0&&op!=2&&(off||n))|| (op==2&&!n))valid=0;
  if(valid&&op==2)valid=io(63,fd,input+HEADER,n,0);
  if(valid&&sc(63,fd,(long)&tail,1,0)!=0)valid=0;
@@ -70,8 +91,12 @@ __attribute__((constructor))static void run(void){
   fd=open_file(live,0);
   if(fd==-2){finish(0,0,0);return;}
   if(fd<0){status=3;goto done;}
-  if(!verify(fd)){status=1;goto done;}
+  int actual=verify(fd);if(!actual){status=1;goto done;}
   detail=1;
+  if(off>target_bytes(actual)||n>target_bytes(actual)-off){status=2;goto done;}
+#ifndef FILE_SINGLE
+  detail|=(u32)actual<<8;
+#endif
   if(n&&!io(67,fd,output+44,n,off)){status=4;goto done;}size=n;
  }else if(op==1){
   long old=open_file(live,0);
@@ -101,7 +126,7 @@ __attribute__((constructor))static void run(void){
  }else{
   const char *source=op==3?fresh:live,*dest=op==3?live:closed;
   fd=open_file(source,0);if(fd<0){status=3;goto done;}
-  if(!verify(fd)){status=1;goto done;}
+  int actual=verify(fd);if(!actual||(op==3&&(u32)actual!=flags)){status=1;goto done;}
   if(sc(57,fd,0,0,0)){fd=-1;status=9;goto done;}fd=-1;
   if(op==3){
    long old=open_file(live,0);

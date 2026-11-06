@@ -23,8 +23,9 @@ class PhysicalService:
         self.backup_dir = (Path(backup_dir) if backup_dir is not None
                            else default_backup_dir())
         self.backend_factory = backend_factory
-        from ..fl23_package import available
+        from ..fl23_package import available, names_available
         self.fl23_available = backend_factory is None and available()
+        self.names_available = backend_factory is None and names_available()
         self.connected = False
         self.simulation = False
         # Keep one authenticated USB session open for this app process. The
@@ -85,11 +86,13 @@ class PhysicalService:
             raise ValueError("未知设备操作；当前支持检查、解锁、关闭、功能状态备份与恢复")
         # Reject package feature injection before acquiring/authenticating USB.
         # The fixed-sector backend cannot install startup packages.
-        supported=set(self.profile.catalog.available_features)|({'fl23'} if self.fl23_available else set())
+        package_ids={'fl23'} if self.fl23_available else set()
+        if self.names_available:package_ids.add('creative_look_names')
+        supported=set(self.profile.catalog.available_features)|package_ids
         if features is not None and not set(features) <= supported:
             raise ValueError('所选功能暂未开放实机写入。')
-        if features is not None and 'fl23' in features and action not in ('unlock','close'):
-            raise ValueError('FL2／FL3 当前仅支持解锁或关闭。')
+        if features is not None and set(features)&package_ids and action not in ('unlock','close'):
+            raise ValueError('创意外观选项当前仅支持解锁或关闭。')
         from ..operations import (_execute_session, _backup_session, _restore_session,
                                   default_state_dir, device_lock)
         directory = self.state_dir if self.state_dir is not None else default_state_dir()
@@ -109,11 +112,11 @@ class PhysicalService:
         backend = self._session_backend
         backend.progress = progress
         try:
-            if features is not None and 'fl23' in features and len(set(features))>1:
+            if features is not None and set(features)&package_ids and set(features)-package_ids:
                 result=self._perform_combined(backend,action,directory,progress,features)
-            elif features is not None and set(features)=={'fl23'}:
+            elif features is not None and set(features)&package_ids:
                 from ..fl23_package import perform
-                result=perform(backend,action,directory,progress)
+                result=perform(backend,action,directory,progress,features=features)
             elif action == "backup":
                 result = _backup_session(self.profile, backend, self.backup_dir,
                                          directory, progress, manage_backend=False)
@@ -162,10 +165,12 @@ class PhysicalService:
         import uuid
         from ..operations import _execute_session, make_directory, save_json
         from ..fl23_package import perform as package_perform
-        ordinary=sorted(set(features)-{'fl23'})
-        selected=ordinary+['fl23']
+        package_ids=[f for f in ('fl23','creative_look_names') if f in features]
+        ordinary=sorted(set(features)-set(package_ids))
+        selected=ordinary+package_ids
         names={r['id']:r['name'] for r in self.profile.catalog.data['features']}
         names['fl23']='FL2／FL3'
+        names['creative_look_names']='创意外观中文名称'
         describe=lambda ids:'、'.join(names.get(i,i) for i in ids)
         run=Path(directory)/'runs'/('combined-'+uuid.uuid4().hex)
         make_directory(run)
@@ -175,10 +180,10 @@ class PhysicalService:
                     components=[],plan=dict(compatible=True,features=[],selected_features=selected,
                                             read_sectors=0,read_bytes=0,changed_bytes=0))
         save_json(run/'intent.json',dict(action=action,selected_features=selected,order=['ordinary','fl23']))
-        for name, ids in (('ordinary',ordinary),('fl23',['fl23'])):
+        for name, ids in (('ordinary',ordinary),('fl23',package_ids)):
             progress('正在处理所选功能：'+describe(ids))
             try:
-                part=(package_perform(backend,action,directory,progress) if name=='fl23' else
+                part=(package_perform(backend,action,directory,progress,**({'features':ids} if ids!=['fl23'] else {})) if name=='fl23' else
                       _execute_session(self.profile,backend,action,directory,progress,
                                        features=ids,manage_backend=False))
             except BaseException as exc:

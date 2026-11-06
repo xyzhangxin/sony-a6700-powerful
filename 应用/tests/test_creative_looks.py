@@ -76,7 +76,7 @@ class LookOptionTests(unittest.TestCase):
                 service.perform(action, features=[feature])
         factory.assert_not_called()
 
-    def test_desktop_ships_only_fl23_and_keeps_deferred_name_option_hidden(self):
+    def test_desktop_independent_look_options_roundtrip(self):
         environment = dict(ready=True, checks=[], device_access=False)
         with tempfile.TemporaryDirectory() as folder:
             controller = DesktopController(folder, environment_provider=lambda: environment)
@@ -84,11 +84,12 @@ class LookOptionTests(unittest.TestCase):
             controller.check_environment(); controller.acknowledge_notice(True)
             controller.begin_preparation(); controller.confirm_preparation(True)
             controller.operate('inspect')
-            self.assertNotIn('creative_look_names',{r['id'] for r in controller.snapshot()['features']})
-            with self.assertRaises(ValueError):controller.set_feature_selection('creative_look_names',True)
+            self.assertIn('creative_look_names',{r['id'] for r in controller.snapshot()['features']})
             for feature, action, expected in (
                     ('fl23', 'unlock', {'fl23'}),
-                    ('fl23', 'close', set())):
+                    ('creative_look_names', 'unlock', {'fl23','creative_look_names'}),
+                    ('fl23', 'close', {'creative_look_names'}),
+                    ('creative_look_names', 'close', set())):
                 controller.select_features('none')
                 controller.set_feature_selection(feature, True)
                 state = controller.operate(action)

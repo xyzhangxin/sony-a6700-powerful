@@ -14,7 +14,7 @@ from ..connection_takeover import TakeoverManager
 from ..usb.backend import payloads
 from .physical import PhysicalService
 from .simulation import SCENARIOS, SimulationService
-from .aftercare import build_aftercare
+from .aftercare import MENU_CHECKS, build_aftercare
 
 
 SIMULATION_RESULT_LABELS = {
@@ -281,16 +281,19 @@ class DesktopController:
 
     def _feature_definitions(self):
         return feature_definitions(self.service.profile.catalog, simulation=self.mode == 'simulation',
-                                   fl23_available=getattr(self.service,'fl23_available',False))
+                                   fl23_available=getattr(self.service,'fl23_available',False),
+                                   names_available=getattr(self.service,'names_available',False))
 
     def _feature_rows(self, rows):
         # Sparse physical inspection cannot observe external package state.
         # Display its options without inventing a disabled/enabled result.
-        rows = [row for row in rows if row['id']!='creative_look_names']
+        rows = list(rows)
         if self.mode == 'physical':
             known = {row['id'] for row in rows}
-            rows.extend(row for row in pending_rows(fl23_available=getattr(self.service,'fl23_available',False)) if row['id'] not in known)
-        return rows
+            rows.extend(row for row in pending_rows(fl23_available=getattr(self.service,'fl23_available',False),
+                names_available=getattr(self.service,'names_available',False)) if row['id'] not in known)
+        return [dict(row, unlock_notice=MENU_CHECKS.get(row['id'], {}).get('unlock_notice'))
+                for row in rows]
 
     def _require_selection_editable(self):
         if self.busy or self.phase != 'home' or not self.compatible:

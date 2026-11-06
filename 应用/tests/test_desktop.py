@@ -146,19 +146,19 @@ class DesktopTests(unittest.TestCase):
         self.assertIsNotNone(state['inspect_summary'])
         self.assertEqual(state['inspect_summary']['read_sectors'], len(self.controller.service.profile.entries))
         self.assertEqual({row['id']: row['selected'] for row in state['features']},
-                         {'ftp': True, 'shutter': True, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True})
+                         {'ftp': True, 'shutter': True, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True, 'creative_look_names': True})
         state = self.controller.acknowledge_check()
         self.assertIsNone(state['inspect_summary'])
         self.assertEqual(state['phase'], 'home')
         self.inspect('enabled')
         self.controller.acknowledge_check()
         self.assertEqual({row['id']: row['selected'] for row in self.controller.snapshot()['features']},
-                         {'ftp': False, 'shutter': False, 'exposure': False, 'sound': False, 'pixel_shift': False, 'dynamic_active': False, 'fl23': False})
+                         {'ftp': False, 'shutter': False, 'exposure': False, 'sound': False, 'pixel_shift': False, 'dynamic_active': False, 'fl23': False, 'creative_look_names': False})
 
     def test_close_unlock_and_repeat_reuse_real_transaction_and_planner(self):
         state = self.inspect()
         self.assertEqual({row['id']: row['selected'] for row in state['features']},
-                         {'ftp': False, 'shutter': False, 'exposure': False, 'sound': False, 'pixel_shift': False, 'dynamic_active': False, 'fl23': False})
+                         {'ftp': False, 'shutter': False, 'exposure': False, 'sound': False, 'pixel_shift': False, 'dynamic_active': False, 'fl23': False, 'creative_look_names': False})
         self.controller.acknowledge_check()
         self.controller.select_features('all')
         self.assertEqual(self.controller.operate('close')['result']['status'], 'completed')
@@ -172,9 +172,9 @@ class DesktopTests(unittest.TestCase):
 
     def test_partial_state_only_completes_missing_synthetic_fields(self):
         state = self.inspect('partial')
-        self.assertEqual({f['id']: f['state'] for f in state['features']}, {'ftp': 'enabled', 'shutter': 'disabled', 'exposure': 'disabled', 'sound': 'disabled', 'pixel_shift': 'disabled', 'dynamic_active': 'disabled', 'fl23': 'disabled'})
+        self.assertEqual({f['id']: f['state'] for f in state['features']}, {'ftp': 'enabled', 'shutter': 'disabled', 'exposure': 'disabled', 'sound': 'disabled', 'pixel_shift': 'disabled', 'dynamic_active': 'disabled', 'fl23': 'disabled', 'creative_look_names': 'disabled'})
         self.controller.operate('unlock')
-        self.assertEqual(self.controller.last_report['plan']['changed_bytes'], 8)
+        self.assertEqual(self.controller.last_report['plan']['changed_bytes'], 10)
 
     def test_success_stays_on_result_and_requires_fresh_preparation_and_inspection(self):
         self.inspect('original')
@@ -210,8 +210,8 @@ class DesktopTests(unittest.TestCase):
         self.controller.select_features('all')
         guide = self.controller.operate('unlock')['result']['aftercare']
         checks = {row['id']: row for row in guide['features']}
-        self.assertEqual(set(checks), {'ftp', 'shutter', 'exposure', 'sound', 'fl23'})
-        self.assertEqual(list(checks), ['ftp', 'shutter', 'exposure', 'sound', 'fl23'])
+        self.assertEqual(set(checks), {'ftp', 'shutter', 'exposure', 'sound', 'fl23', 'creative_look_names'})
+        self.assertEqual(list(checks), ['ftp', 'shutter', 'exposure', 'sound', 'fl23', 'creative_look_names'])
         self.assertIn('未重复写入', checks['ftp']['outcome'])
         self.assertIn('回读通过', checks['sound']['outcome'])
         self.resume()
@@ -308,7 +308,7 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(state['result']['status'], 'restored')
         self.assertTrue(state['result']['success'])
         self.assertEqual({row['id']: row['state'] for row in state['features']},
-                         {'ftp': 'disabled', 'shutter': 'disabled', 'exposure': 'disabled', 'sound': 'disabled', 'pixel_shift': 'disabled', 'dynamic_active': 'disabled', 'fl23': 'disabled'})
+                         {'ftp': 'disabled', 'shutter': 'disabled', 'exposure': 'disabled', 'sound': 'disabled', 'pixel_shift': 'disabled', 'dynamic_active': 'disabled', 'fl23': 'disabled', 'creative_look_names': 'disabled'})
         self.assertEqual(self.controller.last_report['backup_id'], backup_id)
         self.assertFalse(self.controller.last_report['device_access'])
         self.assertFalse(self.controller.last_report['write_attempted'])
@@ -318,28 +318,28 @@ class DesktopTests(unittest.TestCase):
         self.inspect('original')
         state = self.controller.snapshot()
         self.assertEqual({row['id']: row['selected'] for row in state['features']},
-                         {'ftp': True, 'shutter': True, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True})
+                         {'ftp': True, 'shutter': True, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True, 'creative_look_names': True})
         state = self.controller.select_features('none')
         self.assertEqual({row['id']: row['selected'] for row in state['features']},
-                         {'ftp': False, 'shutter': False, 'exposure': False, 'sound': False, 'pixel_shift': False, 'dynamic_active': False, 'fl23': False})
+                         {'ftp': False, 'shutter': False, 'exposure': False, 'sound': False, 'pixel_shift': False, 'dynamic_active': False, 'fl23': False, 'creative_look_names': False})
         with self.assertRaises(ValueError):
             self.controller.reserve('unlock')
         state = self.controller.select_features('missing')
         self.assertEqual({row['id']: row['selected'] for row in state['features']},
-                         {'ftp': True, 'shutter': True, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True})
+                         {'ftp': True, 'shutter': True, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True, 'creative_look_names': True})
         state = self.controller.set_feature_selection('shutter', False)
         self.assertEqual({row['id']: row['selected'] for row in state['features']},
-                         {'ftp': True, 'shutter': False, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True})
+                         {'ftp': True, 'shutter': False, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True, 'creative_look_names': True})
         result = self.controller.operate('unlock')
         self.assertEqual(result['result']['status'], 'completed')
         self.assertEqual(result['result']['success'], True)
         self.assertEqual({row['id']: row['state'] for row in result['features']},
-                         {'ftp': 'enabled', 'shutter': 'disabled', 'exposure': 'enabled', 'sound': 'enabled', 'pixel_shift': 'disabled', 'dynamic_active': 'disabled', 'fl23': 'enabled'})
-        self.assertEqual(self.controller.last_report['plan']['selected_features'], ['ftp', 'exposure', 'sound', 'fl23'])
+                         {'ftp': 'enabled', 'shutter': 'disabled', 'exposure': 'enabled', 'sound': 'enabled', 'pixel_shift': 'disabled', 'dynamic_active': 'disabled', 'fl23': 'enabled', 'creative_look_names': 'enabled'})
+        self.assertEqual(self.controller.last_report['plan']['selected_features'], ['ftp', 'exposure', 'sound', 'fl23', 'creative_look_names'])
         self.resume()
         self.controller.select_features('all')
         self.assertEqual({row['id']: row['selected'] for row in self.controller.snapshot()['features']},
-                         {'ftp': True, 'shutter': True, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True})
+                         {'ftp': True, 'shutter': True, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True, 'creative_look_names': True})
 
     def test_restore_selection_only_restores_selected_features(self):
         self.inspect('original')
@@ -353,7 +353,7 @@ class DesktopTests(unittest.TestCase):
         state = self.controller.operate('restore', backup_id=backup_id)
         self.assertEqual(state['result']['status'], 'restored')
         self.assertEqual({row['id']: row['state'] for row in state['features']},
-                         {'ftp': 'disabled', 'shutter': 'enabled', 'exposure': 'enabled', 'sound': 'enabled', 'pixel_shift': 'disabled', 'dynamic_active': 'disabled', 'fl23': 'enabled'})
+                         {'ftp': 'disabled', 'shutter': 'enabled', 'exposure': 'enabled', 'sound': 'enabled', 'pixel_shift': 'disabled', 'dynamic_active': 'disabled', 'fl23': 'enabled', 'creative_look_names': 'enabled'})
         self.assertEqual(self.controller.last_report['plan']['selected_features'], ['ftp'])
 
     def test_parked_features_cannot_be_selected_or_injected(self):
@@ -559,32 +559,35 @@ class PhysicalDesktopTests(unittest.TestCase):
         controller.select_features('enabled')
         self.assertEqual(controller.selected_features,{'a','b','fl23'})
 
-    def mixed_case(self, package_status='completed', drift=False, ordinary_failure=False, action='unlock'):
+    def mixed_case(self, package_status='completed', drift=False, ordinary_failure=False, action='unlock',package_features=None):
         controller=self.physical_controller();service=controller.service
         service.fl23_available=True
+        package_features=package_features or ['fl23']
+        service.names_available='creative_look_names' in package_features
         calls=[]
-        def package(backend,requested,directory,progress):
+        def package(backend,requested,directory,progress,features=None):
             from a6700_unlock.operations import device_lock
             # The ordinary transaction and package share the original lock.
             from a6700_unlock.device_protocol import DeviceBusyError
             with self.assertRaises(DeviceBusyError):
                 with device_lock(directory):pass
             calls.append(requested)
+            self.assertEqual(features or ['fl23'],package_features)
             if drift:backend.sectors=list(self.sectors)
-            row=dict(id='fl23',name='FL2／FL3',state='enabled' if action=='unlock' else 'disabled')
+            rows=[dict(id=f,name=f,state='enabled' if action=='unlock' else 'disabled') for f in package_features]
             return dict(status=package_status,verified=package_status in ('completed','no-op'),
                 write_attempted=package_status!='no-op',run_directory=str(directory/'package'),
-                plan=dict(features=[dict(row,state='disabled')],changed_bytes=4),
-                final_features=[row],error='synthetic failure' if package_status=='uncertain' else '')
+                plan=dict(features=[dict(row,state='disabled') for row in rows],changed_bytes=4),
+                final_features=rows,error='synthetic failure' if package_status=='uncertain' else '')
         if ordinary_failure:
             def fail(*args):raise RuntimeError('synthetic ordinary failure')
             service._backend=lambda progress,capture:self.Backend(self.sectors)
             # Fail during the first read, before any package invocation.
             with patch.object(self.Backend,'read',fail),patch('a6700_unlock.fl23_package.perform',side_effect=package):
-                result=service.perform(action,features=['a','b','fl23'])
+                result=service.perform(action,features=['a','b']+package_features)
         else:
             with patch('a6700_unlock.fl23_package.perform',side_effect=package):
-                result=service.perform(action,features=['a','b','fl23'])
+                result=service.perform(action,features=['a','b']+package_features)
         return result,calls
 
     def test_mixed_physical_install_runs_both_and_rechecks_preservation(self):
@@ -597,6 +600,14 @@ class PhysicalDesktopTests(unittest.TestCase):
         states={r['id']:r['state'] for r in result['final_features']}
         self.assertTrue(all(states[i]=='enabled' for i in ('a','b','fl23')))
         self.assertTrue(self.backend.closed)
+
+    def test_names_and_both_look_options_can_mix_with_ordinary_features(self):
+        for selected in (['creative_look_names'],['fl23','creative_look_names']):
+            with self.subTest(selected=selected):
+                result,calls=self.mixed_case(package_features=selected)
+                self.assertEqual(calls,['unlock']);self.assertTrue(result['verified'],result)
+                self.assertEqual(set(result['completed_features']),{'a','b',*selected})
+                self.assertEqual({r['id'] for r in result['final_features']},{'a','b',*selected})
 
     def test_mixed_package_failure_reports_partial_without_replay(self):
         result,calls=self.mixed_case(package_status='uncertain')

@@ -75,10 +75,29 @@ class Package:
                 path=Path(name)
                 if path.is_absolute() or '..' in path.parts or sha(self.root.joinpath('runtime/'+name).read_bytes())!=digest:
                     raise DeviceError('FL23 运行库源码与构建不一致')
+        self.carriers={1:self.carrier}
+        variants=self.manifest.get('variants',{})
+        if variants and set(variants)!={'2','3'}:raise DeviceError('创意外观组合清单不完整')
+        for flags,row in variants.items():
+            folder=self.root.joinpath('variants/'+flags)
+            data=folder.joinpath('carrier.bin').read_bytes()
+            runtime=folder.joinpath('runtime/manifest.json').read_bytes()
+            if len(data)!=row['bytes'] or sha(data)!=row['sha256'] or sha(runtime)!=row['runtime_sha256']:
+                raise DeviceError('创意外观组合载荷校验失败')
+            for name,digest in json.loads(runtime)['files'].items():
+                path=Path(name)
+                if path.is_absolute() or '..' in path.parts or sha(folder.joinpath('runtime/'+name).read_bytes())!=digest:
+                    raise DeviceError('创意外观组合源码与载荷不一致')
+            self.carriers[int(flags)]=data
 
 
 def available():
     try:Package();return True
+    except (OSError,ValueError,KeyError,DeviceError):return False
+
+
+def names_available():
+    try:return set(Package().carriers)=={1,2,3}
     except (OSError,ValueError,KeyError,DeviceError):return False
 
 
@@ -161,16 +180,16 @@ class Session:
         result=self.exchange('writer' if writing else 'reader',cfg,lambda raw:response(raw,nonce,0 if writing else len(p.entries)))
         if result['status']:raise DeviceError('FL23 固定事务拒绝：'+str(result))
         return result['sectors']
-    def file(self,op=0,offset=0,data=b'',length=0):
+    def file(self,op=0,offset=0,data=b'',length=0,flags=1):
         p=self.package;nonce=uuid.uuid4().bytes
-        cfg=struct.pack('<4sI16s32s4I',b'A67F',1,nonce,bytes.fromhex(p.profile.digest),op,offset,len(data) if op==2 else length,0)+data
+        cfg=struct.pack('<4sI16s32s4I',b'A67F',1,nonce,bytes.fromhex(p.profile.digest),op,offset,len(data) if op==2 else length,flags if flags!=1 else 0)+data
         def parse(raw):
             if len(raw)<44:raise DeviceError('FL23 文件事务回复不完整')
             magic,version,returned,status,n,detail,_,_=struct.unpack_from('<4sI16s5I',raw)
             if magic!=b'A67F' or version!=1 or returned!=nonce or len(raw)!=44+n or n>65536:
                 raise DeviceError('FL23 文件事务版本／nonce／长度不匹配')
             if status:raise DeviceError('FL23 文件事务拒绝：'+str(status))
-            return dict(present=bool(detail&1),mask=detail,data=raw[44:])
+            return dict(present=bool(detail&1),mask=detail&255,flags=(detail>>8 or 1) if detail&1 else 0,data=raw[44:])
         return self.exchange('files',cfg,parse)
     def cp_unit(self,row,value=None):
         key=row['key'];writing=value is not None
@@ -223,8 +242,15 @@ def inspect(session):
     file['owned_mask']=audit['mask']
     unit_enabled=all(sha(value)==row['after_sha256'] for row,value in zip(session.package.recipe['cp_units'],units))
     unit_original=all(sha(value)==row['before_sha256'] for row,value in zip(session.package.recipe['cp_units'],units))
-    enabled=detail['startup']=='enabled' and detail['cp']=='enabled' and unit_enabled and file['present']
-    disabled=detail['startup']=='disabled' and detail['cp']=='disabled' and unit_original and not file['owned_mask']
+    flags=file.get('flags',1) if file['present'] else 0
+    enabled=detail['startup']=='enabled' and detail['cp']=='enabled' and unit_enabled and bool(flags&1)
+    disabled=detail['cp']=='disabled' and unit_original and (
+        (detail['startup']=='disabled' and not file['owned_mask']) or
+        (detail['startup']=='enabled' and flags==2))
+    if hasattr(session.package,'carriers') and len(session.package.carriers)>1:
+        detail['flags']=flags if detail['startup']=='enabled' else 0
+        detail['names_state']=('enabled' if flags&2 else 'disabled') if detail['startup']=='enabled' and file['present'] else (
+            'disabled' if detail['startup']=='disabled' and not file['owned_mask'] else 'partial')
     state='enabled' if enabled else 'disabled' if disabled else 'partial'
     row=dict(id='fl23',name='FL2／FL3 创意外观',state=state,available=True)
     return row,detail,before,units,file,selected
@@ -272,9 +298,13 @@ def update_units(session,units,action):
     if ap_after!=ap_before:raise DeviceError('FL23 CP 保存改变了原有外观／MR 设置')
 
 
-def perform(backend,action,directory,progress=lambda _:None):
+def perform(backend,action,directory,progress=lambda _:None,features=None):
     """Caller holds device lock; install is journaled, never auto-replayed."""
-    package=Package();run=Path(directory)/'runs'/('fl23-'+uuid.uuid4().hex)
+    package=Package()
+    if len(getattr(package,'carriers',{}))>1:
+        return perform_options(package,backend,action,directory,progress,features)
+    if features is not None and set(features)!={'fl23'}:raise DeviceError('中文名称安装组件尚未准备完成')
+    run=Path(directory)/'runs'/('fl23-'+uuid.uuid4().hex)
     make_directory(run)
     result=dict(action=action,status='error',device_access=True,write_attempted=False,verified=False,
         run_directory=str(run),feature='fl23',profile_sha256=package.profile.digest,full_backup=False)
@@ -333,6 +363,93 @@ def perform(backend,action,directory,progress=lambda _:None):
                 result['plan']['changed_bytes']=detail['changed_bytes']
                 result.update(status='completed',verified=True,final_features=[final],restart_required=True)
                 progress('FL2／FL3 写入及独立回读通过；冷启动后检查菜单和成像。')
+        result['service_restore_verified']=True
+    except BaseException as exc:
+        result.update(status='uncertain' if result['write_attempted'] else 'error',error=str(exc) or type(exc).__name__)
+    save_json(run/'result.json',result)
+    return result
+
+
+def perform_options(package,backend,action,directory,progress,features=None):
+    """One shared loader, independent FL23/Chinese flags, CP only for FL23.
+
+    A carrier switch first makes AP/WBI startup inert, then verifies the
+    atomic replacement, adjusts CP if necessary, and reactivates startup last.
+    Nothing modifies the current process's published RAM model in place.
+    """
+    from .creative_looks import FEATURES,FEATURE_IDS
+    selected=tuple(features or ('fl23',))
+    if action not in ('inspect','unlock','close') or not set(selected)<=set(FEATURE_IDS) or len(set(selected))!=len(selected):
+        raise ValueError('未知或重复的创意外观功能')
+    run=Path(directory)/'runs'/('looks-'+uuid.uuid4().hex);make_directory(run)
+    result=dict(action=action,status='error',device_access=True,write_attempted=False,verified=False,
+        run_directory=str(run),selected_features=list(selected),profile_sha256=package.profile.digest,full_backup=False)
+    def rows(row,detail):
+        return [row,dict(id='creative_look_names',name=FEATURES[1]['name'],state=detail['names_state'],available=True)]
+    try:
+        with service_files(backend,run) as invoke:
+            session=Session(package,backend,invoke,run)
+            progress('正在读取创意外观代码、参数和功能包状态…')
+            row,detail,before,units,file,main=inspect(session)
+            observed=rows(row,detail)
+            result['plan']=dict(compatible=True,features=observed,selected_features=list(selected),
+                read_sectors=len(package.profile.entries)+len(package.recipe['guards']),
+                read_bytes=(len(package.profile.entries)+len(package.recipe['guards']))*512,changed_bytes=0)
+            if action=='inspect':result['status']='inspected'
+            else:
+                current=detail['flags']
+                legacy_close=(action=='close' and 'fl23' in selected and detail['startup']=='disabled'
+                    and not file['present'] and not file['owned_mask']&~4
+                    and any(r['state']=='partial' for r in observed))
+                # Do not infer an unselected option from incomplete state.
+                if any(r['state']=='partial' for r in observed) and not legacy_close:
+                    raise DeviceError('创意外观安装状态不完整；请先核对记录并完成恢复，未自动覆盖另一选项。')
+                target=current
+                for feature in selected:
+                    bit=1 if feature=='fl23' else 2
+                    target=(target|bit) if action=='unlock' else (target&~bit)
+                if target==current and not legacy_close:
+                    result.update(status='no-op',verified=True,final_features=observed)
+                else:
+                    if (current&1 or legacy_close) and not target&1:
+                        require_stock_values(session.ap_values())
+                    _,on=plan_blocks(package,before,'unlock');_,off=plan_blocks(package,before,'close')
+                    after=[(on if (target&1 if entry['device']==2 else target) else off)[i]
+                           for i,entry in enumerate(package.profile.entries)]
+                    inert=[off[i] if entry['device']!=2 else raw for i,(entry,raw) in enumerate(zip(package.profile.entries,before))]
+                    save_json(run/'preimages.json',dict(sectors=[s.hex() for s in before],cp_units=[u.hex() for u in units],full_backup=False))
+                    changed=sum(sum(a!=b for a,b in zip(x,y)) for x,y in zip(before,after))
+                    save_json(run/'write-intent.json',dict(before_flags=current,after_flags=target,selected_features=selected,
+                        carrier_sha256=sha(package.carriers[target]) if target else None,changed_bytes=changed))
+                    result['write_attempted']=True
+                    if before!=inert:
+                        progress('正在暂停创意外观启动入口…');session.blocks(before,inert)
+                        if session.blocks()!=inert:raise DeviceError('创意外观启动入口暂停回读失败')
+                        before=inert
+                    if target:
+                        carrier=package.carriers[target]
+                        if file.get('flags')!=target or not file['present']:
+                            progress('正在安装所选创意外观组合…');session.file(1,flags=target)
+                            for at in range(0,len(carrier),65536):session.file(2,at,carrier[at:at+65536],flags=target)
+                            session.file(3,flags=target)
+                        data=b''.join(session.file(0,at,length=min(65536,len(carrier)-at),flags=target)['data'] for at in range(0,len(carrier),65536))
+                        if data!=carrier:raise DeviceError('创意外观组合独立回读失败')
+                    if (current^target)&1 or legacy_close:
+                        progress('正在更新 FL2／FL3 专属 CP 依赖…')
+                        update_units(session,units,'unlock' if target&1 else 'close')
+                    if before!=after:
+                        progress('正在提交创意外观代码和启动入口…');session.blocks(before,after)
+                        if session.blocks()!=after:raise DeviceError('创意外观代码独立回读失败')
+                    if not target:
+                        session.file(6)
+                        if session.file(5)['mask']:raise DeviceError('创意外观功能包仍有残留')
+                    final,fd,_,_,_,_=inspect(session);final_rows=rows(final,fd)
+                    if fd['flags']!=target or any(r['state']!=('enabled' if target&(1<<i) else 'disabled') for i,r in enumerate(final_rows)):
+                        raise DeviceError('创意外观组合最终状态不一致')
+                    result['plan']['changed_bytes']=changed
+                    result.update(status='completed',verified=True,final_features=final_rows,restart_required=True,
+                        before_flags=current,after_flags=target)
+                    progress('所选功能写入及回读通过；冷启动后生效。')
         result['service_restore_verified']=True
     except BaseException as exc:
         result.update(status='uncertain' if result['write_attempted'] else 'error',error=str(exc) or type(exc).__name__)
