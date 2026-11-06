@@ -2,8 +2,8 @@
   "schema": 1,
   "feature": "fl23",
   "profile_sha256": "4e9da22a80f683db83f5a635106fad81ce7a3526796ec6385791b6d22b06745f",
-  "carrier_sha256": "ccfc1b585a2787181b86b478ce9451d5e68b446b2810000a1880ada9fca3a61f",
-  "carrier_bytes": 951800,
+  "carrier_sha256": "fbf4e5ba4043cd2d2b57efae0dd61fe504ac86fd382fd7d776aa3393aadfa9c2",
+  "carrier_bytes": 952468,
   "deployment": "file-carrier",
   "names": false,
   "hardware_validation": "pending",
@@ -17,8 +17,8 @@
       "sha256": "005ce182d2caa9529654584c19131654dc8d66f8672b5f2e5ca3480e1789a449"
     },
     "files": {
-      "bytes": 9704,
-      "sha256": "016577900dcb195dc7724a0dba45b7fc412f1b7c9b5110a31400c9cb798e02e7"
+      "bytes": 10192,
+      "sha256": "e08a3b14eb35bd2380d00aea50d475e3f8d7fe6a07d31e1817be967d070a43dc"
     }
   },
   "source_sha256": {
@@ -26,14 +26,14 @@
     "profile.h": "c1f399ef8e38b883dbaf5effa6612756846e296ee57c58d13f807b875d7097d4",
     "sha256.h": "85dc96693857e6f4b9f9035e5c5b02b80a49ab44082f0c19dc46cd5c0400238e",
     "fl23_files.c": "5b7b89618f6c8a08d2f078dc001453cdd8152790168b6d2e676b822622c72535",
-    "file-profile.h": "e229e6558d603a96876aaf74ce238184b419758c07bc86062816f6d1f71f8db1"
+    "file-profile.h": "5e0f5f3e3f1669260207b7a2fba6c380bf608715e2513bd56f99408adac82076"
   },
   "upstream_source_sha256": {
     "native/transaction.c": "53cd3393c07dfdb7a219cf73906862ac389df9d853a90d762deec777c0e37e82",
     "native/fl23_files.c": "5b7b89618f6c8a08d2f078dc001453cdd8152790168b6d2e676b822622c72535",
     "native/fl23_sha256.h": "85dc96693857e6f4b9f9035e5c5b02b80a49ab44082f0c19dc46cd5c0400238e"
   },
-  "runtime_source_sha256": "637bbe6f0f382eb0b54729063d735a2fc3ce050be2fa39fbc3a51dabea5f0903",
+  "runtime_source_sha256": "492f3899d1fb0d1c644211d868a3cc9d3a83b03f50dfc5b5fd7577e64592b19a",
   "variants": {
     "2": {
       "bytes": 52736,
@@ -41,9 +41,24 @@
       "runtime_sha256": "d9d6bbe120f96b72fb5c3f705b9b9637d831c392f746b101f11ab50ccae3ba62"
     },
     "3": {
+      "bytes": 952516,
+      "sha256": "feeff9df4f68dcbb882112fee62c68ed5227a5397bb4a9986c632b12cd59177b",
+      "runtime_sha256": "c6f0be0b72cfbd8d79655f5d4701162af5776bb1ecc8d761c80fb649e591efee"
+    }
+  },
+  "carrier_revision": 2,
+  "legacy_carriers": {
+    "5": {
+      "flags": 1,
+      "revision": 1,
+      "bytes": 951800,
+      "sha256": "ccfc1b585a2787181b86b478ce9451d5e68b446b2810000a1880ada9fca3a61f"
+    },
+    "7": {
+      "flags": 3,
+      "revision": 1,
       "bytes": 951832,
-      "sha256": "00cda3ccc83d9387510a4b14e7a7df6b568c4c8bb505a5a8aa5a63dfedd9b5a0",
-      "runtime_sha256": "2c9ba36edf2a2519dfa7ee9e5cdf0cea36bcd539c84f50f3b8aaffb492ba2dc7"
+      "sha256": "00cda3ccc83d9387510a4b14e7a7df6b568c4c8bb505a5a8aa5a63dfedd9b5a0"
     }
   }
 }

@@ -112,7 +112,7 @@ def compile(source,destination,work,name,*,defines=()):
     return dict(bytes=len(data),sha256=sha(data))
 
 
-def build(recipe_path,carrier_path,sha_header,*,destination=None,variants_path=None):
+def build(recipe_path,carrier_path,sha_header,*,destination=None,variants_path=None,legacy_path=None):
     destination=destination or ROOT/'src/a6700_unlock/data/fl23'
     destination.mkdir(parents=True,exist_ok=True)
     recipe=json.loads(Path(recipe_path).read_bytes())
@@ -144,11 +144,25 @@ def build(recipe_path,carrier_path,sha_header,*,destination=None,variants_path=N
         for flags in (2,3):
             variants[flags]=(vr/str(flags)/'carrier.bin').read_bytes()
             if not 1024<=len(variants[flags])<=2098176:raise ValueError('Creative Look variant exceeds carrier bounds')
-    file_header=(f'#define FILE_BYTES {max(map(len,variants.values()))}u\nstatic const u8 FILE_SHA[32]='+array(bytes.fromhex(sha(carrier)))+';\n'+
+    legacy={}
+    if legacy_path is None and (destination/'legacy-carriers.json').is_file():
+        legacy_path=destination/'legacy-carriers.json'
+    if legacy_path:
+        legacy=json.loads(Path(legacy_path).read_bytes())
+        if set(legacy)!={'5','7'} or len(variants)!=3:raise ValueError('Legacy carriers require the two exact FL23 combinations')
+        for ident,row in legacy.items():
+            if (row.get('flags')!=int(ident)&3 or row.get('revision')!=1 or
+                    type(row.get('bytes')) is not int or not 1024<=row['bytes']<=2098176 or
+                    not isinstance(row.get('sha256'),str) or len(row['sha256'])!=64 or
+                    len(bytes.fromhex(row['sha256']))!=32 or row['sha256'] in {sha(v) for v in variants.values()}):
+                raise ValueError('Invalid legacy carrier identity')
+    specs={f:dict(bytes=len(v),sha256=sha(v)) for f,v in variants.items()}
+    specs.update({int(f):row for f,row in legacy.items()})
+    file_header=(f'#define FILE_BYTES {max(row["bytes"] for row in specs.values())}u\nstatic const u8 FILE_SHA[32]='+array(bytes.fromhex(sha(carrier)))+';\n'+
                  'static const u8 PROFILE_SHA[32]='+array(bytes.fromhex(digest))+';\n')
     if len(variants)>1:
-        file_header+=('struct FileVariant {u32 flags,bytes;u8 digest[32];};\n#define FILE_VARIANT_COUNT 3u\n'+
-            'static const struct FileVariant FILE_VARIANTS[]={'+','.join('{%du,%du,%s}'%(f,len(v),array(bytes.fromhex(sha(v)))) for f,v in variants.items())+'};\n')
+        file_header+=('struct FileVariant {u32 flags,bytes;u8 digest[32];};\n#define FILE_VARIANT_COUNT '+str(len(specs))+'u\n'+
+            'static const struct FileVariant FILE_VARIANTS[]={'+','.join('{%du,%du,%s}'%(f,row['bytes'],array(bytes.fromhex(row['sha256']))) for f,row in specs.items())+'};\n')
     native_sources={'transaction.c':text.encode(),'profile.h':header(recipe),'sha256.h':Path(sha_header).read_bytes(),
         'fl23_files.c':(ROOT/'src/a6700_unlock/native/fl23_files.c').read_bytes(),
         'file-profile.h':file_header.encode()}
@@ -171,6 +185,9 @@ def build(recipe_path,carrier_path,sha_header,*,destination=None,variants_path=N
     if len(variants)>1:
         manifest['variants']={str(f):dict(bytes=len(v),sha256=sha(v),
             runtime_sha256=sha((destination/'variants'/str(f)/'runtime/manifest.json').read_bytes())) for f,v in variants.items() if f!=1}
+    if legacy:
+        manifest.update(carrier_revision=2,legacy_carriers=legacy)
+        (destination/'legacy-carriers.json').write_text(json.dumps(legacy,indent=2)+'\n')
     (destination/'recipe.json').write_text(json.dumps(recipe,indent=2)+'\n')
     (destination/'carrier.bin').write_bytes(carrier)
     (destination/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
@@ -181,4 +198,5 @@ if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--recipe',type=Path,required=True)
     p.add_argument('--carrier',type=Path,required=True);p.add_argument('--sha-header',type=Path,required=True)
     p.add_argument('--variants',type=Path)
-    a=p.parse_args();print(json.dumps(build(a.recipe,a.carrier,a.sha_header,variants_path=a.variants),indent=2))
+    p.add_argument('--legacy-carriers',type=Path,help='Exact prior FL23 file identities for in-place revision updates')
+    a=p.parse_args();print(json.dumps(build(a.recipe,a.carrier,a.sha_header,variants_path=a.variants,legacy_path=a.legacy_carriers),indent=2))

@@ -1131,6 +1131,28 @@ static long icon_publish(const struct main_state_capture_args *a,struct icon_rep
  __asm__ volatile("dmb ish\nisb":::"memory");
  return 0;
 }
+static long selection_revert_main(const struct main_state_capture_args *a,
+ struct main_commit_report *r,struct main_commit_finalization *f,long cause){
+ if(cause>=0||r->lifecycle!=MAIN_COMMIT_PUBLISHED||r->word_count!=MAIN_COMMIT_WORDS||
+    !r->outcome.committed||!main_capture_cohort(a))return -116;
+ struct main_commit_core_word reverse[MAIN_COMMIT_WORDS];
+ struct main_commit_core_outcome undone;
+ u64 prior_pokes=r->outcome.poke_calls,prior_peeks=r->outcome.peek_calls;
+ for(u32 i=0;i<MAIN_COMMIT_WORDS;i++)reverse[i]=(struct main_commit_core_word){
+  r->words[i].address,r->words[i].after,r->words[i].before};
+ long rc=fl23_commit_words(a->pid,reverse,MAIN_COMMIT_WORDS,&undone);
+ if(rc||!undone.committed||undone.uncertain||undone.confirmed_after!=MAIN_COMMIT_WORDS)return rc?rc:-116;
+ /* Convert a completed reverse commit into the original-direction rollback
+  * record. Counts are actual forward+reverse IO; finalizer independently
+  * checks every original byte again before authorizing resume/retirement. */
+ for(u32 i=0;i<sizeof(undone)/8;i++)((volatile u64*)&r->outcome)[i]=((const u64*)&undone)[i];
+ r->outcome.phase=5;r->outcome.rollback_verified=1;
+ r->outcome.committed=0;r->outcome.restored=MAIN_COMMIT_WORDS;r->outcome.error=cause;
+ r->outcome.poke_calls+=prior_pokes;r->outcome.peek_calls+=prior_peeks;
+ r->commit_rc=cause;r->lifecycle=MAIN_COMMIT_ROLLED_BACK;r->owner_retained=0;
+ return fl23_main_commit_finalize_stopped(a,r,f);
+}
+
 static long main_publish_reader_gate(const struct main_state_capture_args *a,
  const struct main_pub_result *plan){
  long gate=fl23_main_readers_stopped(a,plan);
@@ -1176,6 +1198,13 @@ static long audit_extension(u64 *h,long count){
   __asm__ volatile("dmb ish":::"memory");
   if(icon->lifecycle==MAIN_COMMIT_UNCERTAIN||(icon_rc&&icon->lifecycle==MAIN_COMMIT_PUBLISHED))
    for(;;)delay(1000000);
+  /* The new base callback shares this verified OSD transaction. A
+   * refusal/inverse must not leave a selectable but incomplete FL23 model. */
+  if(icon_rc){
+   if(selection_revert_main(&args,commit,final,icon_rc))for(;;)delay(1000000);
+   out[7]=MAIN_COMMIT_ROLLED_BACK;
+   return icon_rc;
+  }
   /* Preparation deliberately inhibits the two extra leaves. Release that
    * independent readiness gate only AFTER the full commit/final readback,
    * while every target reader is still stopped. Keep native rule flags. */

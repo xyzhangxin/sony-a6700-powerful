@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "model": "ILCE-6700",
+  "firmware": "2.00",
+  "kind": 76,
+  "targets": {
+    "ftp": "off",
+    "sound": "on",
+    "shutter": "off",
+    "exposure": "pasm"
+  },
+  "native_sources": {
+    "close_state.c": "cc96fddc7a86630160bf166336c97479bab78665298e99568c1711732a9f58dc",
+    "close_setting.c": "6aa09ef860586f0fc91af13dfbb4c0e7100126cd3bf4f40ae75a32a8933591aa"
+  },
+  "sources": {
+    "close-setting-source.c": "3f7ee5fcedb3290b45b250418a67d5d93a7d4f477da29df85c19a0c270f36497",
+    "close-state-sha256.h": "85dc96693857e6f4b9f9035e5c5b02b80a49ab44082f0c19dc46cd5c0400238e",
+    "close-state-profile.h": "c329697f997c824134ed02bf3722961ca9b7849a6bbad13338c1f3a9041bbbe4",
+    "close-setting.c": "6aa09ef860586f0fc91af13dfbb4c0e7100126cd3bf4f40ae75a32a8933591aa",
+    "close-setting-profile.h": "92d168856202fe23962a970ae8dc635a257620e283a25e9baf87305266da0742"
+  },
+  "payload_sha256": "dce5f2e0102a48012b0c3d71977ea7e9d0fe537984c1cab45261100f878b4a26"
+}

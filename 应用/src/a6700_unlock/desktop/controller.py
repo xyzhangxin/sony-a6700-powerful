@@ -15,6 +15,7 @@ from ..usb.backend import payloads
 from .physical import PhysicalService
 from .simulation import SCENARIOS, SimulationService
 from .aftercare import MENU_CHECKS, build_aftercare
+from ..close_preparation import RULES as CLOSE_RULES
 
 
 SIMULATION_RESULT_LABELS = {
@@ -47,6 +48,15 @@ PHYSICAL_RESULT_LABELS = {
     'backup-completed': ('功能状态备份完成', '已保存当前功能相关扇区；这不是整机镜像，不能恢复未由本工具管理的设置。'),
     'restored': ('恢复完成', '已写回备份中的功能字段，并通过独立回读。请正常退出后关机重开验收实际功能。'),
 }
+
+for _labels in (SIMULATION_RESULT_LABELS, PHYSICAL_RESULT_LABELS):
+    _labels.update({
+        'close-preparation-required': ('关闭前状态未获确认', '固件修改未开始。请按下方原因处理，再重新检查。'),
+        'close-preparation-uncertain': ('机身设置结果待核实', '关闭前设置调整未获确认，已停止后续固件修改；请保留记录，不要直接重试。'),
+        'close-preparation-restart-required': ('FTP已停止，请重启后继续', '设置已保存，固件尚未修改。请按说明重启，再重新连接检查。'),
+        'close-preparation-cancelled': ('已停止关闭前准备', '已确认的设置调整保持，尚未开始固件修改。'),
+        'settings-prepared': ('固件已关闭，机身设置已恢复', '固件此前已关闭；本次仅恢复相关机身设置并独立回读。菜单仍需完全断电重启后更新。'),
+    })
 
 
 def preview_environment():
@@ -292,7 +302,8 @@ class DesktopController:
             known = {row['id'] for row in rows}
             rows.extend(row for row in pending_rows(fl23_available=getattr(self.service,'fl23_available',False),
                 names_available=getattr(self.service,'names_available',False)) if row['id'] not in known)
-        return [dict(row, unlock_notice=MENU_CHECKS.get(row['id'], {}).get('unlock_notice'))
+        return [dict(row, unlock_notice=MENU_CHECKS.get(row['id'], {}).get('unlock_notice'),
+                     close_notice=CLOSE_RULES[row['id']].instruction if row['id'] in CLOSE_RULES else None)
                 for row in rows]
 
     def _require_selection_editable(self):
@@ -321,7 +332,7 @@ class DesktopController:
                 self.selected_features = set()
             elif mode == 'missing':
                 self.selected_features = {row['id'] for row in self.features
-                                          if row['id'] in self._feature_ids() and row.get('state') != 'enabled'}
+                                          if row['id'] in self._feature_ids() and (row.get('state') != 'enabled' or row.get('update_available'))}
             elif mode == 'enabled':
                 self.selected_features = {row['id'] for row in self.features
                                           if row['id'] in ids and row.get('state') != 'disabled'}
@@ -329,6 +340,16 @@ class DesktopController:
                 raise ValueError('未知功能选择模式。')
             self.revision += 1
         return self.snapshot()
+
+    def reserve_fl23_update(self):
+        """The row's update button targets FL23 only, ignoring other checks."""
+        with self.lock:
+            self._require_selection_editable()
+            row=next((r for r in self.features if r['id']=='fl23'),{})
+            if row.get('state')!='enabled' or row.get('update_available') is not True:
+                raise ValueError('当前没有可更新的旧版 FL2／FL3；请重新检查状态。')
+            self.selected_features={'fl23'}
+            self.reserve('unlock')
 
     def end_session(self):
         with self.lock:
@@ -466,7 +487,7 @@ class DesktopController:
                 self.compatible = result['plan']['compatible']
                 self.features = self._feature_rows(result['plan']['features'])
                 self.selected_features = {row['id'] for row in self.features
-                                          if row['id'] in self._feature_ids() and row.get('state') != 'enabled'}
+                                          if row['id'] in self._feature_ids() and (row.get('state') != 'enabled' or row.get('update_available'))}
                 self.inspect_summary = dict(
                     compatible=self.compatible,
                     read_sectors=result['plan'].get('read_sectors'),
@@ -476,7 +497,7 @@ class DesktopController:
                 self.phase = 'home'
                 self.result = None
             else:
-                self.compatible = (status in ('completed', 'restored', 'no-op', 'backup-completed')
+                self.compatible = (status in ('completed', 'restored', 'no-op', 'backup-completed', 'settings-prepared')
                                    and result.get('verified', False))
                 if action == 'backup':
                     self.features = self._feature_rows(result.get('features', result.get('plan', {}).get('features', [])))
@@ -484,6 +505,8 @@ class DesktopController:
                     self.features = self._feature_rows(result.get('final_features', result.get('plan', {}).get(
                         'features', []))) if self.compatible else []
                 title, detail = self.result_labels.get(status, ('操作未完成', '请重新检查状态。'))
+                if (result.get('close_preparation') or {}).get('completed'):
+                    detail += ' 关闭前已确认的机身设置调整保持，具体项目见下方记录。'
                 error = result.get('error', '')
                 if self.mode == 'simulation':
                     error = error.replace('相机', '模拟设备')
@@ -494,6 +517,7 @@ class DesktopController:
                                    backup_sha256=result.get('backup_sha256', ''),
                                    backup_id=result.get('backup_id', ''),
                                    cleanup_warning=result.get('cleanup_warning') or '',
+                                   close_preparation=result.get('close_preparation'),
                                    aftercare=build_aftercare(action, result, features,
                                                              self.mode == 'simulation'))
                 if action in ('unlock', 'close'):

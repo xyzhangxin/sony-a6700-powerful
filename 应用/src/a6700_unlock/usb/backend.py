@@ -205,6 +205,24 @@ class UsbBackend:
     def write(self, before, after, nonce):
         return self._run("writer", request(self.profile, nonce, before, after), nonce, 0)
 
+    def read_close_state(self, features, nonce):
+        if self.target is None or getattr(self,'channel',None) is None:
+            raise DeviceError('请先建立并验证当前相机连接')
+        from ..close_state import read_close_state
+        return read_close_state(self,features,nonce)
+
+    @property
+    def automatic_close_settings(self):
+        from ..close_setting import setting_assets,ORDER
+        setting_assets()
+        return ORDER
+
+    native_settings_adapter = True
+
+    def reset_close_setting(self, feature, target):
+        from ..close_setting import reset_close_setting
+        return reset_close_setting(self,feature,target)
+
     def __exit__(self, *unused):
         if self.target is not None:
             try:

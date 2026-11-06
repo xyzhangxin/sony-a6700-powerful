@@ -267,6 +267,10 @@ def inspect_sectors(profile: DeviceProfile, sectors: list[bytes], action="inspec
     states = {feature["id"]: _combined_state(
         [s for e, s in observations if e.feature == feature["id"]])
         for feature in catalog.data["features"]}
+    from .feature_updates import revision_status
+    edit_states = {e.id: state for e, state in observations}
+    revisions = {f["id"]: revision_status(f, catalog.edits, edit_states) for f in catalog.data["features"]}
+    states.update({ident: info["state"] for ident, info in revisions.items() if info})
     if mode == "missing":
         goal = "enabled" if action == "unlock" else "disabled"
         selected = [feature["id"] for feature in catalog.data["features"]
@@ -299,6 +303,7 @@ def inspect_sectors(profile: DeviceProfile, sectors: list[bytes], action="inspec
         row = {key: value for key, value in feature.items() if key not in ("id", "name")}
         row.update(id=feature["id"], name=feature["name"], state=states[feature["id"]],
                    selected=feature["id"] in selected_set)
+        row.update(revisions[feature["id"]])
         features_out.append(row)
     changed = [i for i in range(len(sectors)) if sectors[i] != after[i]]
     plan = dict(profile_id=profile.data["profile_id"], profile_sha256=profile.digest,

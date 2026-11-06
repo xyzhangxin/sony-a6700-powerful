@@ -63,6 +63,10 @@ def parser():
 
 def _summary(result):
     labels = {"completed": "写入和独立回读通过，请关机重开验收功能", "no-op": "已处于目标状态，无需修改",
+              "settings-prepared": "关闭前机身设置已恢复并回读，固件无需重复修改",
+              "close-preparation-required": "关闭前机身状态未获确认，未执行固件修改",
+              "close-preparation-uncertain": "机身设置调整结果待核实，未执行后续固件修改",
+              "close-preparation-cancelled": "关闭前准备已取消，已确认的设置调整保持",
               "blocked": "兼容性检查未通过，未执行设备操作", "inspected": "目标读取与检查完成",
               "dry-run": "预检完成，未写入功能修改", "rolled-back": "本次操作失败，已回退并回读确认",
               "rejected": "写前检查拒绝了本次修改", "uncertain": "通信中断，写入结果待核实，勿盲目重试",
@@ -73,6 +77,11 @@ def _summary(result):
     print(labels.get(result.get("status"), result.get("status")))
     if result.get("error"):
         print("原因：" + result["error"])
+    preparation = result.get('close_preparation') or {}
+    for check in preparation.get('checks', []):
+        state = ('已恢复为“%s”并回读' % check['target_label'] if check['id'] in preparation.get('completed', [])
+                 else '已确认，无需调整' if check['status'] == 'safe' else '尚未确认可安全关闭')
+        print('关闭前：' + check['name'] + ' · ' + state)
     plan = result.get("plan", {})
     features = result.get("final_features", result.get("features", plan.get("features", [])))
     states = {"enabled": "已解锁", "disabled": "未解锁", "partial": "部分解锁", "unknown": "未知"}
@@ -143,7 +152,7 @@ def _device(args, catalog):
     else:
         _summary(result)
     return 0 if result["status"] in ("completed", "no-op", "inspected", "dry-run",
-                                     "backup-completed", "restored") else 2
+                                     "backup-completed", "restored", "settings-prepared") else 2
 
 
 def _menu_device_args(action, backup=None):

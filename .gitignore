@@ -32,3 +32,7 @@ captures/
 !应用/src/a6700_unlock/data/fl23/reader.elf
 !应用/src/a6700_unlock/data/fl23/writer.elf
 !应用/src/a6700_unlock/data/fl23/files.elf
+
+# Fixed close-state/close-setting resources with matching source and manifest
+!应用/src/a6700_unlock/data/native/close-state.elf
+!应用/src/a6700_unlock/data/native/close-setting.elf

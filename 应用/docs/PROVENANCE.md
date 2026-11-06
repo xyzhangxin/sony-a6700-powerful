@@ -2,7 +2,7 @@
 
 运行框架更新：正式包现包含独立化的 USB 模块及原参考模块／许可、macOS helper 源码和固定适配的 ARM64 读写 ELF。`usb/legacy.py` 从归集版本适配为包内相对导入，并修正多组 bulk 端点选择，增加短写拒绝、分段响应收齐、分阶段诊断和退出状态观察；归档原件仍在 `verified/`。`native/transaction.c` 为本项目新集成执行器，不是未改动的历史载荷。原生源码、设备适配和产物哈希见 `data/native/manifest.json`。
 
-自有代码已按维护者选择采用 GPL-3.0-only（仅第 3 版），见 `LICENSE` 与 `NOTICE`。第三方归属已集中列于 `THIRD_PARTY_NOTICES.md`，原 MIT 声明逐字保留。当前仍是本地工程与开发包，尚未发布到远端。源码包与 wheel 均携带许可证；发布 wheel 时同时提供同版本源码包，保留原生源码、适配数据与构建脚本。
+自有代码已按维护者选择采用 GPL-3.0-only（仅第 3 版），见 `LICENSE` 与 `NOTICE`。第三方归属已集中列于 `THIRD_PARTY_NOTICES.md`，原 MIT 声明逐字保留。0.4.0及以前版本已有公开发行；0.4.1本地候选等待维护者审核。源码包与 wheel 均携带许可证；发布 wheel 时同时提供同版本源码包，保留原生源码、适配数据与构建脚本。
 
 离线功能仅依赖 Python 标准库；设备运行通过可选 `usb` 依赖使用 PyUSB 1.2.1 和系统 libusb，构建使用 setuptools。正式包和独立 `verified/` 归集区包含原工具实际使用的 Sony-PMCA-RE 协议常量及兼容 SHA-1 模块，均保留上游 MIT 许可与算法原作者许可。这些公开参考常量不是用户私人凭据。
 

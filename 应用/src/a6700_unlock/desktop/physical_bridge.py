@@ -86,8 +86,9 @@ def main():
                 thread = Thread(target=run, daemon=True)
                 thread.start()
                 continue
-            if command in ('inspect', 'unlock', 'close', 'backup', 'restore'):
-                controller.reserve(command, request.get('backup_id') if command == 'restore' else None)
+            if command in ('inspect', 'unlock', 'close', 'backup', 'restore', 'update_fl23'):
+                if command=='update_fl23':controller.reserve_fl23_update()
+                else:controller.reserve(command, request.get('backup_id') if command == 'restore' else None)
                 emit('state', state=controller.snapshot())
                 thread = Thread(target=run, daemon=True)
                 thread.start()

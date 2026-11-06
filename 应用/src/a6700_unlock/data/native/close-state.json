@@ -1,0 +1,297 @@
+{
+  "schema": 1,
+  "model": "ILCE-6700",
+  "firmware": "2.00",
+  "kind": 75,
+  "response_bytes": 1024,
+  "fields": [
+    {
+      "id": 23,
+      "name": "movie_recording_status",
+      "width": 4,
+      "address": 148009432
+    },
+    {
+      "id": 24,
+      "name": "movie_recording_status_2nd",
+      "width": 4,
+      "address": 148009444
+    },
+    {
+      "id": 464,
+      "name": "is_ftp_transfer_content_add_processing",
+      "width": 1,
+      "address": 148051875
+    },
+    {
+      "id": 468,
+      "name": "is_connected_to_ftp_server",
+      "width": 1,
+      "address": 148052986
+    },
+    {
+      "id": 469,
+      "name": "is_tried_to_connect_ftp_server",
+      "width": 1,
+      "address": 148052992
+    },
+    {
+      "id": 613,
+      "name": "ftp_transfer_canceling",
+      "width": 4,
+      "address": 148061640
+    },
+    {
+      "id": 1175,
+      "name": "setting_movie_exposure_mode_setting",
+      "width": 4,
+      "address": 148074704
+    },
+    {
+      "id": 1445,
+      "name": "setting_ftp_function",
+      "width": 4,
+      "address": 148080012
+    },
+    {
+      "id": 1690,
+      "name": "setting_audio_signals",
+      "width": 4,
+      "address": 148083664
+    },
+    {
+      "id": 1714,
+      "name": "setting_image_sensor_barrier",
+      "width": 4,
+      "address": 148084100
+    },
+    {
+      "id": 2366,
+      "name": "ftp_transfer_state",
+      "width": 4,
+      "address": 148099740
+    },
+    {
+      "id": 3595,
+      "name": "ftp_disconnecting_state",
+      "width": 4,
+      "address": 148244424
+    },
+    {
+      "id": 3596,
+      "name": "is_network_start_wait_comp",
+      "width": 1,
+      "address": 148244440
+    },
+    {
+      "id": 3597,
+      "name": "is_network_stop_wait_comp",
+      "width": 1,
+      "address": 148244446
+    },
+    {
+      "id": 3598,
+      "name": "is_network_connect_wait_comp",
+      "width": 1,
+      "address": 148244452
+    },
+    {
+      "id": 3599,
+      "name": "is_network_disconnect_wait_comp",
+      "width": 1,
+      "address": 148244458
+    },
+    {
+      "id": 3600,
+      "name": "is_ftp_connect_wait_comp",
+      "width": 1,
+      "address": 148244464
+    },
+    {
+      "id": 3601,
+      "name": "is_ftp_disconnect_wait_comp",
+      "width": 1,
+      "address": 148244470
+    },
+    {
+      "id": 3602,
+      "name": "is_ftp_stopped_proc_waiting",
+      "width": 1,
+      "address": 148244476
+    },
+    {
+      "id": 3603,
+      "name": "ftp_function_internal_state",
+      "width": 4,
+      "address": 148244484
+    },
+    {
+      "id": 3604,
+      "name": "ftp_current_connecting_method",
+      "width": 4,
+      "address": 148244496
+    },
+    {
+      "id": 3607,
+      "name": "is_ftp_restart",
+      "width": 1,
+      "address": 148244720
+    },
+    {
+      "id": 3608,
+      "name": "is_ftp_func_temporary_off",
+      "width": 1,
+      "address": 148244726
+    },
+    {
+      "id": 3610,
+      "name": "ftp_stopping",
+      "width": 4,
+      "address": 148244748
+    },
+    {
+      "id": 3613,
+      "name": "is_transferring_infra_ftp",
+      "width": 1,
+      "address": 148244776
+    },
+    {
+      "id": 102,
+      "name": "expand_mr_recall_state",
+      "width": 4,
+      "address": 148016628
+    },
+    {
+      "id": 886,
+      "name": "shoot_set_registration_recall_status",
+      "width": 4,
+      "address": 148067448
+    },
+    {
+      "id": 887,
+      "name": "shoot_set_registration_recall_execution_status",
+      "width": 4,
+      "address": 148067468
+    },
+    {
+      "id": 4465,
+      "name": "is_operating_shoot_set_registration_recall",
+      "width": 1,
+      "address": 148378708
+    }
+  ],
+  "guards": [
+    {
+      "address": 36796212,
+      "size": 32,
+      "sha256": "1e062c3415fa16cfc3cfb5413c63e66bc9b93c1f8067886abed1158ebd35ec7e"
+    },
+    {
+      "address": 49742592,
+      "size": 32,
+      "sha256": "73945169d7d829972d0b85a69dacf418061b021de7889878b313f4fa12f71899"
+    },
+    {
+      "address": 49742632,
+      "size": 32,
+      "sha256": "614c1596d5529271b59b72beeb5d32a165a23854f19fec56b5ff9468350f981a"
+    },
+    {
+      "address": 49829296,
+      "size": 32,
+      "sha256": "fba04d0cf0e8479057f271db00085c1a26adef78917066f6e5d128dc085c73cf"
+    },
+    {
+      "address": 49829336,
+      "size": 32,
+      "sha256": "62473424f18aabfb125e59b94d25362c05320a6878f9aef05498e32934dc7b7d"
+    },
+    {
+      "address": 49829376,
+      "size": 32,
+      "sha256": "b2fd2ac68b6be0a08597d51196e3161f386fa5a993b7e88465797aee8482547e"
+    },
+    {
+      "address": 49829416,
+      "size": 32,
+      "sha256": "29a4503a18875385b45ed82ddffd3272982464fedcd8e2c263f9185a5f133881"
+    },
+    {
+      "address": 49829536,
+      "size": 32,
+      "sha256": "bd86a49f497447cad3c6675232d8c327673f830ec325cd1e6422c9eb532a4e2d"
+    },
+    {
+      "address": 49829576,
+      "size": 32,
+      "sha256": "6d9cf28a5b86eb52edc1d7cb376f99affe3bc362f1a20eeb7a8e08f19bc8bf32"
+    },
+    {
+      "address": 49829616,
+      "size": 32,
+      "sha256": "b0c997923408274d723dc878524e5879eaf762f910606532db7220434908ba3f"
+    },
+    {
+      "address": 49829736,
+      "size": 32,
+      "sha256": "a3660ae93c9c36cdb307f11efe15b9fe6ec1c953fad3794e7afdebaed8a1f889"
+    },
+    {
+      "address": 49829856,
+      "size": 32,
+      "sha256": "a78b72695a7e6bc2c6708e365bf9c84ebea4dcc19c0abc9885ecc66d5fc7dd91"
+    },
+    {
+      "address": 49785900,
+      "size": 32,
+      "sha256": "8cf165cbb32f7c427693709c933ea40ed02a53a2a9f8ebc63c523026d057bf70"
+    },
+    {
+      "address": 49786860,
+      "size": 32,
+      "sha256": "5d335fcf1737ae96afa3fd334152e1f6a1ac4b9349fad2ec7dcf27adfc5fd97f"
+    },
+    {
+      "address": 49766940,
+      "size": 32,
+      "sha256": "dbe53a7f9b035888d508cae047800386839cda37ac415144b40ad0fe12abd918"
+    }
+  ],
+  "library_sha256": "551d1dbd8765ed2301131a5fb89234b0197cc822ef7aa5cf6f737e251395b3f1",
+  "library_guard_sha256": "fa00b88297e51d605c710425adddf32df9547b140d8ad87d36e82a39e57071c0",
+  "payload_sha256": "b9b7f57cb563e53a0feee528978eb70ebc93409eff7ff853dc0a22c25fdb5d68",
+  "sources": {
+    "close-state-source.c": "433d58f8b233357c46bf7c9750592fd05484a235eda22b2cd3a4ceecc691ca83",
+    "close-state-sha256.h": "85dc96693857e6f4b9f9035e5c5b02b80a49ab44082f0c19dc46cd5c0400238e",
+    "close-state-profile.h": "c329697f997c824134ed02bf3722961ca9b7849a6bbad13338c1f3a9041bbbe4"
+  },
+  "native_source_sha256": "cc96fddc7a86630160bf166336c97479bab78665298e99568c1711732a9f58dc",
+  "readonly": true,
+  "resource_guards": [
+    {
+      "address": 124108,
+      "size": 64,
+      "sha256": "99118bceabad7245e556fd371d52313f396b81ef426ac11d9d71b2b10e3e4963"
+    },
+    {
+      "address": 124160,
+      "size": 32,
+      "sha256": "5424f33172124d7711c95908955c81bff152c95c10ab92d6fa536d0a15be28b1"
+    },
+    {
+      "address": 179844,
+      "size": 64,
+      "sha256": "776116e7be9beec1a38bc429f4520e8cfd1fad19050c4d09ae1e639073a67d8e"
+    },
+    {
+      "address": 177608,
+      "size": 16,
+      "sha256": "b96cee70035b7c7b454f7d2f87b90207f63b030f3ec759b8b1f7b93020d7200d"
+    },
+    {
+      "address": 153140,
+      "size": 64,
+      "sha256": "5df6d72e6fca9d386b2d5c5710cbdc37e353c26c3ec4d6d5046fee093af9885a"
+    }
+  ]
+}

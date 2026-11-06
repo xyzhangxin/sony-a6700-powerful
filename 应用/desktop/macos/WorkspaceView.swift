@@ -9,7 +9,8 @@ struct WorkspaceView: View {
     private var features: [FeatureRow] { model.state?.features ?? [] }
     private var available: [FeatureRow] { features.filter { $0.isAvailable } }
     private var selected: [FeatureRow] { available.filter { $0.selected == true } }
-    private var affected: [FeatureRow] { selected.filter { $0.state != (action == "unlock" ? "enabled" : "disabled") } }
+    private var affected: [FeatureRow] { selected.filter { $0.state != (action == "unlock" ? "enabled" : "disabled") || (action == "unlock" && $0.update_available == true) } }
+    private var hasUpdates: Bool { action == "unlock" && affected.contains { $0.update_available == true } }
     private var dependencyIssue: String? {
         if action == "unlock" {
             for feature in affected {
@@ -53,7 +54,7 @@ struct WorkspaceView: View {
             HStack(spacing: 14) {
                 Text("选择功能").font(.system(size: 12, weight: .semibold))
                 Spacer()
-                Button(action == "unlock" ? "选择未解锁" : "选择可关闭") {
+                Button(action == "unlock" ? "选择未解锁或可更新" : "选择可关闭") {
                     model.send("select", extra: ["mode": action == "unlock" ? "missing" : "enabled"])
                 }.buttonStyle(.plain).foregroundColor(UI.accent)
                 Button(selected.count == available.count ? "清空" : "全选") {
@@ -81,6 +82,11 @@ struct WorkspaceView: View {
                             Spacer(minLength: 4)
                             Text(feature.isAvailable ? feature.stateText : "暂未开放").font(.system(size: 10, weight: .medium))
                                 .foregroundColor(feature.state == "enabled" ? UI.accent : UI.muted)
+                            if feature.id == "fl23" && feature.update_available == true {
+                                Button("更新 FL2／FL3") { model.send("update_fl23") }
+                                    .buttonStyle(.bordered).tint(UI.accent)
+                                    .accessibilityHint("仅更新 FL2／FL3 修复包，保留中文名称和其他功能")
+                            }
                         }.padding(.leading, 6)
                     }.toggleStyle(.checkbox).disabled(!feature.isAvailable).opacity(feature.isAvailable ? 1 : 0.55).padding(.horizontal, 16).padding(.vertical, 12)
                         .accessibilityLabel("选择功能：" + feature.title)
@@ -98,20 +104,20 @@ struct WorkspaceView: View {
             Picker("操作方式", selection: $action) {
                 Text("解锁").tag("unlock"); Text("关闭").tag("close")
             }.labelsHidden().pickerStyle(.segmented).padding(.top, 14).accessibilityLabel("操作方式")
-            Text(action == "unlock" ? "将解锁 \(affected.count) 项" : "将关闭 \(affected.count) 项")
+            Text(action == "unlock" ? "将\(hasUpdates ? "解锁或更新" : "解锁") \(affected.count) 项" : "检查并关闭 \(selected.count) 项")
                 .font(.system(size: 21, weight: .bold)).padding(.top, 23)
-            Text("已选 \(selected.count) 项 · 状态已符合的功能会跳过")
+            Text("已选 \(selected.count) 项 · " + (action == "close" ? "固件已关闭的项仍检查机身设置" : "状态已符合的功能会跳过"))
                 .font(.system(size: 10)).foregroundColor(UI.muted).padding(.top, 6)
             VStack(alignment: .leading, spacing: 10) {
                 if affected.isEmpty {
-                    Text(available.allSatisfy { $0.state == "enabled" } && action == "unlock"
+                    Text(action == "close" && !selected.isEmpty ? "固件已关闭，仍会检查所选功能的机身设置。" : available.allSatisfy { $0.state == "enabled" } && action == "unlock"
                          ? "本版可用功能都已解锁。如需撤销，切换到“关闭”并选择功能。"
                          : "在左侧选择需要调整的功能。")
                         .font(.system(size: 12)).foregroundColor(UI.muted).lineSpacing(4)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 ForEach(affected) { feature in
-                    Label(feature.title, systemImage: action == "unlock" ? "plus.circle" : "minus.circle")
+                    Label(feature.title + (action == "unlock" && feature.update_available == true ? " · 更新" : ""), systemImage: action == "unlock" ? "plus.circle" : "minus.circle")
                         .font(.system(size: 12)).foregroundColor(UI.ink)
                 }
             }.padding(.vertical, 20).frame(maxWidth: .infinity, minHeight: 94, alignment: .topLeading)
@@ -124,10 +130,13 @@ struct WorkspaceView: View {
                     .font(.system(size: 11)).foregroundColor(UI.amber)
                     .fixedSize(horizontal: false, vertical: true).padding(.bottom, 14)
             }
-            if action == "close" && affected.contains(where: { $0.id == "sound" }) {
-                Text("关闭前，请先在相机中把「音频信号」设为「开」或「关」。若停在「仅电子快门」等新增选项上，关闭后该选项会被移除，菜单会临时停在无效项，需要再手动选回「开」或「关」。")
-                    .font(.system(size: 11)).foregroundColor(UI.amber)
-                    .fixedSize(horizontal: false, vertical: true).padding(.bottom, 14)
+            if action == "close" {
+                ForEach(selected) { feature in
+                    if let notice = feature.close_notice, !notice.isEmpty {
+                        Text(notice).font(.system(size: 11)).foregroundColor(UI.amber)
+                            .fixedSize(horizontal: false, vertical: true).padding(.bottom, 14)
+                    }
+                }
             }
             if action == "unlock" {
                 ForEach(selected) { feature in
@@ -139,11 +148,13 @@ struct WorkspaceView: View {
                 }
             }
             Button { model.send(action) } label: {
-                Text((physical ? "" : "演示：") + (action == "unlock" ? "解锁 \(affected.count) 项" : "关闭 \(affected.count) 项"))
+                Text((physical ? "" : "演示：") + (action == "unlock" ? "\(hasUpdates ? "解锁或更新" : "解锁") \(affected.count) 项" : "恢复设置并关闭 \(selected.count) 项"))
                     .frame(maxWidth: .infinity)
             }.buttonStyle(PrimaryStyle(destructive: action == "close"))
-                .disabled(affected.isEmpty || dependencyIssue != nil || model.isBusy)
-            Text(physical ? "只修改所选功能，每次执行前会重新检查。" : "演示不会连接或修改真实相机。")
+                .disabled((action == "close" ? selected.isEmpty : affected.isEmpty) || dependencyIssue != nil || model.isBusy)
+            Text(physical
+                 ? (action == "close" ? "一次完成：先恢复默认设置，再关闭固件功能并独立回读。" : "只修改所选功能，每次执行前会重新检查。")
+                 : "演示不会连接或修改真实相机。")
                 .font(.system(size: 10)).foregroundColor(UI.muted).lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true).padding(.top, 12)
         }

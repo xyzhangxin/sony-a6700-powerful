@@ -472,4 +472,123 @@ class FileVariantNativeTests(unittest.TestCase):
         self.assertEqual(self.run_job(fs,1,flags=4)[0],2)
 
 
+@unittest.skipUnless(native.AVAILABLE,'native emulator unavailable')
+class FileRevisionNativeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp=tempfile.TemporaryDirectory();p=Path(cls.temp.name);cls.recipe=synthetic()
+        cls.carriers={f:bytes([f])*n for f,n in ((1,1100),(2,1300),(3,1500),(5,1700),(7,1900))}
+        (p/'recipe.json').write_text(json.dumps(cls.recipe));(p/'carrier.bin').write_bytes(cls.carriers[1])
+        cls.out=p/'out';variants=cls.out/'variants'
+        for f in (2,3):
+            folder=variants/str(f);(folder/'runtime').mkdir(parents=True)
+            (folder/'carrier.bin').write_bytes(cls.carriers[f]);(folder/'runtime/manifest.json').write_text('{"files":{}}')
+        legacy={str(f):dict(flags=f&3,revision=1,bytes=len(cls.carriers[f]),sha256=sha(cls.carriers[f])) for f in (5,7)}
+        (p/'legacy.json').write_text(json.dumps(legacy))
+        builder.build(p/'recipe.json',p/'carrier.bin',ROOT/'src/a6700_unlock/native/fl23_sha256.h',
+            destination=cls.out,variants_path=variants,legacy_path=p/'legacy.json')
+        cls.binary=(cls.out/'files.elf').read_bytes()
+    @classmethod
+    def tearDownClass(cls):cls.temp.cleanup()
+    run_job=FileNativeTests.run_job
+    def test_actual_legacy_files_are_identified_and_atomically_upgraded(self):
+        for old in (5,7):
+            new=old&3;fs={'/setting/fl23':bytearray(self.carriers[old])}
+            status,detail,data,_=self.run_job(fs,length=len(self.carriers[old]))
+            self.assertEqual((status,detail>>8,data),(0,old,self.carriers[old]))
+            self.assertEqual(self.run_job(fs,1,flags=new)[0],0)
+            self.assertEqual(self.run_job(fs,2,flags=new,data=self.carriers[new])[0],0)
+            self.assertEqual(fs['/setting/fl23'],self.carriers[old])
+            self.assertEqual(self.run_job(fs,3,flags=new)[0],0)
+            self.assertEqual(self.run_job(fs,length=len(self.carriers[new]))[:3],(0,1|(new<<8),self.carriers[new]))
+    def test_legacy_and_current_files_can_be_fully_removed_but_unknown_files_remain(self):
+        for old in (5,7):
+            fs={'/setting/fl23':bytearray(self.carriers[old]),'/setting/fl23.off':bytearray(self.carriers[old&3])}
+            self.assertEqual(self.run_job(fs,6)[0],0);self.assertEqual(fs,{})
+            fs={'/setting/fl23':bytearray(self.carriers[old]),'/setting/fl23.off':bytearray(b'unknown')}
+            self.assertEqual(self.run_job(fs,6)[0],1);self.assertEqual(len(fs),2)
+    def test_old_file_ids_are_not_exposed_as_feature_bits(self):
+        p=Package(self.out)
+        for ident,flags in ((5,1),(7,3),(1,1),(3,3)):
+            self.assertEqual(p.file_specs[ident]['flags'],flags)
+            self.assertEqual(p.file_specs[ident]['revision'],1 if ident&4 else 2)
+        nonce=bytes(range(16));backend=SimpleNamespace()
+        def invoke(binary,cfg):
+            return struct.pack('<4sI16s5I',b'A67F',1,cfg[8:24],0,0,1|(7<<8),0,0)
+        with tempfile.TemporaryDirectory() as directory:
+            result=Session(p,backend,invoke,Path(directory)).file()
+        self.assertEqual((result['flags'],result['file_id'],result['revision']),(3,7,1))
+
+
+class RevisionUpdateTests(unittest.TestCase):
+    def run_update(self,file_id,*,fail=None):
+        import contextlib
+        import a6700_unlock.fl23_package as module
+        recipe=synthetic();entries=[]
+        for index,device in enumerate((0,1,0,2)):
+            entry=dict(index=index,device=device,device_offset=512*(index+1),unmanaged_sha256=sha(bytes(512)),
+                edits=[dict(offset=4,disabled='00000000',enabled='01010101')])
+            if index<2:entry['boot_entry']=True
+            entries.append(entry)
+        recipe['entries']=entries
+        spec=dict(key=123,bytes=2,before_sha256=sha(b'\0\0'),after_sha256=sha(b'\1\0'),edits=[])
+        recipe['cp_units']=[spec]
+        package=SimpleNamespace(recipe=recipe,profile=Profile(recipe),manifest=dict(carrier_revision=2),
+            carriers={i:bytes([i])*1100 for i in (1,2,3)})
+        before=[]
+        for _ in entries:
+            raw=bytearray(512);raw[4:8]=b'\1'*4;before.append(bytes(raw))
+        state=dict(file_id=file_id,blocks=list(before),events=[],upload=b'',unit=b'\1\0')
+        class Channel:
+            def send(self,*_):raise AssertionError('CP SAVE must not be sent for a repair update')
+        backend=SimpleNamespace(channel=Channel())
+        class Fake:
+            def __init__(self,p,b,i,d):self.package=p;self.backend=b;self.directory=Path(d)
+            def blocks(self,old=None,new=None):
+                if old is None:return list(state['blocks'])
+                if old!=state['blocks']:raise DeviceError('stale preimage')
+                changed=[i for i,(a,b) in enumerate(zip(old,new)) if a!=b]
+                if changed!=[0,1]:raise AssertionError('Repair changed CP or resident code')
+                state['events'].append(('branches',new[0][4]));state['blocks']=list(new);return []
+            def units(self):return [state['unit']]
+            def selection(self):return 0
+            def file(self,op=0,offset=0,data=b'',length=0,flags=1):
+                if op in (1,2,3):
+                    if state['blocks'][0][4] or state['blocks'][1][4]:raise AssertionError('Startup active during update')
+                    state['events'].append(('file',op))
+                if op==1:state['upload']=b''
+                elif op==2:state['upload']+=data
+                elif op==3:
+                    if fail=='commit':raise DeviceError('atomic commit failed')
+                    if state['upload']!=package.carriers[flags]:raise AssertionError('wrong replacement')
+                    state['file_id']=flags
+                ident=state['file_id'];actual=ident&3
+                return dict(present=True,flags=actual,file_id=ident,revision=1 if ident&4 else 2,
+                    mask=1,owned_mask=1,data=package.carriers[actual][offset:offset+length] if length else b'')
+        @contextlib.contextmanager
+        def files(*_):yield None
+        with tempfile.TemporaryDirectory() as tmp,mock.patch.object(module,'Session',Fake),mock.patch.object(module,'service_files',files):
+            result=module.perform_options(package,backend,'unlock',Path(tmp),lambda _:None,['fl23'])
+        return result,state,before
+    def test_repair_updates_preserve_names_cp_resident_and_restore_branches(self):
+        for ident in (5,7):
+            result,state,before=self.run_update(ident)
+            self.assertEqual(result['status'],'completed',result)
+            self.assertTrue(result['package_updated']);self.assertTrue(result['verified'])
+            self.assertEqual(state['file_id'],ident&3);self.assertEqual(state['blocks'],before)
+            self.assertEqual(state['unit'],b'\1\0')
+            self.assertEqual(state['events'][0],('branches',0));self.assertEqual(state['events'][-1],('branches',1))
+            self.assertFalse(result['final_features'][0]['update_available'])
+            self.assertEqual(result['final_features'][1]['state'],'enabled' if ident==7 else 'disabled')
+    def test_current_revision_is_a_true_noop(self):
+        for ident in (1,3):
+            result,state,_=self.run_update(ident)
+            self.assertEqual(result['status'],'no-op');self.assertFalse(result['write_attempted']);self.assertEqual(state['events'],[])
+    def test_failed_update_does_not_reactivate_startup_or_claim_completion(self):
+        result,state,before=self.run_update(7,fail='commit')
+        self.assertEqual(result['status'],'uncertain');self.assertFalse(result['verified'])
+        self.assertEqual(state['file_id'],7);self.assertEqual(state['blocks'][0][4],0)
+        self.assertEqual(state['blocks'][2:],before[2:])
+
+
 if __name__=='__main__':unittest.main()

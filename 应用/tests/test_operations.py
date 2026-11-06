@@ -76,6 +76,8 @@ class OperationTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name)
+        state_patch = patch("a6700_unlock.operations.default_state_dir", return_value=self.directory)
+        state_patch.start(); self.addCleanup(state_patch.stop)
         self.profile, self.sectors = sparse_fixture()
         lock_patch = patch("a6700_unlock.operations.host_lock_path", return_value=self.directory / "host/.assistant.lock")
         lock_patch.start()
@@ -348,6 +350,8 @@ class SelectionTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name)
+        state_patch = patch("a6700_unlock.operations.default_state_dir", return_value=self.directory)
+        state_patch.start(); self.addCleanup(state_patch.stop)
         self.profile, self.sectors = sparse_fixture(2)
         lock_patch = patch("a6700_unlock.operations.host_lock_path",
                            return_value=self.directory / "host/.assistant.lock")

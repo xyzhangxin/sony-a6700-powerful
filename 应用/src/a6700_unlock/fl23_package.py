@@ -89,6 +89,19 @@ class Package:
                 if path.is_absolute() or '..' in path.parts or sha(folder.joinpath('runtime/'+name).read_bytes())!=digest:
                     raise DeviceError('创意外观组合源码与载荷不一致')
             self.carriers[int(flags)]=data
+        revision=self.manifest.get('carrier_revision',1)
+        legacy=self.manifest.get('legacy_carriers',{})
+        if type(revision) is not int or revision not in (1,2) or (legacy and (revision!=2 or set(legacy)!={'5','7'})):
+            raise DeviceError('FL23 功能包版本清单不匹配')
+        self.file_specs={f:dict(flags=f,revision=revision if f&1 else 1,bytes=len(data),sha256=sha(data))
+                         for f,data in self.carriers.items()}
+        for ident,row in legacy.items():
+            if (row.get('flags')!=int(ident)&3 or row.get('revision')!=1 or
+                    type(row.get('bytes')) is not int or not 1024<=row['bytes']<=2098176 or
+                    len(bytes.fromhex(row['sha256']))!=32 or
+                    row['sha256'] in {r['sha256'] for r in self.file_specs.values()}):
+                raise DeviceError('FL23 旧版识别清单不匹配')
+            self.file_specs[int(ident)]=dict(row)
 
 
 def available():
@@ -189,7 +202,11 @@ class Session:
             if magic!=b'A67F' or version!=1 or returned!=nonce or len(raw)!=44+n or n>65536:
                 raise DeviceError('FL23 文件事务版本／nonce／长度不匹配')
             if status:raise DeviceError('FL23 文件事务拒绝：'+str(status))
-            return dict(present=bool(detail&1),mask=detail&255,flags=(detail>>8 or 1) if detail&1 else 0,data=raw[44:])
+            ident=(detail>>8 or 1) if detail&1 else 0
+            spec=getattr(p,'file_specs',{}).get(ident)
+            if detail&1 and hasattr(p,'file_specs') and spec is None:raise DeviceError('FL23 功能包版本不在识别清单中')
+            return dict(present=bool(detail&1),mask=detail&255,file_id=ident,
+                flags=spec['flags'] if spec else ident,revision=spec['revision'] if spec else 1,data=raw[44:])
         return self.exchange('files',cfg,parse)
     def cp_unit(self,row,value=None):
         key=row['key'];writing=value is not None
@@ -253,7 +270,25 @@ def inspect(session):
             'disabled' if detail['startup']=='disabled' and not file['owned_mask'] else 'partial')
     state='enabled' if enabled else 'disabled' if disabled else 'partial'
     row=dict(id='fl23',name='FL2／FL3 创意外观',state=state,available=True)
+    target=getattr(session.package,'manifest',{}).get('carrier_revision',1)
+    installed=file.get('revision',1) if enabled else 0 if disabled else None
+    row.update(installed_revision=installed,target_revision=target,
+        update_available=enabled and installed<target,
+        update_state=('available' if installed<target else 'current') if enabled else 'uninstalled' if disabled else 'unknown')
     return row,detail,before,units,file,selected
+
+
+def pause_startup_branches(package,before):
+    """Pause only the two existing activation instructions for a file update."""
+    after=list(before);branches=[]
+    for i,entry in enumerate(package.profile.entries):
+        if not entry.get('boot_entry'):continue
+        if entry['device'] not in (0,1) or len(entry['edits'])!=1:raise DeviceError('FL23 启动入口结构不匹配')
+        edit=entry['edits'][0];at=edit['offset'];old=bytes.fromhex(edit['disabled']);on=bytes.fromhex(edit['enabled'])
+        if len(old)!=4 or len(on)!=4 or before[i][at:at+4]!=on:raise DeviceError('FL23 更新前启动入口状态不完整')
+        raw=bytearray(before[i]);raw[at:at+4]=old;after[i]=bytes(raw);branches.append(entry['device'])
+    if sorted(branches)!=[0,1]:raise DeviceError('FL23 更新需要已知的两个启动入口')
+    return after
 
 
 def require_stock_values(values):
@@ -298,11 +333,13 @@ def update_units(session,units,action):
     if ap_after!=ap_before:raise DeviceError('FL23 CP 保存改变了原有外观／MR 设置')
 
 
-def perform(backend,action,directory,progress=lambda _:None,features=None):
+def perform(backend,action,directory,progress=lambda _:None,features=None,*,validate_close=False):
     """Caller holds device lock; install is journaled, never auto-replayed."""
+    if action not in ('inspect','unlock','close') or (validate_close and action!='inspect'):
+        raise ValueError('未知创意外观操作')
     package=Package()
     if len(getattr(package,'carriers',{}))>1:
-        return perform_options(package,backend,action,directory,progress,features)
+        return perform_options(package,backend,action,directory,progress,features,validate_close=validate_close)
     if features is not None and set(features)!={'fl23'}:raise DeviceError('中文名称安装组件尚未准备完成')
     run=Path(directory)/'runs'/('fl23-'+uuid.uuid4().hex)
     make_directory(run)
@@ -315,6 +352,11 @@ def perform(backend,action,directory,progress=lambda _:None,features=None):
             row,detail,before,units,file,selected=inspect(session)
             result['plan']=dict(compatible=True,features=[row],read_sectors=len(package.profile.entries)+len(package.recipe['guards']),
                 read_bytes=(len(package.profile.entries)+len(package.recipe['guards']))*512,selected_features=['fl23'],changed_bytes=0)
+            if action=='close' or validate_close:
+                require_stock_values(session.ap_values())
+                if not file['owned_mask'] and detail['startup']!='disabled':
+                    raise DeviceError('当前是旧研究启动版本，请先完成 FL2／FL3 安装迁移，再使用本版关闭。')
+                result['close_ready']=True
             if action=='inspect':result['status']='inspected'
             elif (action=='unlock' and row['state']=='enabled') or (action=='close' and row['state']=='disabled'):
                 result.update(status='no-op',verified=True,final_features=[row])
@@ -370,7 +412,7 @@ def perform(backend,action,directory,progress=lambda _:None,features=None):
     return result
 
 
-def perform_options(package,backend,action,directory,progress,features=None):
+def perform_options(package,backend,action,directory,progress,features=None,*,validate_close=False):
     """One shared loader, independent FL23/Chinese flags, CP only for FL23.
 
     A carrier switch first makes AP/WBI startup inert, then verifies the
@@ -395,6 +437,14 @@ def perform_options(package,backend,action,directory,progress,features=None):
             result['plan']=dict(compatible=True,features=observed,selected_features=list(selected),
                 read_sectors=len(package.profile.entries)+len(package.recipe['guards']),
                 read_bytes=(len(package.profile.entries)+len(package.recipe['guards']))*512,changed_bytes=0)
+            if action=='close' or validate_close:
+                legacy=('fl23' in selected and detail['startup']=='disabled' and not file['present']
+                        and not file['owned_mask']&~4 and any(r['state']=='partial' for r in observed))
+                if any(r['state']=='partial' for r in observed) and not legacy:
+                    raise DeviceError('创意外观安装状态不完整，未开始关闭任何所选功能。')
+                if 'fl23' in selected:
+                    require_stock_values(session.ap_values())
+                result['close_ready']=True
             if action=='inspect':result['status']='inspected'
             else:
                 current=detail['flags']
@@ -408,7 +458,8 @@ def perform_options(package,backend,action,directory,progress,features=None):
                 for feature in selected:
                     bit=1 if feature=='fl23' else 2
                     target=(target|bit) if action=='unlock' else (target&~bit)
-                if target==current and not legacy_close:
+                repair_update=action=='unlock' and 'fl23' in selected and row.get('update_available',False)
+                if target==current and not legacy_close and not repair_update:
                     result.update(status='no-op',verified=True,final_features=observed)
                 else:
                     if (current&1 or legacy_close) and not target&1:
@@ -416,11 +467,13 @@ def perform_options(package,backend,action,directory,progress,features=None):
                     _,on=plan_blocks(package,before,'unlock');_,off=plan_blocks(package,before,'close')
                     after=[(on if (target&1 if entry['device']==2 else target) else off)[i]
                            for i,entry in enumerate(package.profile.entries)]
-                    inert=[off[i] if entry['device']!=2 else raw for i,(entry,raw) in enumerate(zip(package.profile.entries,before))]
+                    inert=(pause_startup_branches(package,before) if repair_update and target==current else
+                        [off[i] if entry['device']!=2 else raw for i,(entry,raw) in enumerate(zip(package.profile.entries,before))])
                     save_json(run/'preimages.json',dict(sectors=[s.hex() for s in before],cp_units=[u.hex() for u in units],full_backup=False))
                     changed=sum(sum(a!=b for a,b in zip(x,y)) for x,y in zip(before,after))
                     save_json(run/'write-intent.json',dict(before_flags=current,after_flags=target,selected_features=selected,
-                        carrier_sha256=sha(package.carriers[target]) if target else None,changed_bytes=changed))
+                        carrier_sha256=sha(package.carriers[target]) if target else None,changed_bytes=changed,
+                        package_update=repair_update,installed_revision=row.get('installed_revision'),target_revision=row.get('target_revision')))
                     result['write_attempted']=True
                     if before!=inert:
                         progress('正在暂停创意外观启动入口…');session.blocks(before,inert)
@@ -428,8 +481,9 @@ def perform_options(package,backend,action,directory,progress,features=None):
                         before=inert
                     if target:
                         carrier=package.carriers[target]
-                        if file.get('flags')!=target or not file['present']:
-                            progress('正在安装所选创意外观组合…');session.file(1,flags=target)
+                        if file.get('flags')!=target or not file['present'] or repair_update:
+                            if file.get('owned_mask',0)&2:raise DeviceError('创意外观存在未完成的暂存事务，未重复上传')
+                            progress('正在更新 FL2／FL3 修复包…' if repair_update else '正在安装所选创意外观组合…');session.file(1,flags=target)
                             for at in range(0,len(carrier),65536):session.file(2,at,carrier[at:at+65536],flags=target)
                             session.file(3,flags=target)
                         data=b''.join(session.file(0,at,length=min(65536,len(carrier)-at),flags=target)['data'] for at in range(0,len(carrier),65536))
@@ -443,12 +497,15 @@ def perform_options(package,backend,action,directory,progress,features=None):
                     if not target:
                         session.file(6)
                         if session.file(5)['mask']:raise DeviceError('创意外观功能包仍有残留')
-                    final,fd,_,_,_,_=inspect(session);final_rows=rows(final,fd)
+                    final,fd,_,final_units,_,_=inspect(session);final_rows=rows(final,fd)
                     if fd['flags']!=target or any(r['state']!=('enabled' if target&(1<<i) else 'disabled') for i,r in enumerate(final_rows)):
                         raise DeviceError('创意外观组合最终状态不一致')
+                    if repair_update and final.get('update_available'):raise DeviceError('FL23 修复包版本独立回读未通过')
+                    if not (current^target)&1 and not legacy_close and final_units!=units:
+                        raise DeviceError('创意外观更新改变了原有 CP 参数')
                     result['plan']['changed_bytes']=changed
                     result.update(status='completed',verified=True,final_features=final_rows,restart_required=True,
-                        before_flags=current,after_flags=target)
+                        before_flags=current,after_flags=target,package_updated=repair_update)
                     progress('所选功能写入及回读通过；冷启动后生效。')
         result['service_restore_verified']=True
     except BaseException as exc:
