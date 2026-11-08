@@ -23,6 +23,8 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m compileall -q -x '/\._' 核心 脚本
   application:
+    env:
+      PYTHONUTF8: '1'
     name: 应用 / ${{ matrix.os }} / Python ${{ matrix.python }}
     strategy:
       fail-fast: false
@@ -33,6 +35,8 @@ jobs:
           - os: ubuntu-latest
             python: '3.13'
           - os: macos-latest
+            python: '3.13'
+          - os: windows-latest
             python: '3.13'
     runs-on: ${{ matrix.os }}
     defaults:
@@ -51,6 +55,15 @@ jobs:
       - name: 安装原生测试链接器（macOS）
         if: runner.os == 'macOS'
         run: brew install lld
+      - name: 配置原生测试编译器（Windows）
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: 'winget install --id LLVM.LLVM --exact --silent --accept-package-agreements --accept-source-agreements
+          $llvm = 'C:\Program Files\LLVM\bin'
+          if (-not (Test-Path (Join-Path $llvm 'clang.exe'))) { throw 'LLVM clang missing after installation' }
+          if (-not (Test-Path (Join-Path $llvm 'ld.lld.exe'))) { throw 'LLVM ld.lld missing after installation' }
+          Write-Output "LLVM_BIN=$llvm" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
+          $llvm | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append'
       - name: 安装开发依赖
         run: python -m pip install 'setuptools>=77' wheel '.[usb,test]'
       - name: 合成测试及原生 ELF 仿真，不访问相机

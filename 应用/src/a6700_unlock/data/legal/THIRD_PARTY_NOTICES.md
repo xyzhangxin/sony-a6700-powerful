@@ -14,3 +14,7 @@ wheel 中 PyUSB 是单独安装的可选依赖，libusb 为外部运行依赖。
 本项目许可覆盖工具自有代码，不代表取得 Sony 商标或相机固件的所有权，也不将外部固件及用户备份改为 GPL。源码包只收录工具所需的修改字段、校验及归集代码样例，不包含完整固件、个人镜像或机身密钥。
 
 GPL 正文来自 [SPDX license-list-data 的 GPL-3.0-only 文本](https://github.com/spdx/license-list-data/blob/main/text/GPL-3.0-only.txt)；原文版权属于 Free Software Foundation，按其允许逐字复制的声明保留。
+
+Windows 预览另行分发 CPython（PSF）、PyUSB（BSD-3-Clause）、libusb-package（Apache-2.0，内含 LGPL-2.1-or-later 的 libusb）及 Qt/PySide6/shiboken6（LGPL-3.0 等选项）。具体版本在 `desktop/windows/requirements.txt` 及成品 `licenses/versions.json`；许可和对应源码入口见 `desktop/windows/licenses/` 与成品 `licenses/`。Qt 和 libusb 作为可替换的动态库分发，不限制为调试这些库修改所需的逆向工程。PyInstaller 是构建依赖，其引导程序遵循 GPL 及官方分发例外。libusb 对应源包随成品保留在 `dependency-sources/`。
+
+Windows 的自动驱动准备使用 libwdi/wdi-simple（LGPL-3.0-or-later）。二进制来源、对应源码与逐文件 SHA-256 见 `desktop/windows/driver/README.md` 和 `desktop/runtime-dependencies.json`；对应 libwdi 源包随成品保留在 `dependency-sources/`。安装器只绑定 Windows 自带的 WinUSB，不包含 libusb-win32 内核驱动。

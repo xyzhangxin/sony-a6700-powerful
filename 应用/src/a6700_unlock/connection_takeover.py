@@ -11,6 +11,7 @@ from pathlib import Path
 import secrets
 import signal
 import stat
+import sys
 import subprocess
 import time
 from urllib.parse import urlsplit
@@ -21,6 +22,15 @@ from .operations import default_state_dir, host_lock_path, make_directory, save_
 
 
 def lock_busy(path):
+    if os.name=='nt':
+        import msvcrt
+        try:
+            with Path(path).open('rb') as handle:
+                try:msvcrt.locking(handle.fileno(),msvcrt.LK_NBLCK,1)
+                except OSError:return True
+                else:msvcrt.locking(handle.fileno(),msvcrt.LK_UNLCK,1)
+        except FileNotFoundError:pass
+        return False
     import fcntl
     try:
         with Path(path).open('r') as handle:
@@ -36,6 +46,7 @@ def lock_busy(path):
 
 
 def process_identity(pid):
+    if sys.platform=='win32':return None
     if type(pid) is not int or pid <= 1 or pid in (os.getpid(), os.getppid()):
         return None
     try:
@@ -77,12 +88,13 @@ def unique_owner(path):
 
 def known_active_task(path, owner):
     """Optional local tool registration; normal users need no debug service."""
+    if sys.platform=='win32':return False
     registration = Path(path).parent / 'bench.json'
     try:
         info_stat = registration.lstat()
         if not stat.S_ISREG(info_stat.st_mode) or info_stat.st_uid != os.getuid() or info_stat.st_mode & 0o077:
             return False
-        info = json.loads(registration.read_text())
+        info = json.loads(registration.read_text(encoding='utf-8'))
         if info.get('pid') != owner['pid']:
             return False
         url = urlsplit(info['url'])
@@ -120,6 +132,8 @@ class TakeoverManager:
             return dict(base, detail='此操作记录目录仍被其他任务使用，请等待该任务完成。')
         if not lock_busy(path):
             return dict(base, detail='占用已释放，可直接重新连接。')
+        if sys.platform=='win32':
+            return dict(base, detail='相机连接正被其他本机工具占用。请在原工具中结束任务并退出连接，再重新检查；Windows 版不自动结束无法核实的占用进程。')
         owner = unique_owner(path)
         if owner is None:
             return dict(base, detail='无法唯一确认占用进程，请先退出其他相机软件，再重新连接。')

@@ -26,7 +26,7 @@ RESTART_MESSAGE=('FTP已关闭并保存，传输及存储卡访问已停止，�
 def setting_assets():
     root=files('a6700_unlock');data=root.joinpath('data/native')
     try:
-        m=json.loads(data.joinpath('close-setting.json').read_text())
+        m=json.loads(data.joinpath('close-setting.json').read_text(encoding='utf-8'))
         names={'close-setting-source.c','close-setting.c','close-setting-profile.h',
                'close-state-profile.h','close-state-sha256.h'}
         if (m.get('schema')!=1 or m.get('kind')!=76 or m.get('model')!='ILCE-6700' or
@@ -67,9 +67,9 @@ def parse_setting_reply(raw,cfg):
 def _returned_setting(run):
     """Only a returned native call with restored service permits observation."""
     try:
-        r=json.loads((run/'result.json').read_text())
+        r=json.loads((run/'result.json').read_text(encoding='utf-8'))
         cfg=(run/'request.bin').read_bytes()
-        intent=json.loads((run/'intent.json').read_text())
+        intent=json.loads((run/'intent.json').read_text(encoding='utf-8'))
         if (r.get('service_restore_verified') is not True or
                 hashlib.sha256(cfg).hexdigest()!=intent['request_sha256']):return False
         parse_setting_reply((run/'reply.bin').read_bytes(),cfg)
@@ -103,11 +103,11 @@ def pending_settings(directory):
     for root in {Path(directory),default_state_dir()}:
         for intent in (root/'runs').glob('close-setting-*/intent.json'):
             final=intent.with_name('result.json')
-            try:result=json.loads(final.read_text())
+            try:result=json.loads(final.read_text(encoding='utf-8'))
             except (OSError,ValueError):result={}
             if result.get('status')=='SETTING_RESET_VERIFIED' and result.get('service_restore_verified') is True:continue
             try:
-                proof=json.loads(intent.with_name('verification.json').read_text())
+                proof=json.loads(intent.with_name('verification.json').read_text(encoding='utf-8'))
                 feature=result['feature'];state=proof['state']
                 if (_returned_setting(intent.parent) and proof['intent_sha256']==hashlib.sha256(intent.read_bytes()).hexdigest()
                         and proof['result_sha256']==hashlib.sha256(final.read_bytes()).hexdigest()
@@ -122,8 +122,8 @@ def guard_pending_settings(directory,*,observe_returned=False,allow_restart=Fals
         if observe_returned and _returned_setting(run):continue
         if allow_restart and _returned_setting(run):
             try:
-                proof=json.loads((run/'restart.json').read_text())
-                result=json.loads((run/'result.json').read_text())
+                proof=json.loads((run/'restart.json').read_text(encoding='utf-8'))
+                result=json.loads((run/'result.json').read_text(encoding='utf-8'))
                 if proof==_proof(run,proof['state']) and _restart_ready(result['feature'],proof['state']):continue
             except (OSError,ValueError,KeyError):pass
         raise DeviceError('上次机身设置复位尚未独立确认，请保留记录并先核对：'+str(run))
@@ -134,7 +134,7 @@ def verify_pending_settings(backend,directory):
     from .operations import save_json
     for run in pending_settings(directory):
         if not _returned_setting(run):raise DeviceError('上次原生调用是否退出未知，不能重新访问相机')
-        old=json.loads((run/'result.json').read_text());feature=old['feature']
+        old=json.loads((run/'result.json').read_text(encoding='utf-8'));feature=old['feature']
         state=read_close_state(backend,ORDER,secrets.token_hex(16))
         if not state['camera_idle'] or not _ready(feature,state['features'][feature]):
             if _restart_ready(feature,state):

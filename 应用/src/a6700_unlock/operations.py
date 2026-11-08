@@ -16,8 +16,22 @@ from .close_preparation import prepare_close, attach_preparation, recheck_prepar
 
 
 def default_state_dir():
-    return (Path.home() / "Library/Application Support/a6700-unlock" if sys.platform == "darwin"
-            else Path.home() / ".local/state/a6700-unlock")
+    if sys.platform == "darwin":
+        return Path.home() / "Library/Application Support/a6700-unlock"
+    if sys.platform == "win32":
+        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local")) / "a6700-unlock"
+    return Path.home() / ".local/state/a6700-unlock"
+
+
+def _sync_directory(path):
+    """POSIX directory sync. Windows critical files use write-through handles."""
+    if os.name != "posix":
+        return
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def make_directory(path):
@@ -33,16 +47,13 @@ def make_directory(path):
         except FileExistsError:
             if not directory.is_dir():
                 raise
-        fd = os.open(directory.parent, os.O_RDONLY)
-        try:
-            os.fsync(fd)
-        finally:
-            os.close(fd)
+        _sync_directory(directory.parent)
 
 
 def save_json(path, data):
     """Exclusive, durable files; no accidental input/report overwrites."""
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    from .host_io import open_exclusive
+    fd = open_exclusive(path)
     with os.fdopen(fd, "w", encoding="utf-8") as out:
         json.dump(data, out, ensure_ascii=False, indent=2)
         out.write("\n")
@@ -50,11 +61,7 @@ def save_json(path, data):
         os.fsync(out.fileno())
     # A successful file fsync is insufficient if its new directory entry has
     # not reached storage. If directory syncing is unsupported, stop pre-write.
-    parent_fd = os.open(Path(path).parent, os.O_RDONLY)
-    try:
-        os.fsync(parent_fd)
-    finally:
-        os.close(parent_fd)
+    _sync_directory(Path(path).parent)
 
 
 def record_warning(result, message):
@@ -64,27 +71,41 @@ def record_warning(result, message):
 
 def host_lock_path():
     # Shared with the existing research wizards, independent of report paths.
-    base = (Path.home() / "Library/Application Support" if sys.platform == "darwin"
-            else Path.home() / ".local/state")
+    if sys.platform == "darwin":
+        base = Path.home() / "Library/Application Support"
+    elif sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local"))
+    else:
+        base = Path.home() / ".local/state"
     return base / "sony-a6700-ftp/.assistant.lock"
+
+
+def _flock(lock):
+    """Advisory exclusive lock; fcntl on POSIX, msvcrt byte-range on Windows."""
+    if os.name == "nt":
+        import msvcrt
+        lock.seek(0)
+        try:
+            msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError as exc:
+            raise DeviceBusyError("本机已有相机工具运行，请等待其完成；更换记录目录不会绕过设备锁", Path(lock.name)) from exc
+        return
+    import fcntl
+    try:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError as exc:
+        raise DeviceBusyError("本机已有相机工具运行，请等待其完成；更换记录目录不会绕过设备锁", Path(lock.name)) from exc
 
 
 @contextlib.contextmanager
 def device_lock(directory, *, observe_returned_settings=False):
-    try:
-        import fcntl
-    except ImportError as exc:
-        raise DeviceError("设备执行目前支持 macOS／Linux；Windows 尚未验证") from exc
     # Keep the previous per-directory lock as well, for concurrent dev2 clients.
     # Never unlink either file: existing handles must retain the same inode.
     with contextlib.ExitStack() as stack:
         for path in (host_lock_path(), Path(directory) / "device.lock"):
             make_directory(path.parent)
             lock = stack.enter_context(path.open("a+"))
-            try:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as exc:
-                raise DeviceBusyError("本机已有相机工具运行，请等待其完成；更换记录目录不会绕过设备锁", path) from exc
+            _flock(lock)
         from .close_setting import guard_pending_settings
         guard_pending_settings(directory,observe_returned=observe_returned_settings)
         yield

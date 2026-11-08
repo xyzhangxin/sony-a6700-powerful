@@ -15,6 +15,7 @@ license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"]
 [project.optional-dependencies]
 usb = ["pyusb==1.2.1"]
 test = ["unicorn==2.1.4", "pyelftools==0.33"]
+windows = ["libusb-package==1.0.30.0", "PySide6-Essentials==6.10.3"]
 
 [project.scripts]
 a6700-unlock = "a6700_unlock.cli:main"
@@ -23,4 +24,4 @@ a6700-unlock = "a6700_unlock.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-a6700_unlock = ["data/*.json", "data/legal/*.txt", "data/legal/*.md", "data/native/*.json", "data/native/*.elf", "data/native/*.c", "data/native/*.h", "data/fl23/*", "data/fl23/runtime/*.json", "data/fl23/runtime/*/*", "data/fl23/variants/*/*.bin", "data/fl23/variants/*/runtime/*.json", "data/fl23/variants/*/runtime/*/*", "native/*.c", "native/*.h", "native/*.m", "usb/reference/sony_pmca/*.txt"]
+a6700_unlock = ["data/*.json", "data/legal/*.txt", "data/legal/*.md", "data/native/*.json", "data/native/*.elf", "data/native/*.c", "data/native/*.h", "data/fl23/*", "data/fl23/runtime/*.json", "data/fl23/runtime/*/*", "data/fl23/runtime/*/*/*", "data/fl23/variants/*/*.bin", "data/fl23/variants/*/runtime/*.json", "data/fl23/variants/*/runtime/*/*", "data/fl23/variants/*/runtime/*/*/*", "native/*.c", "native/*.h", "native/*.m", "usb/reference/sony_pmca/*.txt"]

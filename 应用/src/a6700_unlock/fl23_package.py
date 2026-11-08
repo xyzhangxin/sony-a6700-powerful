@@ -16,17 +16,16 @@ import struct
 import uuid
 
 from .device_protocol import DeviceError,request,response
-from .operations import save_json,make_directory,record_warning
+from .operations import save_json,make_directory,record_warning,_sync_directory
+from .host_io import open_exclusive
 
 sha=lambda data:hashlib.sha256(data).hexdigest()
 
 
 def save_bytes(path,data):
-    with Path(path).open('xb') as stream:
+    with os.fdopen(open_exclusive(path),'wb') as stream:
         stream.write(data);stream.flush();os.fsync(stream.fileno())
-    fd=os.open(Path(path).parent,os.O_RDONLY)
-    try:os.fsync(fd)
-    finally:os.close(fd)
+    _sync_directory(Path(path).parent)
 
 
 class Profile:
@@ -46,8 +45,8 @@ class Profile:
 class Package:
     def __init__(self,root=None):
         self.root=root or files('a6700_unlock').joinpath('data/fl23')
-        self.manifest=json.loads(self.root.joinpath('manifest.json').read_text())
-        self.recipe=json.loads(self.root.joinpath('recipe.json').read_text())
+        self.manifest=json.loads(self.root.joinpath('manifest.json').read_text(encoding='utf-8'))
+        self.recipe=json.loads(self.root.joinpath('recipe.json').read_text(encoding='utf-8'))
         canonical=dict(self.recipe);digest=canonical.pop('profile_sha256')
         if (sha(json.dumps(canonical,sort_keys=True,separators=(',',':')).encode())!=digest or
             self.manifest.get('profile_sha256')!=digest or self.manifest.get('names') is not False or
