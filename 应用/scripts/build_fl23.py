@@ -105,9 +105,9 @@ def compile(source,destination,work,name,*,defines=()):
         '-fno-builtin','-fno-stack-protector','-mgeneral-regs-only','-mno-outline-atomics','-I',str(work),
         *defines,'-c',str(source),'-o',str(obj)],check=True)
     linker = shutil.which('ld.lld') or shutil.which('ld.lld.exe') or shutil.which('aarch64-elf-ld')
-        if linker is None:
-            raise RuntimeError('ld.lld is required to link FL23 transactions')
-        subprocess.run([linker,'-shared','-Bsymbolic','-z','noexecstack',
+    if linker is None:
+        raise RuntimeError('ld.lld is required to link FL23 transactions')
+    subprocess.run([linker,'-shared','-Bsymbolic','-z','noexecstack',
         '--build-id=none','-o',str(out),str(obj)],check=True)
     data=out.read_bytes()
     if len(data)>1048572:raise ValueError('FL23 transaction exceeds USB bound')
