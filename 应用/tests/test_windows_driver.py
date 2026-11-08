@@ -77,7 +77,7 @@ class WindowsDriverTests(unittest.TestCase):
                  patch.object(driver, 'driver_state', side_effect=state), \
                  patch.object(driver, 'bind', side_effect=bind):
                 self.assertEqual(driver.run_worker(request), 0)
-            self.assertEqual(json.loads(status.read_text())['stage'], 'service_ready')
+            self.assertEqual(json.loads(status.read_text(encoding='utf-8'))['stage'], 'service_ready')
         self.assertEqual(calls, [0x0E76, 0x0336])
 
     def test_utf16_inf_is_accepted_for_staging_and_driver_store_scan(self):
@@ -111,7 +111,7 @@ class WindowsDriverTests(unittest.TestCase):
             with patch.object(driver, 'is_admin', return_value=False), \
                  patch.object(driver, 'bind', side_effect=AssertionError('unexpected installer')):
                 self.assertEqual(driver.run_worker(request), 1)
-            self.assertEqual(json.loads(status.read_text())['stage'], 'error')
+            self.assertEqual(json.loads(status.read_text(encoding='utf-8'))['stage'], 'error')
 
     def test_backend_closes_driver_helper_after_success_or_failure(self):
         from a6700_unlock.usb.backend import UsbBackend

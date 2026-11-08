@@ -62,7 +62,7 @@ class SettingTests(unittest.TestCase):
                 with self.assertRaises(DeviceError):guard_pending_settings(Path(tmp))
             else:
                 reset_close_setting(SimpleNamespace(),'sound','on');guard_pending_settings(Path(tmp))
-            result=json.loads(next(Path(tmp).glob('runs/*/result.json')).read_text())
+            result=json.loads(next(Path(tmp).glob('runs/*/result.json')).read_text(encoding='utf-8'))
         self.assertEqual(len(calls),1)
         return result,events,reads
     def test_success_requires_restoration_and_independent_read(self):

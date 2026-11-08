@@ -123,7 +123,7 @@ class TakeoverTests(unittest.TestCase):
         self.assertTrue(result['released']); self.assertEqual(result['signals'], ['SIGTERM'])
         self.assertFalse(lock_busy(self.lock)); self.assertEqual(self.lock.stat().st_ino, inode)
         journal = list((self.root / 'state/connection-takeovers').iterdir())
-        intent = json.loads((journal[0] / 'intent.json').read_text())
+        intent = json.loads((journal[0] / 'intent.json').read_text(encoding='utf-8'))
         self.assertTrue(intent['user_confirmed']); self.assertEqual(intent['owner']['pid'], child.pid)
 
     def test_confirmation_can_escalate_only_for_the_same_stuck_holder(self):

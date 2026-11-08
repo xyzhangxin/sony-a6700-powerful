@@ -61,8 +61,13 @@ def main():
                     raise RuntimeError("Missing device runtime resource: " + required)
             if not any(n.endswith(".dist-info/licenses/LICENSE") for n in names):
                 raise RuntimeError("Distribution GPL license missing")
+            allowed_bins = {
+                "a6700_unlock/data/fl23/carrier.bin",
+                "a6700_unlock/data/fl23/variants/2/carrier.bin",
+                "a6700_unlock/data/fl23/variants/3/carrier.bin",
+            }
             if any(Path(n).suffix in (".bin", ".raw", ".so", ".plain", ".ext2")
-                   and n != "a6700_unlock/data/fl23/carrier.bin" for n in names):
+                   and n not in allowed_bins for n in names):
                 raise RuntimeError("Unexpected firmware/backup binary in the wheel")
         args.output_dir.mkdir(parents=True, exist_ok=True)
         destination = args.output_dir / wheel.name

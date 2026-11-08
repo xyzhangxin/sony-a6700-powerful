@@ -10,6 +10,8 @@ permissions:
   contents: read
 jobs:
   bundle:
+    env:
+      PYTHONUTF8: '1'
     runs-on: windows-latest
     defaults:
       run:

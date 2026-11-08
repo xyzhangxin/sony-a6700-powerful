@@ -24,4 +24,4 @@ a6700-unlock = "a6700_unlock.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-a6700_unlock = ["data/*.json", "data/legal/*.txt", "data/legal/*.md", "data/native/*.json", "data/native/*.elf", "data/fl23/*", "data/fl23/runtime/*.json", "data/fl23/runtime/*/*", "data/fl23/variants/*/*.bin", "data/fl23/variants/*/runtime/*.json", "data/fl23/variants/*/runtime/*/*", "native/*.c", "native/*.h", "native/*.m", "usb/reference/sony_pmca/*.txt"]
+a6700_unlock = ["data/*.json", "data/legal/*.txt", "data/legal/*.md", "data/native/*.json", "data/native/*.elf", "data/native/*.c", "data/native/*.h", "data/fl23/*", "data/fl23/runtime/*.json", "data/fl23/runtime/*/*", "data/fl23/runtime/*/*/*", "data/fl23/variants/*/*.bin", "data/fl23/variants/*/runtime/*.json", "data/fl23/variants/*/runtime/*/*", "data/fl23/variants/*/runtime/*/*/*", "native/*.c", "native/*.h", "native/*.m", "usb/reference/sony_pmca/*.txt"]

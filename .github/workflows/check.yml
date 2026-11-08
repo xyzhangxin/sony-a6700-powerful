@@ -23,6 +23,8 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m compileall -q -x '/\._' 核心 脚本
   application:
+    env:
+      PYTHONUTF8: '1'
     name: 应用 / ${{ matrix.os }} / Python ${{ matrix.python }}
     strategy:
       fail-fast: false

@@ -48,7 +48,7 @@ class WindowsHostTests(unittest.TestCase):
     def test_libwdi_binary_and_source_match_reviewed_pins(self):
         import hashlib,json
         root=Path(__file__).resolve().parents[1]
-        pin=json.loads((root/'desktop/runtime-dependencies.json').read_text())['libwdi']
+        pin=json.loads((root/'desktop/runtime-dependencies.json').read_text(encoding='utf-8'))['libwdi']
         self.assertEqual(hashlib.sha256((root/'desktop/windows/driver/wdi-simple.exe').read_bytes()).hexdigest(),pin['binary_sha256'])
         source=root/'desktop/windows/driver/libwdi-1.5.0.tar.gz'
         # The source ZIP intentionally carries build instructions and hashes;
