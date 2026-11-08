@@ -34,6 +34,8 @@ jobs:
             python: '3.13'
           - os: macos-latest
             python: '3.13'
+          - os: windows-latest
+            python: '3.13'
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -51,6 +53,10 @@ jobs:
       - name: 安装原生测试链接器（macOS）
         if: runner.os == 'macOS'
         run: brew install lld
+      - name: 配置原生测试编译器（Windows）
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: '"C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append'
       - name: 安装开发依赖
         run: python -m pip install 'setuptools>=77' wheel '.[usb,test]'
       - name: 合成测试及原生 ELF 仿真，不访问相机

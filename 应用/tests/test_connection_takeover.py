@@ -16,9 +16,14 @@ from a6700_unlock.desktop.controller import DesktopController
 from a6700_unlock.device_protocol import DeviceBusyError
 
 
-HOLDER = '''import fcntl,signal,sys,time
-f=open(sys.argv[1], 'a+')
-fcntl.flock(f, fcntl.LOCK_EX)
+HOLDER = '''import os,signal,sys,time
+f=open(sys.argv[1], 'a+b')
+if os.name=='nt':
+ import msvcrt
+ f.seek(0);msvcrt.locking(f.fileno(),msvcrt.LK_NBLCK,1)
+else:
+ import fcntl
+ fcntl.flock(f, fcntl.LOCK_EX)
 if sys.argv[2]=='ignore': signal.signal(signal.SIGTERM, signal.SIG_IGN)
 print('ready', flush=True)
 while True: time.sleep(1)
@@ -185,6 +190,43 @@ class TakeoverTests(unittest.TestCase):
             self.assertFalse(snapshot['device_access']); self.assertFalse(snapshot['write_attempted'])
             self.assertEqual(snapshot['result']['status'], 'connection-released')
             with self.assertRaises(ValueError): c.reserve('unlock')
+
+
+class WindowsBusyTests(TakeoverTests):
+    # Windows deliberately offers no PID takeover. Real one-byte OS locks are
+    # tested in disposable processes; no camera or privileged helper is used.
+    def test_busy_is_manual_only_and_cannot_signal_holder(self):
+        child=self.holder();inode=self.lock.stat().st_ino
+        with patch('a6700_unlock.connection_takeover.os.kill') as kill, \
+             patch('a6700_unlock.connection_takeover.subprocess.run') as command:
+            result=self.manager.prepare(self.lock)
+            self.assertFalse(result['available']);self.assertEqual(result['confirmation'],'')
+            self.assertIn('Windows',result['detail'])
+            with self.assertRaises(ValueError):self.manager.execute('forged',True)
+        kill.assert_not_called();command.assert_not_called()
+        self.assertIsNone(child.poll());self.assertTrue(lock_busy(self.lock))
+        self.assertEqual(self.lock.stat().st_ino,inode)
+        child.terminate();child.wait(timeout=5)
+        self.assertFalse(lock_busy(self.lock))
+        self.assertFalse(self.manager.prepare(self.lock)['available'])
+    def test_application_mutex_raises_busy_with_shared_path(self):
+        from a6700_unlock.operations import _flock
+        self.holder()
+        with self.lock.open('a+b') as handle:
+            with self.assertRaises(DeviceBusyError) as error:_flock(handle)
+        self.assertEqual(error.exception.lock_path,self.lock)
+
+
+def load_tests(loader, tests, pattern):
+    # Distinct platform capabilities, not skipped or silently passing tests.
+    if sys.platform!='win32':return loader.loadTestsFromTestCase(TakeoverTests)
+    names=('test_unheld_existing_lock_is_not_an_occupied_device',
+           'test_no_takeover_of_an_unrelated_state_directory_lock',
+           'test_physical_bridge_reports_busy_without_claiming_camera_access',
+           'test_controller_never_uses_takeover_as_a_firmware_write_or_cached_inspection',
+           'test_busy_is_manual_only_and_cannot_signal_holder',
+           'test_application_mutex_raises_busy_with_shared_path')
+    return unittest.TestSuite(WindowsBusyTests(name) for name in names)
 
 
 if __name__ == '__main__': unittest.main()

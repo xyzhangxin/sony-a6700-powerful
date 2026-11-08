@@ -1,0 +1,78 @@
+name: Windows 开发预览构建
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['应用/**', '.github/workflows/windows-preview.yml']
+  push:
+    branches: ['feature/windows-preview']
+    paths: ['应用/**', '.github/workflows/windows-preview.yml']
+permissions:
+  contents: read
+jobs:
+  bundle:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: 应用
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: 安装固定构建依赖
+        run: python -m pip install -r desktop/windows/requirements.txt 'unicorn==2.1.4' 'pyelftools==0.33'
+      - name: 配置 ARM64 交叉编译工具
+        run: |
+          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: 核心与原生仿真，不访问设备
+        run: python scripts/check.py --native --strict
+      - name: 下载固定 libusb 对应源包
+        shell: python
+        run: |
+          import hashlib, json, pathlib, urllib.request
+          pin=json.loads(pathlib.Path('desktop/runtime-dependencies.json').read_text(encoding='utf-8'))['libusb']
+          data=urllib.request.urlopen(pin['url'], timeout=120).read()
+          assert hashlib.sha256(data).hexdigest()==pin['sha256']
+          pathlib.Path('dist').mkdir(exist_ok=True)
+          pathlib.Path('dist',pin['filename']).write_bytes(data)
+      - name: 下载固定 libwdi 对应源包
+        shell: python
+        run: |
+          import hashlib, json, pathlib, urllib.request
+          pin=json.loads(pathlib.Path('desktop/runtime-dependencies.json').read_text(encoding='utf-8'))['libwdi']
+          data=urllib.request.urlopen(pin['url'], timeout=120).read()
+          assert hashlib.sha256(data).hexdigest()==pin['source_sha256']
+          pathlib.Path('dist',pin['filename']).write_bytes(data)
+      - name: 构建 Windows x64 目录包
+        run: python scripts/build_windows_app.py --libusb-source dist/libusb-1.0.30.tar.bz2 --libwdi-source dist/libwdi-1.5.0.tar.gz --output dist/Windows/Powerful6700
+      - name: 成品演示、退出与服务恢复检查，不访问设备
+        run: |
+          $env:QT_QPA_PLATFORM='offscreen'
+          $env:QT_QPA_FONTDIR=Join-Path $env:WINDIR 'Fonts'
+          $app=Join-Path $pwd 'dist\Windows\Powerful6700\Powerful6700.exe'
+          $report=Join-Path $pwd 'dist\Windows\offline-check.json'
+          $p=Start-Process -FilePath $app -ArgumentList @('--offline-self-test','--report',$report) -Wait -PassThru
+          Get-Content $report
+          if ($p.ExitCode -ne 0) { exit $p.ExitCode }
+      - name: 配套源码与摘要
+        run: python scripts/build_source.py --output-dir dist/Windows
+      - name: 生成摘要
+        shell: python
+        run: |
+          import hashlib, pathlib, shutil
+          root=pathlib.Path('dist/Windows')
+          shutil.make_archive(str(root/'Powerful6700-Windows-x64'),'zip',root,'Powerful6700')
+          paths=sorted(root.glob('*.zip'))
+          (root/'SHA256SUMS.txt').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name+'\n' for p in paths),encoding='utf-8')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Powerful6700-Windows-preview
+          path: |
+            应用/dist/Windows/*.zip
+            应用/dist/Windows/*.json
+            应用/dist/Windows/*.png
+            应用/dist/Windows/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14

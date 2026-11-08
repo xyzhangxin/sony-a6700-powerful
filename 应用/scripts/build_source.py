@@ -53,7 +53,7 @@ def main():
     # backups, validation reports, virtualenvs, build trees or firmware images.
     paths = [ROOT / name for name in ('README.md', 'AGENTS.md', 'CONTRIBUTING.md', 'CHANGELOG.md', 'pyproject.toml', 'LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md',
                                       '.gitignore', 'start.sh', '启动工具.command')]
-    suffixes = {'.py', '.json', '.elf', '.bin', '.c', '.h', '.S', '.ld', '.m', '.txt', '.md', '.sh', '.yml', '.yaml', '.swift', '.png', '.icns'}
+    suffixes = {'.py', '.json', '.elf', '.bin', '.c', '.h', '.S', '.ld', '.m', '.txt', '.md', '.sh', '.yml', '.yaml', '.swift', '.png', '.icns', '.exe'}
     for folder in ('src/a6700_unlock', 'tests', 'docs', 'scripts', 'verified', '.github', 'desktop'):
         for path in (ROOT / folder).rglob('*'):
             relative = path.relative_to(ROOT)
@@ -64,6 +64,8 @@ def main():
     for path in paths:
         if path.is_symlink() or not path.is_file():
             raise RuntimeError('Source must be a regular file: ' + str(path.relative_to(ROOT)))
+        if path.suffix == '.exe' and path != ROOT/'desktop/windows/driver/wdi-simple.exe':
+            raise RuntimeError('Unexpected Windows executable resource')
         validate_public_file(path, path.relative_to(ROOT))
         if path.suffix == '.elf' and path.parent != ROOT / 'src/a6700_unlock/data/native':
             if path.parent!=ROOT/'src/a6700_unlock/data/fl23' or path.name not in ('reader.elf','writer.elf','files.elf'):

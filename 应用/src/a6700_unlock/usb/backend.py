@@ -19,7 +19,7 @@ from ..device_protocol import DeviceError, request, response
 
 def payloads(profile):
     root = files("a6700_unlock").joinpath("data/native")
-    manifest = json.loads(root.joinpath("manifest.json").read_text())
+    manifest = json.loads(root.joinpath("manifest.json").read_text(encoding='utf-8'))
     if manifest["profile_sha256"] != profile.digest:
         raise DeviceError("Native payload/profile versions do not match")
     source = files("a6700_unlock").joinpath("native/transaction.c").read_bytes()
@@ -153,6 +153,11 @@ class UsbBackend:
             legacy.get_libusb_backend()
         except Exception as exc:
             raise DeviceError("无法加载系统 libusb：" + str(exc)) from exc
+        driver_session = None
+        if sys.platform == 'win32':
+            from ..windows_driver import prepare
+            from ..operations import default_state_dir
+            driver_session = prepare(default_state_dir(), self.progress)
         self.progress("正在认证相机 USB 服务模式…")
         # Old diagnostics include raw ProductInfo. Do not put device identifiers
         # in user reports or ordinary stdout; the sparse layout guards establish
@@ -164,12 +169,15 @@ class UsbBackend:
             self.progress(message)
         try:
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                self.target, self.channel = legacy.run_authentication(None, 0x0336, 12.0, True,
+                self.target, self.channel = legacy.run_authentication(None, 0x0336, 45.0 if sys.platform == 'win32' else 12.0, True,
                                                                       progress=authentication_progress)
         except Exception as exc:
             notes = getattr(exc, "__notes__", [])
             self.cleanup_warning = getattr(exc, "cleanup_warning", None) or ("；".join(notes) if notes else None)
             raise DeviceError(f"USB 认证失败（{stage}）；确认 MSC、关闭 FTP、相机唤醒且仅连接一台目标相机：" + str(exc)) from exc
+        finally:
+            if driver_session is not None:
+                driver_session.close()
         return self
 
     def _command(self, command, payload):

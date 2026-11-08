@@ -1,3 +1,13 @@
-# Frozen FL23 sources are SHA-bound; preserve their exact bytes.
-应用/src/a6700_unlock/data/fl23/runtime/** -text
+# Preserve exact bytes: payload source hashes are verified at runtime.
+* -text
+*.elf binary
+*.uf2 binary
+*.bin binary
+*.png binary
+*.icns binary
+
+# Frozen generated header deliberately ends in a blank line; preserve bytes.
 应用/src/a6700_unlock/data/fl23/runtime/core/main-preparation-profile.h whitespace=-blank-at-eof
+
+# Preserve verbatim third-party license formatting.
+应用/desktop/windows/licenses/LGPL-2.1-or-later.txt whitespace=-blank-at-eof,-blank-at-eol

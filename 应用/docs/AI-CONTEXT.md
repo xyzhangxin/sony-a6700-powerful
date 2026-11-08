@@ -1,20 +1,26 @@
 # 给 AI 与新贡献者的代码地图
 
+后续应用开发须先读[跨平台与插件化方案](跨平台与插件化方案.md)第0节及第4.1节；它是已确认结构基线。核心、平台适配、能力包、流程和日志按同一契约维护，设计尚未实现的部分不宣称已交付。
+在线服务的接口、统计口径、数据模型、幂等和保留规则见[轻量服务端设计](轻量服务端设计.md)，实施时不复制另一套客户端／服务端契约。
+
 先读本页再按问题进入具体模块，不需要扫描研究工程或从完整固件开始推断。`README.md` 描述当前能力，`VALIDATION.md` 区分证据与待验证范围，`CONTRIBUTING.md` 给出可复制的验证命令。
 
 dev19 交互入口：`A6700Preview.swift` 管应用外壳；`WorkspaceView.swift` 管功能与备份恢复；`OperationViews.swift` 管进度及结果；`DesignSystem.swift` 管显示样式。准备声明通过固定 `confirm_preparation` 命令一次确认四个稳定 ID；`restart_preparation` 结束原会话并使准备／兼容失效，不跳过预检。
 
+Windows 开发预览入口在 `desktop/windows/main.py`，`views.py` 管 Mac 对齐的页面结构，`dialogs.py` 管操作确认，`design.py` 管颜色／尺寸／自绘图标；`client.py` 只管理子进程和 JSON；固定 worker 在 `service.py`。共用 `desktop/physical_bridge.py` 与控制器，不复制补丁。构建和验收边界见 [WINDOWS.md](WINDOWS.md)。
 dev34：解锁／关闭的已核验结果进入独立结果页；`desktop/aftercare.py` 统一提供断电步骤及四项功能的检查路径／成功标准，SwiftUI 不复制这些元数据。物理事务及独立回读结束后关闭 USB 会话并释放锁；会话退出异常与写入结果分别呈现。模拟及物理的旧准备／兼容结论均失效，必须经 `restart_preparation`、重新声明及 inspect 才可继续。无需修改及失败／不确定结果不得伪装成已写入或机身验收成功。
 
 dev35：`usb/legacy.py` 刷新／清空缓存不得直接调用 `libusb_exit` 或对仍被 Device 引用的 PyUSB backend 强行 finalize；交由 PyUSB 对象寿命管理，见 `test_usb.py` 的上下文终结器回归。`PreviewModel.serviceExited` 将服务死亡与活动事务分开：显示中断页并允许只重启本机服务，不能保留假 busy、自动重发请求或把未知写入结果改成失败／成功。进程 generation 和已退出标志共同拦截迟到状态。
 
 dev36 补充：PyUSB 1.2.1 的底层 `_Device`／`_DevIterator` 不保留 backend，ResourceManager 销毁时 backend 仍可能先于 native device 释放。`_OwnedLibUSB` 在枚举和父设备返回的原生包装对象上保留 owner，确保 unref/free-list 在上下文退出前完成；不改第三方全局，不永久积累上下文。两项真实包装对象＋合成 C 函数回归覆盖该顺序。后续升级 PyUSB 必须重验这些私有接口。断电指引现为六步，`usb-out` 是独立稳定 ID；仍由 `aftercare.py` 统一提供。
 
+当前 Mac 基线为 0.4.1；Windows x64候选 0.4.1 同步 FL23 修复包、旧版直接更新、四项关闭前设置恢复及两阶段结果页。FL23 事务在 `fl23_package.py`，旧版摘要位于 `data/fl23/legacy-carriers.json`；关闭前共用状态机在 `close_preparation.py`，固定读取与设置载荷位于 `data/native/`。Windows 的 `connection_takeover.py` 只检测真实锁并提示手动释放，不调用 POSIX 进程接管；`windows_driver.py`用单次提权助手准备0E76与0336，主应用不提权，组件摘要固定；未纳入 FTP 增量候选。源码、构建、测试与待验收边界见 [WINDOWS.md](WINDOWS.md)。
+
 ## 稳定产品约束
 
 - 最终交付可双击运行的桌面应用；当前提供 SwiftUI 桌面预览、源码／wheel 和可选真实 USB 桌面模式；已提供 Apple Silicon macOS 内置环境构建；正式签名、公证与真实写入闭环验收尚未完成。
 - 桌面只展示解锁所选功能和关闭所选功能；备份与恢复入口暂时隐藏，待完整备份恢复实现并验证后再展示。现有稀疏备份恢复的核心服务、开发者命令和测试保留。dev14 支持按功能勾选与“全选缺失”，dev15 将电子快门声音并入；未选中功能保持不变；备份／恢复为稀疏的 260 个固定扇区（含 `/dev/nflasha8` CP 目标）；整盘／分区／固件镜像仍未实现，不能称为整机备份。
-- 当前测试清单只开放原生 FTP、关机快门帘／静音联动、灵活曝光、电子快门声音（sound-after-exposure 验证基线；与灵活曝光无字段依赖）；位移多帧合成与动态增强防抖保留识别但暂禁用，不能修改；按实际字段状态、依赖和用户选择增量补齐，不按用户声称的版本放行。
+- 当前测试清单开放原生 FTP、关机快门帘／静音联动、灵活曝光、电子快门声音与独立 FL2／FL3（sound-after-exposure 验证基线；与灵活曝光无字段依赖）；位移多帧合成与动态增强防抖保留识别但暂禁用，不能修改；按实际字段状态、依赖和用户选择增量补齐，不按用户声称的版本放行。
 - 配置向导必须在设备操作前运行；正常 USB 日常管理与 Pico 救砖为独立通路，不共用接线说明。
 - 已验证的实机只读／dry-run 不等于新写入器完成实机闭环。事实来源是验证记录，不是包版本号或 AI 记忆。
 

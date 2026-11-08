@@ -109,6 +109,15 @@ def libusb_library_path():
     bundled = resource('libusb')
     if bundled is not None:
         return str(bundled)
+    if sys.platform == "win32":
+        try:
+            from libusb_package import get_library_path
+            library = get_library_path()
+        except ImportError as exc:
+            raise ProbeError("Windows 缺少内置 libusb，请重新获取完整安装包；源码运行安装 windows 依赖。") from exc
+        if library is None or not Path(library).is_file():
+            raise ProbeError("Windows libusb DLL 缺失，请重新获取匹配 x64 的完整安装包。")
+        return str(library)
     if sys.platform.startswith("linux"):
         library = ctypes.util.find_library('usb-1.0')
         if library is None:
@@ -612,7 +621,7 @@ def run_authentication(
     read_product_info: bool,
     progress=lambda message: None,
 ) -> tuple[UsbTarget, SenserChannel]:
-    if sys.platform == 'darwin':
+    if sys.platform in ('darwin', 'win32'):
         get_libusb_backend(fresh=True)
     progress("正在寻找唯一的 MSC 相机…")
     deadline = time.monotonic() + timeout_seconds
@@ -638,7 +647,7 @@ def run_authentication(
         close_target(initial_target)
 
     progress("正在等待相机进入服务模式…")
-    if sys.platform == 'darwin':
+    if sys.platform in ('darwin', 'win32'):
         get_libusb_backend(fresh=True)
     service_device = wait_for_service_device(initial_pid, service_pid, timeout_seconds)
     service_pid = service_device.idProduct

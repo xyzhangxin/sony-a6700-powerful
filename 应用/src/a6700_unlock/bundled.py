@@ -1,18 +1,27 @@
 """Locate verified app resources without consulting developer paths or the network."""
 import hashlib
 import json
+import sys
 from pathlib import Path, PurePosixPath
 
 from .device_protocol import DeviceError
 
 
 def resource_root():
+    if sys.platform == 'win32' and getattr(sys, 'frozen', False):
+        root = Path(sys._MEIPASS)
+        try:
+            if json.loads((root/'runtime.json').read_text(encoding='utf-8')).get('kind') != 'bundled':
+                raise ValueError('runtime kind')
+        except (ValueError, OSError) as exc:
+            raise DeviceError('Windows 应用运行配置损坏，请重新获取完整应用。') from exc
+        return root
     root = Path(__file__).resolve().parents[2]
     config = root / 'runtime.json'
     if not config.is_file():
         return None
     try:
-        return root if json.loads(config.read_text()).get('kind') == 'bundled' else None
+        return root if json.loads(config.read_text(encoding='utf-8')).get('kind') == 'bundled' else None
     except (ValueError, OSError) as exc:
         raise DeviceError('应用运行配置损坏，请重新获取完整应用。') from exc
 
@@ -22,10 +31,10 @@ def resource(name):
     root = resource_root()
     if root is None:
         return None
-    if name not in ('capture', 'libusb'):
+    if name not in ('capture', 'libusb', 'wdi'):
         raise DeviceError('未知应用组件。')
     try:
-        manifest = json.loads((root / 'bundle-manifest.json').read_text())
+        manifest = json.loads((root / 'bundle-manifest.json').read_text(encoding='utf-8'))
         if manifest['schema'] != 1:
             raise ValueError('schema')
         item = manifest['resources'][name]

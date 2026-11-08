@@ -1,5 +1,9 @@
 # 架构与扩展方式
 
+服务端新增设计入口：[轻量服务端设计](轻量服务端设计.md)，覆盖自愿实例统计、私有日志与签名更新分发；仍处设计阶段。
+
+后续开发遵守[跨平台与插件化方案](跨平台与插件化方案.md)第0节和第4.1节；结构约定已确认，迁移尚未实施，下文仍为当前实现说明。
+
 工程包含独立的功能清单、离线规划器、USB 运行框架和历史归档，运行时不依赖研究工程、个人备份或会话路径。核心使用 Python 标准库；设备连接使用可选 PyUSB 和系统 libusb。
 
 ## 模块职责
@@ -15,6 +19,8 @@
 | `usb/backend.py`、`usb/legacy.py` | 双次认证、接口接管、自动 USB 重枚举恢复、固定文件载荷发送、分段读取和退出观察 |
 | `native/transaction.c`、`data/native/` | 固定地址与字节掩码的 ARM64 读写载荷、产物哈希 |
 | `desktop/macos/`、`desktop/controller.py`、`desktop/simulation.py` | 原生桌面模拟预览、状态机、合成内存设备与固定命令协议 |
+| `windows_driver.py` | Windows SetupAPI驱动状态、单次提权助手、固定PID的WinUSB准备；不执行USB认证或固件操作 |
+| `desktop/windows/`、`scripts/build_windows_app.py`、`host_io.py` | Windows Qt 外壳、独立进程、可替换依赖打包、独占 write-through 主机记录；事务共用核心 |
 | `preparation.py` | 无设备的准备状态、人工确认与前置阻断；CLI／桌面共用 |
 | `cli.py`、`doctor.py`、`start.sh` | 四入口菜单、环境诊断、开发命令和源码启动 |
 | `licensing.py`、`data/legal/` | 不访问相机的本地许可证与第三方归属 |
@@ -27,6 +33,8 @@
 离线预检同时读取已解密的 App 和 WBI 常规文件，核对精确长度、完整字段值及归一化的整文件哈希；读取期间检查文件被修改或替换的情况。它只生成逻辑文件计划，不直接生成设备写入请求。
 
 USB 预检使用固定映射读取 254 个扇区，覆盖 `/dev/nflasha15`（appFw）、`/dev/nflasha5`（WBI）与 `/dev/nflasha8`（CP 分区）。App 映射包含 ext2 结构守卫，WBI 包含头部与段表守卫，CP 使用目标扇区未管理字节哈希与前后邻扇区守卫；profile v2 对目标扇区校验“所有已知字段置零后的未管理字节哈希”，因此同一扇区内的不同功能字段可以独立处于已知状态。它不等同于完整固件身份校验或整机备份，也不承诺任意实时 WBI 状态都兼容。
+
+其中 9 个 App 守卫扇区落在 /usr 分区的 ext2 inode 表内：相机开机自行刷新这些 inode 的 atime/ctime/mtime（每条 256 字节记录的偏移 8–20），全字节钉死会把未修改的相机误判为已修改。`data/guard-volatile.json` 按适配摘要绑定登记这些守卫，比对前清零时间字段、期望哈希使用原厂归一化值；扇区其余字节仍逐字节校验，预检结果的 `guard_volatile` 字段列出本次生效的豁免。
 
 其中 9 个 App 守卫扇区落在 /usr 分区的 ext2 inode 表内：相机开机自行刷新这些 inode 的 atime/ctime/mtime（每条 256 字节记录的偏移 8–20），全字节钉死会把未修改的相机误判为已修改。`data/guard-volatile.json` 按适配摘要绑定登记这些守卫，比对前清零时间字段、期望哈希使用原厂归一化值；扇区其余字节仍逐字节校验，预检结果的 `guard_volatile` 字段列出本次生效的豁免。
 

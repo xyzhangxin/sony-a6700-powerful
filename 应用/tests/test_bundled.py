@@ -80,6 +80,13 @@ class BundledTests(unittest.TestCase):
         with patch('a6700_unlock.usb.backend.LOCAL_CAPTURE_HELPER', local):
             self.assertIs(_local_capture_helper(), local)
 
+    def test_wdi_uses_verified_resource_and_rejects_corruption(self):
+        path=self.root/'wdi-simple.exe';path.write_bytes(b'wdi')
+        self.items['wdi']=dict(path='wdi-simple.exe',sha256=hashlib.sha256(b'wdi').hexdigest());self.save()
+        self.assertEqual(bundled.resource('wdi'),path)
+        path.write_bytes(b'corrupted')
+        with self.assertRaises(DeviceError):bundled.resource('wdi')
+
     @unittest.skipUnless(importlib.util.find_spec('usb'),'PyUSB required for library selection check')
     def test_bundled_usb_selects_verified_library(self):
         from a6700_unlock.usb import legacy
@@ -98,7 +105,10 @@ class BundledTests(unittest.TestCase):
         from a6700_unlock.catalog import load_catalog
         from a6700_unlock.device_profile import load_device_profile
         library = Mock()
+        # The probe's subject is the bundled library itself, not platform
+        # gating; pin darwin so the fake bundle decides every check on any OS.
         with patch.object(legacy.ctypes, 'CDLL', return_value=library) as load, \
+             patch('sys.platform', 'darwin'), \
              patch.object(legacy.libusb1, 'get_backend', side_effect=AssertionError('early context')), \
              patch.object(legacy.usb.core, 'find', side_effect=AssertionError('enumeration')):
             report = diagnose(load_device_profile(load_catalog()))

@@ -2,6 +2,8 @@
 import hashlib
 import importlib.util
 import json
+import os
+import shutil
 from pathlib import Path
 import struct
 import sys
@@ -16,9 +18,46 @@ from a6700_unlock.device_protocol import DeviceError,request,response
 import test_native as native
 
 ROOT=Path(__file__).resolve().parents[1]
+FIXTURE_SOURCES=('scripts/build_fl23.py','src/a6700_unlock/native/transaction.c',
+    'src/a6700_unlock/native/fl23_files.c','src/a6700_unlock/native/fl23_sha256.h',
+    'tests/test_fl23_package.py','tests/test_native.py')
 spec=importlib.util.spec_from_file_location('build_fl23',ROOT/'scripts/build_fl23.py')
 builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
 sha=lambda data:hashlib.sha256(data).hexdigest()
+
+
+def load_variant_fixture(destination, recipe, carriers):
+    fixture=os.environ.get('POWERFUL6700_TEST_NATIVE_FIXTURE')
+    if not fixture:return False
+    folder=Path(fixture)/'variants'
+    metadata=json.loads((folder/'test-fixture.json').read_bytes())
+    expected=dict(recipe=recipe,carriers={str(k):sha(v) for k,v in carriers.items()},
+                  sources={name:sha((ROOT/name).read_bytes()) for name in FIXTURE_SOURCES})
+    if any(metadata.get(k)!=v for k,v in expected.items()):
+        raise ValueError('Variant fixture does not match current sources or synthetic carriers')
+    for name,digest in metadata['package_sha256'].items():
+        path=Path(name)
+        if path.is_absolute() or '..' in path.parts or sha((folder/'package'/path).read_bytes())!=digest:
+            raise ValueError('Variant fixture package hash/path differs')
+    shutil.copytree(folder/'package',destination)
+    return True
+
+
+def load_revision_fixture(destination, recipe, carriers, legacy):
+    fixture=os.environ.get('POWERFUL6700_TEST_NATIVE_FIXTURE')
+    if not fixture:return False
+    folder=Path(fixture)/'revisions'
+    metadata=json.loads((folder/'test-fixture.json').read_bytes())
+    expected=dict(recipe=recipe,carriers={str(k):sha(v) for k,v in carriers.items()},legacy=legacy,
+                  sources={name:sha((ROOT/name).read_bytes()) for name in FIXTURE_SOURCES})
+    if any(metadata.get(k)!=v for k,v in expected.items()):
+        raise ValueError('Revision fixture does not match current sources or synthetic carriers')
+    for name,digest in metadata['package_sha256'].items():
+        path=Path(name)
+        if path.is_absolute() or '..' in path.parts or sha((folder/'package'/path).read_bytes())!=digest:
+            raise ValueError('Revision fixture package hash/path differs')
+    shutil.copytree(folder/'package',destination)
+    return True
 
 
 def synthetic():
@@ -206,6 +245,7 @@ class UninstallTests(unittest.TestCase):
         self.events=[];r=self.perform()
         self.assertEqual(r['status'],'no-op');self.assertFalse(r['write_attempted'])
         self.assertEqual(self.events,[])
+
     def test_new_options_keep_full_cleanup_of_old_retained_cp_and_off_file(self):
         from a6700_unlock.fl23_package import perform_options
         import a6700_unlock.fl23_package as module
@@ -356,8 +396,24 @@ class FileNativeTests(unittest.TestCase):
         cls.carrier=b'FL23 synthetic file '+bytes(range(256))*4
         (p/'recipe.json').write_text(json.dumps(recipe));(p/'carrier.bin').write_bytes(cls.carrier)
         cls.out=p/'out'
-        builder.build(p/'recipe.json',p/'carrier.bin',ROOT/'src/a6700_unlock/native/fl23_sha256.h',destination=cls.out)
-        cls.binary=(cls.out/'files.elf').read_bytes();cls.profile=Profile(recipe)
+        fixture=os.environ.get('POWERFUL6700_TEST_NATIVE_FIXTURE')
+        if fixture:
+            # Test-only cross-compiled artifact. Reject stale source/recipe or
+            # changed binary; this path is never used by the application.
+            folder=Path(fixture);metadata=json.loads((folder/'test-fixture.json').read_bytes())
+            expected=dict(recipe=recipe,carrier_sha256=sha(cls.carrier),
+                          sources={name:sha((ROOT/name).read_bytes()) for name in FIXTURE_SOURCES})
+            if any(metadata.get(k)!=v for k,v in expected.items()):
+                raise ValueError('Synthetic native fixture does not match current test sources')
+            for name,digest in metadata['package_sha256'].items():
+                if Path(name).name!=name or sha((folder/'package'/name).read_bytes())!=digest:
+                    raise ValueError('Synthetic native fixture package hash differs')
+            shutil.copytree(folder/'package',cls.out)
+            cls.binary=(cls.out/'files.elf').read_bytes()
+        else:
+            builder.build(p/'recipe.json',p/'carrier.bin',ROOT/'src/a6700_unlock/native/fl23_sha256.h',destination=cls.out)
+            cls.binary=(cls.out/'files.elf').read_bytes()
+        cls.profile=Profile(recipe)
     @classmethod
     def tearDownClass(cls):cls.temp.cleanup()
     def run_job(self,fs,op=0,offset=0,data=b'',length=0,fail=None,flags=0):
@@ -430,10 +486,11 @@ class FileVariantNativeTests(unittest.TestCase):
         cls.carriers={f:bytes([f])*n for f,n in ((1,1100),(2,1300),(3,1500))}
         (p/'recipe.json').write_text(json.dumps(cls.recipe));(p/'carrier.bin').write_bytes(cls.carriers[1])
         cls.out=p/'out';variants=cls.out/'variants'
-        for f in (2,3):
-            folder=variants/str(f);(folder/'runtime').mkdir(parents=True)
-            (folder/'carrier.bin').write_bytes(cls.carriers[f]);(folder/'runtime/manifest.json').write_text('{"files":{}}')
-        builder.build(p/'recipe.json',p/'carrier.bin',ROOT/'src/a6700_unlock/native/fl23_sha256.h',destination=cls.out,variants_path=variants)
+        if not load_variant_fixture(cls.out,cls.recipe,cls.carriers):
+            for f in (2,3):
+                folder=variants/str(f);(folder/'runtime').mkdir(parents=True)
+                (folder/'carrier.bin').write_bytes(cls.carriers[f]);(folder/'runtime/manifest.json').write_text('{"files":{}}')
+            builder.build(p/'recipe.json',p/'carrier.bin',ROOT/'src/a6700_unlock/native/fl23_sha256.h',destination=cls.out,variants_path=variants)
         cls.binary=(cls.out/'files.elf').read_bytes()
     @classmethod
     def tearDownClass(cls):cls.temp.cleanup()
@@ -480,13 +537,14 @@ class FileRevisionNativeTests(unittest.TestCase):
         cls.carriers={f:bytes([f])*n for f,n in ((1,1100),(2,1300),(3,1500),(5,1700),(7,1900))}
         (p/'recipe.json').write_text(json.dumps(cls.recipe));(p/'carrier.bin').write_bytes(cls.carriers[1])
         cls.out=p/'out';variants=cls.out/'variants'
-        for f in (2,3):
-            folder=variants/str(f);(folder/'runtime').mkdir(parents=True)
-            (folder/'carrier.bin').write_bytes(cls.carriers[f]);(folder/'runtime/manifest.json').write_text('{"files":{}}')
         legacy={str(f):dict(flags=f&3,revision=1,bytes=len(cls.carriers[f]),sha256=sha(cls.carriers[f])) for f in (5,7)}
         (p/'legacy.json').write_text(json.dumps(legacy))
-        builder.build(p/'recipe.json',p/'carrier.bin',ROOT/'src/a6700_unlock/native/fl23_sha256.h',
-            destination=cls.out,variants_path=variants,legacy_path=p/'legacy.json')
+        if not load_revision_fixture(cls.out,cls.recipe,cls.carriers,legacy):
+            for f in (2,3):
+                folder=variants/str(f);(folder/'runtime').mkdir(parents=True)
+                (folder/'carrier.bin').write_bytes(cls.carriers[f]);(folder/'runtime/manifest.json').write_text('{"files":{}}')
+            builder.build(p/'recipe.json',p/'carrier.bin',ROOT/'src/a6700_unlock/native/fl23_sha256.h',
+                destination=cls.out,variants_path=variants,legacy_path=p/'legacy.json')
         cls.binary=(cls.out/'files.elf').read_bytes()
     @classmethod
     def tearDownClass(cls):cls.temp.cleanup()
@@ -591,4 +649,41 @@ class RevisionUpdateTests(unittest.TestCase):
         self.assertEqual(state['blocks'][2:],before[2:])
 
 
-if __name__=='__main__':unittest.main()
+
+if __name__=='__main__':
+    if len(sys.argv)==3 and sys.argv[1]=='--export-native-fixture':
+        # Produce on an LLVM host, then run the same actual ARM64 VM tests on
+        # Windows without installing a compiler. Contains synthetic data only.
+        destination=Path(sys.argv[2]);destination.mkdir(parents=True,exist_ok=False)
+        FileNativeTests.setUpClass()
+        try:
+            binary=FileNativeTests.binary
+            shutil.copytree(FileNativeTests.out,destination/'package')
+            metadata=dict(recipe=FileNativeTests.recipe,carrier_sha256=sha(FileNativeTests.carrier),
+                package_sha256={p.name:sha(p.read_bytes()) for p in FileNativeTests.out.iterdir() if p.is_file()},sources={n:sha((ROOT/n).read_bytes()) for n in FIXTURE_SOURCES})
+            (destination/'test-fixture.json').write_text(json.dumps(metadata,indent=2)+'\n',encoding='utf-8')
+        finally:FileNativeTests.tearDownClass()
+        FileVariantNativeTests.setUpClass()
+        try:
+            folder=destination/'variants';folder.mkdir()
+            shutil.copytree(FileVariantNativeTests.out,folder/'package')
+            metadata=dict(recipe=FileVariantNativeTests.recipe,
+                carriers={str(k):sha(v) for k,v in FileVariantNativeTests.carriers.items()},
+                package_sha256={p.relative_to(FileVariantNativeTests.out).as_posix():sha(p.read_bytes())
+                    for p in FileVariantNativeTests.out.rglob('*') if p.is_file()},
+                sources={n:sha((ROOT/n).read_bytes()) for n in FIXTURE_SOURCES})
+            (folder/'test-fixture.json').write_text(json.dumps(metadata,indent=2)+'\n',encoding='utf-8')
+        finally:FileVariantNativeTests.tearDownClass()
+        FileRevisionNativeTests.setUpClass()
+        try:
+            folder=destination/'revisions';folder.mkdir()
+            shutil.copytree(FileRevisionNativeTests.out,folder/'package')
+            legacy={str(f):dict(flags=f&3,revision=1,bytes=len(FileRevisionNativeTests.carriers[f]),sha256=sha(FileRevisionNativeTests.carriers[f])) for f in (5,7)}
+            metadata=dict(recipe=FileRevisionNativeTests.recipe,
+                carriers={str(k):sha(v) for k,v in FileRevisionNativeTests.carriers.items()},legacy=legacy,
+                package_sha256={p.relative_to(FileRevisionNativeTests.out).as_posix():sha(p.read_bytes())
+                    for p in FileRevisionNativeTests.out.rglob('*') if p.is_file()},
+                sources={n:sha((ROOT/n).read_bytes()) for n in FIXTURE_SOURCES})
+            (folder/'test-fixture.json').write_text(json.dumps(metadata,indent=2)+'\n',encoding='utf-8')
+        finally:FileRevisionNativeTests.tearDownClass()
+    else:unittest.main()

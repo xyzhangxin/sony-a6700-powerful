@@ -1,0 +1,5 @@
+# Windows preview runtime and packaging. Install in a dedicated virtualenv.
+pyusb==1.2.1
+libusb-package==1.0.30.0
+PySide6-Essentials==6.10.3
+pyinstaller==6.22.3
