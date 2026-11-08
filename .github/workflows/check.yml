@@ -62,6 +62,7 @@ jobs:
           $llvm = 'C:\Program Files\LLVM\bin'
           if (-not (Test-Path (Join-Path $llvm 'clang.exe'))) { throw 'LLVM clang missing after installation' }
           if (-not (Test-Path (Join-Path $llvm 'ld.lld.exe'))) { throw 'LLVM ld.lld missing after installation' }
+          Write-Output "LLVM_BIN=$llvm" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
           $llvm | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append'
       - name: 安装开发依赖
         run: python -m pip install 'setuptools>=77' wheel '.[usb,test]'
