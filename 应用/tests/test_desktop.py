@@ -416,12 +416,16 @@ class DesktopTests(unittest.TestCase):
     def test_json_worker_handles_preparation_and_rejects_physical_commands(self):
         env = dict(os.environ)
         env['PYTHONPATH'] = str(Path(a6700_unlock.__file__).resolve().parent.parent)
+        # The desktop client reads the worker pipe as UTF-8; Windows consoles
+        # default to the ANSI code page, which cannot encode the Chinese UI.
+        env['PYTHONIOENCODING'] = 'utf-8'
         commands = [dict(command='reset', scenario='partial'), dict(command='acknowledge', value=True), dict(command='prepare')]
         commands += [dict(command='confirm', id=ident, value=True) for ident in STEP_IDS]
         commands += [dict(command='real-write', backend='usb', path='/dev/nflasha5')]
         result = subprocess.run([sys.executable, '-m', 'a6700_unlock.desktop.bridge'],
             input=''.join(json.dumps(command)+'\n' for command in commands),
-            env=env, cwd=self.temp.name, capture_output=True, text=True, timeout=15)
+            env=env, cwd=self.temp.name, capture_output=True, text=True,
+            encoding='utf-8', timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr)
         messages = [json.loads(line) for line in result.stdout.splitlines()]
         states = [event['state'] for event in messages if event['type'] == 'state']
@@ -430,10 +434,11 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(messages[-1]['type'], 'error')
 
     def test_json_worker_remains_responsive_to_cancel_during_progress(self):
-        env = dict(os.environ, PYTHONPATH=str(Path(a6700_unlock.__file__).resolve().parent.parent))
+        env = dict(os.environ, PYTHONPATH=str(Path(a6700_unlock.__file__).resolve().parent.parent),
+                   PYTHONIOENCODING='utf-8')
         worker = subprocess.Popen([sys.executable, '-u', '-m', 'a6700_unlock.desktop.bridge'],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, env=env, cwd=self.temp.name)
+            text=True, encoding='utf-8', env=env, cwd=self.temp.name)
         events = Queue()
         def read_events():
             for line in worker.stdout:
