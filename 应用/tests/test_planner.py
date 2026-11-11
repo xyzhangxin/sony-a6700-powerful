@@ -291,9 +291,9 @@ class PlannerTests(unittest.TestCase):
         catalog = load_catalog()
         self.assertEqual({f["id"] for f in catalog.data["features"]},
                          {"ftp", "shutter", "exposure", "sound", "pixel_shift", "dynamic_active"})
-        self.assertEqual(len(catalog.edits), 355)
+        self.assertEqual(len(catalog.edits), 357)
         self.assertEqual(catalog.data["historical_app_only_parent_permission_bytes"], 12)
-        self.assertEqual(catalog.summary()["images"]["app"]["changed_bytes"], 122)
+        self.assertEqual(catalog.summary()["images"]["app"]["changed_bytes"], 123)
         self.assertEqual(catalog.summary()["images"]["wbi"]["changed_bytes"], 228)
         self.assertEqual(catalog.summary()["images"]["cpapp"]["changed_bytes"], 1)
         sound = next(f for f in catalog.data["features"] if f["id"] == "sound")

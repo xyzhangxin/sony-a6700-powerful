@@ -144,6 +144,8 @@ class SimulationService:
         elif scenario == 'incompatible':
             sectors[2] = b'X' + sectors[2][1:]
         self.backend = MemoryDevice(self.profile, sectors, scenario)
+        from ..capability_packages import builtin_adapter_set
+        self.adapter_set = builtin_adapter_set(self.profile)
         self.directory = Path(directory)
         self.backup_dir = self.directory / 'backups'
         self.scenario = scenario
@@ -166,6 +168,9 @@ class SimulationService:
         else:
             result = _execute_session(self.profile, self.backend, action,
                                       self.directory, progress, features=features)
+        if features is not None:
+            from ..capability_packages import resolve_capability_selection
+            result['capability_resolution'] = resolve_capability_selection(self.adapter_set, features, action)
         result['simulation'] = True
         result['simulated_write_attempted'] = result['write_attempted']
         result['simulated_settings_write_attempted'] = result.get('settings_write_attempted', False)

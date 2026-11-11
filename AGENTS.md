@@ -27,7 +27,7 @@ python3 应用/scripts/check.py --strict
 - 设备范围或掩码变化必须同步清单、profile、原生载荷和 manifest，附相应验证；不能只改界面开关。区分模拟、只读预检、实机写入、重启后功能验收。
 - Pico 三份源码保留历史输入哈希；时序、GPIO、机型适配需要独立证据。硬件路线只提供引导与已知区间备份，不扩充未验证全盘恢复。
 - 不提交固件、私人备份、机身标识、校准、密钥、ProductInfo 原文或个人路径／原始日志。不得恢复已排除的历史原厂扇区数组，应用源码打包有已知路径和块哈希守卫。
-- 仅允许固定引导、应用`data/native/`固定读写及关闭前检查／复位自编ELF，以及`data/fl23/`固定carrier.bin与三份自编ELF；FL23须保留recipe、manifest、冻结runtime源码与构建脚本；保留对应源码、哈希与来源；发行 ZIP 在 GitHub Release 分发，与同版源码、说明、校验成组，不覆盖已分发文件。
+- 仅允许固定引导、应用`data/native/`固定读写及关闭前检查／复位自编ELF，以及`data/fl23/`固定carrier.bin、`variants/{2,3}/carrier.bin`与三份自编ELF；FL23须保留recipe、manifest、冻结runtime源码与构建脚本；保留对应源码、哈希与来源；发行 ZIP 在 GitHub Release 分发，与同版源码、说明、校验成组，不覆盖已分发文件。
 - Windows驱动安装器仅允许`应用/desktop/windows/driver/wdi-simple.exe`固定摘要及对应libwdi源包；SetupAPI和驱动助手只能处理限定的Sony PID，不得引入未审查安装器或让主应用提权。
 - 自有 GPL-3.0-only；第三方按各自许可，见 `NOTICE`。不得以“仅供学习”承诺免责、删除归属或增加与 GPL 冲突的用途限制。修改须附原因、范围、实际验证与未验证事项。
 

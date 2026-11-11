@@ -9,6 +9,7 @@ from PySide6.QtGui import QCloseEvent, QDesktopServices, QFont
 from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
 from client import ServiceClient
 from design import STYLE
+from feedback import FeedbackDialog
 from dialogs import OperationConfirmation
 from views import Views
 
@@ -35,8 +36,9 @@ class Window(Views,QMainWindow):
         self.resize(1060,770);self.setMinimumSize(980,720)
         self.client=ServiceClient(self)
         self.client.event.connect(self.on_event);self.client.exited.connect(self.on_exit)
-        self.state={};self.pending_mode=None;self.closing=False
+        self.state={};self.pending_mode=None;self.closing=False;self.update_status=None;self.update_available=False;self._auto_update_check=False
         self.transitioning=False;self.inflight=None;self.operation_started=False;self.page_key=None
+        self.feedback_dialog=None
         self.build_shell(demo)
         QTimer.singleShot(0,self.start)
 
@@ -50,13 +52,23 @@ class Window(Views,QMainWindow):
             self.operation_started = False; self.scroll.setEnabled(True)
             self.client.start(self.physical)
             self.command('environment')
+            if self.physical:
+                self._auto_update_check=True
+                self.client.send('check_updates')
         except Exception:
             self.render_interrupted('本机服务未能启动。请保留完整目录，重新解压应用。')
 
     def command(self, name, **values):
-        if name in ('inspect', 'unlock', 'close', 'update_fl23'):
+        if name in ('inspect', 'unlock', 'close', 'update_fl23', 'update_ftp', 'check_updates'):
             if self.inflight or self.state.get('busy'):
                 return
+            if name == 'check_updates':
+                if self._auto_update_check:
+                    self._auto_update_check=False
+                    self.client.send('check_updates')
+                    return
+                self.update_status = None
+                self.update_available = False
             self.inflight = name
             self.operation_started = False
             self.mode.setEnabled(False)
@@ -66,6 +78,11 @@ class Window(Views,QMainWindow):
             self.client.send(name, **values)
         except (OSError, RuntimeError):
             self.render_interrupted('本机服务连接已中断；上一次操作不会自动重发。')
+
+    def show_feedback(self):
+        if self.feedback_dialog is None:
+            self.feedback_dialog = FeedbackDialog(self)
+        self.feedback_dialog.show()
 
     def change_mode(self):
         if self.state.get('busy') or self.inflight:
@@ -85,13 +102,15 @@ class Window(Views,QMainWindow):
             QTimer.singleShot(0, self.close); return
         if self.transitioning:
             self.pending_mode = None; self.start(); return
-        uncertain = self.inflight in ('unlock', 'close', 'update_fl23') or (self.state.get('busy') and self.state.get('action') in ('unlock', 'close'))
+        uncertain = self.inflight in ('unlock', 'close', 'update_fl23', 'update_ftp') or (self.state.get('busy') and self.state.get('action') in ('unlock', 'close'))
         self.render_interrupted('结果待核实：服务在功能操作中退出。请保留本机记录，先重新检查，不要盲目重复写入。'
                                 if uncertain else '本机服务已退出。重新启动服务后，重新准备并连接相机。')
 
     def on_event(self, generation, event):
         if generation != self.client.generation or self.transitioning or self.closing:
             return
+        if self.feedback_dialog is not None:
+            self.feedback_dialog.handle_event(event)
         if event.get('type') == 'state':
             self.state = event['state']
             if self.state.get('busy'):
@@ -100,6 +119,26 @@ class Window(Views,QMainWindow):
             elif self.operation_started:
                 self.inflight = None
             self.scroll.setEnabled(not self.inflight or self.operation_started)
+            self.render()
+        elif event.get('type') == 'update-result':
+            result = event.get('result', {})
+            status = result.get('status', 'error')
+            sequence = result.get('sequence')
+            labels = {
+                'activated': '已更新',
+                'unchanged': '当前已是最新版本',
+                'not-modified': '当前已是最新版本',
+                'unconfigured': '更新暂不可用',
+                'offline': '网络不可用',
+                'unavailable': '更新暂不可用',
+                'artifact-unavailable': '更新暂不可用',
+                'rejected': '更新失败',
+            }
+            self.update_status = labels.get(status, None)
+            if status == 'activated':
+                self.update_available = True
+            self.inflight = None
+            self.scroll.setEnabled(True)
             self.render()
         elif event.get('type') == 'progress':
             message=event.get('message', '正在等待结果…')

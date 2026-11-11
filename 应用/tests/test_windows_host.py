@@ -48,13 +48,20 @@ class WindowsHostTests(unittest.TestCase):
     def test_libwdi_binary_and_source_match_reviewed_pins(self):
         import hashlib,json
         root=Path(__file__).resolve().parents[1]
-        pin=json.loads((root/'desktop/runtime-dependencies.json').read_text(encoding='utf-8'))['libwdi']
+        pin=json.loads((root/'desktop/runtime-dependencies.json').read_text())['libwdi']
         self.assertEqual(hashlib.sha256((root/'desktop/windows/driver/wdi-simple.exe').read_bytes()).hexdigest(),pin['binary_sha256'])
         source=root/'desktop/windows/driver/libwdi-1.5.0.tar.gz'
         # The source ZIP intentionally carries build instructions and hashes;
         # the corresponding source archive is added to binary deliveries.
         if source.exists():
             self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(),pin['source_sha256'])
+
+    def test_windows_packaging_collects_stdlib_and_signature_dependencies(self):
+        root = Path(__file__).resolve().parents[1]
+        script = (root/'scripts/build_windows_app.py').read_text(encoding='utf-8')
+        self.assertIn("'--hidden-import','plistlib'", script)
+        for package in ('cryptography', 'cffi', 'pycparser'):
+            self.assertIn(f"'--collect-all','{package}'", script)
 
     def test_failed_record_flush_blocks_writer_after_directory_setup(self):
         from test_operations import sparse_fixture, Backend

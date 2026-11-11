@@ -17,6 +17,7 @@ import io
 import json
 import os
 from pathlib import Path
+from .host_io import open_exclusive, sync_directory
 import uuid
 import zipfile
 
@@ -43,17 +44,6 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _sync_directory(path: Path):
-    """POSIX directory sync. Windows archives use write-through handles."""
-    if os.name != "posix":
-        return
-    fd = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-
-
 def _ensure_directory(path: Path):
     missing = []
     cursor = Path(path)
@@ -66,11 +56,11 @@ def _ensure_directory(path: Path):
         except FileExistsError:
             if not directory.is_dir():
                 raise
-        _sync_directory(directory.parent)
+        sync_directory(directory.parent)
 
 
 def _sync_file(path: Path):
-    _sync_directory(path.parent)
+    sync_directory(path.parent)
 
 
 def _feature_rows(plan):
@@ -160,9 +150,6 @@ def _new_path(directory, created_at):
 
 
 def _write_new(path: Path, data: bytes):
-    # O_BINARY is explicit: some Windows CRT environments translate 0x0A in
-    # text-mode descriptors, which would corrupt the archive bytes in place.
-    from .host_io import open_exclusive
     fd = open_exclusive(path)
     try:
         with os.fdopen(fd, "wb") as out:

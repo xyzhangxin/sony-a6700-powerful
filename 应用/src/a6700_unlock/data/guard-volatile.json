@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "kind": "guard-volatile-overlay",
-  "profile_sha256": "c20d1b9ba7114ef1bc3cff3ae1787b5334ac899cc8f3aa806ec3bea3039db82f",
-  "profile_id": "a6700-2.00-unified-v7-test-scope-20261021",
-  "catalog_id": "a6700-2.00-phase1-offline-v1",
+  "profile_sha256": "c2860f5a1687d0190ac74d9500b971fa8301ff12784c7c567cee0d5c20a056fb",
+  "profile_id": "a6700-2.00-ftp-correct-playback-0839",
+  "catalog_id": "a6700-2.00-ftp-correct-playback-0839",
   "description": "落在 ext2 inode 表内的结构守卫扇区：相机开机自行刷新 inode 的 atime/ctime/mtime，比对前把这些时间字段清零，期望哈希换成清零后的原厂值；扇区其余字节仍逐字节钉死。",
   "inode_size": 256,
   "volatile_fields": [

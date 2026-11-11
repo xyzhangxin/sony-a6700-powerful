@@ -104,9 +104,9 @@ def compile(source,destination,work,name,*,defines=()):
     subprocess.run([clang,'-target','aarch64-none-elf','-fPIC','-O2','-ffreestanding',
         '-fno-builtin','-fno-stack-protector','-mgeneral-regs-only','-mno-outline-atomics','-I',str(work),
         *defines,'-c',str(source),'-o',str(obj)],check=True)
-    linker = shutil.which('ld.lld') or shutil.which('ld.lld.exe') or shutil.which('aarch64-elf-ld')
-    if linker is None:
-        raise RuntimeError('ld.lld is required to link FL23 transactions')
+    linker = shutil.which('aarch64-elf-ld') or shutil.which('ld.lld')
+    if not linker:
+        raise RuntimeError('aarch64 linker is required to build FL23 transactions')
     subprocess.run([linker,'-shared','-Bsymbolic','-z','noexecstack',
         '--build-id=none','-o',str(out),str(obj)],check=True)
     data=out.read_bytes()

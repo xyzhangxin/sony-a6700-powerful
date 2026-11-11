@@ -2,7 +2,7 @@
 from pathlib import Path
 import time
 import sys
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QPixmap, QIcon, QDesktopServices
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (QWidget, QFrame, QVBoxLayout, QHBoxLayout, QGridLayout,
@@ -11,7 +11,7 @@ from a6700_unlock import __version__
 from a6700_unlock.notice import operation_notice
 from importlib.resources import files
 from design import (label,button,panel,line,row,column,pill,Segments,Symbol,CheckBox,
-                    ACCENT,INK,MUTED,AMBER,FEATURES,ActivityIndicator)
+                    ACCENT,INK,MUTED,AMBER,FEATURES,ActivityIndicator,symbol_icon)
 
 
 def title(layout,text,subtitle=''):
@@ -48,10 +48,14 @@ class Views:
         self.demo_button.setAccessibleName('演示设置');self.demo_button.setToolTip('演示场景与连接设置')
         demo_icon=Symbol('sliders',18);demo_icon.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         d=QHBoxLayout(self.demo_button);d.setContentsMargins(5,5,5,5);d.addWidget(demo_icon)
+        self.feedback_button=button(h,'意见反馈',self.show_feedback,'link');self.feedback_button.setAccessibleName('意见反馈');self.feedback_button.setToolTip('填写问题和图片，按需采集并上传相机日志');self.feedback_button.setIcon(symbol_icon('bubble',14,ACCENT));self.feedback_button.setIconSize(QSize(14,14))
         self.mode_symbol=Symbol('cable',15);h.addWidget(self.mode_symbol)
         self.mode_status=label('相机模式','accent',False);self.mode_status.setStyleSheet('font-size:11px; font-weight:600;');h.addWidget(self.mode_status)
         self.mode_segments=Segments([(1,'演示'),(0,'相机')],self.mode.currentIndex(),self.mode.setCurrentIndex);self.mode_segments.setFixedWidth(122);h.addWidget(self.mode_segments)
         help_button=button(h,'',self.help_menu,'iconButton');help_button.setFixedSize(28,28);help_button.setAccessibleName('帮助与版本')
+        self.update_dot=QWidget(help_button);self.update_dot.setFixedSize(8,8)
+        self.update_dot.setStyleSheet('background:#e5484d;border-radius:4px;')
+        self.update_dot.move(18,2);self.update_dot.hide();self.update_dot.setToolTip('有可用更新，点击查看')
         i=QHBoxLayout(help_button);i.setContentsMargins(5,5,5,5);sym=Symbol('more',18,MUTED);sym.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents);i.addWidget(sym)
         self.help_button=help_button;self.outer.addWidget(self.header)
         self.step_frame=QFrame();self.step_frame.setObjectName('steps');self.step_layout=QHBoxLayout(self.step_frame);self.step_layout.setContentsMargins(28,11,28,13);self.step_layout.setSpacing(20)
@@ -98,7 +102,14 @@ class Views:
         self.render()
 
     def help_menu(self):
-        m=QMenu(self);m.addAction('查看操作前须知',self.review_notice);m.addAction('Windows 驱动准备',self.driver_help)
+        self.update_dot.hide()
+        m=QMenu(self)
+        if self.physical:
+            m.addAction('检查更新',lambda:self.command('check_updates'))
+            if getattr(self,'update_status',None):
+                m.addSection(self.update_status)
+            m.addSeparator()
+        m.addAction('查看操作前须知',self.review_notice);m.addAction('Windows 驱动准备',self.driver_help)
         m.addAction('开源许可',self.show_license);m.addSeparator();a=m.addAction('Windows 预览 · '+__version__);a.setEnabled(False)
         m.exec(self.help_button.mapToGlobal(self.help_button.rect().bottomRight()))
 
@@ -145,6 +156,12 @@ class Views:
             if phase=='progress':self.progress=[];self.cancel_requested=False;self.operation_started_at=time.monotonic()
             if phase=='home':self.action='unlock'
         self.page_key=key;self.refresh_chrome(phase)
+        if hasattr(self,'update_dot'):
+            self.update_dot.setVisible(bool(getattr(self,'update_available',False)))
+        if getattr(self,'update_available',False):
+            self._ensure_update_banner()
+        elif hasattr(self,'_update_banner') and self._update_banner is not None:
+            self._update_banner.hide()
         l=self.page('')
         if phase=='notice':self.notice(l)
         elif phase=='preparation':self.preparation(l)
@@ -153,6 +170,23 @@ class Views:
         elif phase=='result':self.operation_result(l)
         l.addStretch();self.render_footer(phase)
         QTimer.singleShot(0,lambda:self.scroll.verticalScrollBar().setValue(position))
+
+    def _ensure_update_banner(self):
+        """Show a dismissable banner under the header when an adapter-set update arrives."""
+        if not hasattr(self,'_update_banner') or self._update_banner is None:
+            self._update_banner=QWidget();self._update_banner.setObjectName('updateBanner')
+            self._update_banner.setStyleSheet('background:#ebf5ff;border-bottom:1px solid #d0e4f7;')
+            layout=QHBoxLayout(self._update_banner);layout.setContentsMargins(28,6,28,6)
+            layout.addWidget(label('已更新到最新版本','small'))
+            layout.addStretch()
+            button(self._update_banner,'知道了',self._dismiss_update_banner,'quiet')
+            self.outer.insertWidget(self.outer.indexOf(self.step_frame),self._update_banner)
+        self._update_banner.show()
+
+    def _dismiss_update_banner(self):
+        self.update_available=False
+        if hasattr(self,'_update_banner') and self._update_banner is not None:
+            self._update_banner.hide()
 
     def notice(self,l):
         s=self.state;title(l,'操作前须知','请先确认机型与操作风险，再准备相机。')
@@ -250,9 +284,13 @@ class Views:
             state_text='暂未开放' if not f.get('available',True) else {'enabled':'已解锁','disabled':'未解锁','partial':'部分解锁','unknown':'待核实'}.get(f['state'],'待确认')
             if f.get('available',True) and f.get('update_available'):state_text+=' · 可更新'
             st=label(state_text,'small',False);st.setStyleSheet('font-size:10px;color:'+ (ACCENT if f.get('available',True) and f['state']=='enabled' else MUTED));r.addWidget(st)
-            if f['id']=='fl23' and f.get('update_available'):
-                update=button(r,'更新 FL2／FL3',lambda:self.command('update_fl23'),'secondary',not self.inflight and not s.get('busy'))
-                update.setObjectName('fl23UpdateButton');update.setToolTip('仅更新 FL2／FL3 修复包，保留中文名称和其他功能')
+            if f.get('update_available'):
+                is_ftp = f['id'] == 'ftp'
+                update=button(r,'更新 FTP' if is_ftp else '更新 FL2／FL3',
+                              lambda is_ftp=is_ftp:self.command('update_ftp' if is_ftp else 'update_fl23'),
+                              'secondary',not self.inflight and not s.get('busy'))
+                update.setObjectName('ftpUpdateButton' if is_ftp else 'fl23UpdateButton')
+                update.setToolTip('仅更新当前功能，保留其他功能和设置')
             listbox.addWidget(w)
         right,box=panel(None);right.setFixedWidth(270);right.setObjectName('actionPanel');columns.addWidget(right,0,Qt.AlignmentFlag.AlignTop)
         box.addWidget(label('调整所选功能','heading'));box.addSpacing(4)

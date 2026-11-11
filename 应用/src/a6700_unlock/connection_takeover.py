@@ -94,7 +94,7 @@ def known_active_task(path, owner):
         info_stat = registration.lstat()
         if not stat.S_ISREG(info_stat.st_mode) or info_stat.st_uid != os.getuid() or info_stat.st_mode & 0o077:
             return False
-        info = json.loads(registration.read_text(encoding='utf-8'))
+        info = json.loads(registration.read_text())
         if info.get('pid') != owner['pid']:
             return False
         url = urlsplit(info['url'])

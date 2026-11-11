@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from copy import deepcopy
 import sys
+import uuid
 from threading import Event, RLock
 
+from .. import __version__ as CORE_VERSION
 from ..catalog import load_catalog
 from ..device_profile import load_device_profile
 from ..preparation import assess, STEPS
@@ -15,6 +17,8 @@ from ..usb.backend import payloads
 from .physical import PhysicalService
 from .simulation import SCENARIOS, SimulationService
 from .aftercare import MENU_CHECKS, build_aftercare
+from .protocol import API_VERSION, capabilities as protocol_capabilities
+from ..capability_packages import package_versions
 from ..close_preparation import RULES as CLOSE_RULES
 
 
@@ -117,6 +121,7 @@ class DesktopController:
         self._initialize_state()
 
     def _initialize_state(self):
+        self.operation_id = uuid.uuid4().hex
         if self.takeover_manager is not None:
             self.takeover_manager.pending = None
         self.confirmed = set()
@@ -167,6 +172,7 @@ class DesktopController:
                     detail='演示依赖缺失，并非本机检测结论', remediation='切换到其他模拟场景后重新检查。'))
                 self.environment['ready'] = False
             self.checked = True
+            self.operation_id = uuid.uuid4().hex
             self.confirmed.clear()
             self.compatible = False
             self.features = []
@@ -229,6 +235,7 @@ class DesktopController:
                 raise ValueError('请等待当前操作结束。')
             if self.mode == 'physical':
                 self.service.close_session()
+            self.operation_id = uuid.uuid4().hex
             self.confirmed.clear()
             self.compatible = False
             self.features = []
@@ -341,15 +348,24 @@ class DesktopController:
             self.revision += 1
         return self.snapshot()
 
-    def reserve_fl23_update(self):
-        """The row's update button targets FL23 only, ignoring other checks."""
+    def reserve_update(self, identifier):
+        """Target exactly one supported feature, preserving all other options."""
         with self.lock:
             self._require_selection_editable()
-            row=next((r for r in self.features if r['id']=='fl23'),{})
-            if row.get('state')!='enabled' or row.get('update_available') is not True:
-                raise ValueError('当前没有可更新的旧版 FL2／FL3；请重新检查状态。')
-            self.selected_features={'fl23'}
+            if identifier not in ('fl23', 'ftp'):
+                raise ValueError('当前功能不支持独立更新。')
+            row = next((r for r in self.features if r['id'] == identifier), {})
+            if row.get('state') != 'enabled' or row.get('update_available') is not True:
+                label = 'FL2／FL3' if identifier == 'fl23' else 'FTP'
+                raise ValueError(f'当前没有可更新的旧版 {label}；请重新检查状态。')
+            self.selected_features = {identifier}
             self.reserve('unlock')
+
+    def reserve_fl23_update(self):
+        return self.reserve_update('fl23')
+
+    def reserve_ftp_update(self):
+        return self.reserve_update('ftp')
 
     def end_session(self):
         with self.lock:
@@ -548,7 +564,12 @@ class DesktopController:
             prepared = assess(self.service.profile, self.confirmed, self.environment)
             connected = self.service.backend.connected if self.mode == 'simulation' else self.service.connected
             backups = self._available_backups()
-            return deepcopy(dict(revision=self.revision, phase=self.phase, scenario=self.scenario,
+            return deepcopy(dict(api_version=API_VERSION, capabilities=protocol_capabilities(self.mode),
+                operation_id=self.operation_id, core_version=CORE_VERSION,
+                profile_sha256=self.service.profile.digest,
+                adapter_set_sha256=self.service.adapter_set['digest'],
+                capability_packages=package_versions(self.service.adapter_set),
+                revision=self.revision, phase=self.phase, scenario=self.scenario,
                 scenarios=[dict(id=key, name=name) for key, name in self.scenarios.items()],
                 environment=self.environment, checked=self.checked, steps=prepared['steps'],
                 notice=operation_notice(), notice_acknowledged=self.notice_acknowledged,

@@ -25,7 +25,7 @@ def copy_licenses(destination, wdi_version):
     for name in ('LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md'):
         shutil.copyfile(ROOT/name, destination/name)
     versions = {'Python':platform.python_version(),'libwdi':wdi_version}
-    for name in ('PySide6-Essentials', 'shiboken6', 'pyusb', 'libusb-package', 'pyinstaller'):
+    for name in ('PySide6-Essentials', 'shiboken6', 'pyusb', 'libusb-package', 'pyinstaller', 'cryptography', 'cffi', 'pycparser'):
         dist = importlib.metadata.distribution(name); versions[name] = dist.version
         target = destination/name; target.mkdir()
         for file in dist.files or []:
@@ -107,8 +107,8 @@ def main():
                 '--add-data',str(generated/'bundle-manifest.json')+':.',
                 '--add-binary',str(library)+':'+str(PurePosixPath(dll_name).parent),
                 '--add-binary',str(wdi)+':driver',
-                '--collect-submodules','a6700_unlock','--collect-all','libusb_package',
-                '--collect-all','usb']
+                '--collect-submodules','a6700_unlock','--hidden-import','plistlib','--collect-all','libusb_package',
+                '--collect-all','usb','--collect-all','cryptography','--collect-all','cffi','--collect-all','pycparser']
         subprocess.run(common+['--name','Powerful6700.Service','--console',
                                '--exclude-module','PySide6',str(ROOT/'desktop/windows/service.py')],check=True)
         subprocess.run(common+['--name','Powerful6700','--windowed',

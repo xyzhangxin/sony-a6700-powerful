@@ -5,6 +5,8 @@ entries are not all described in Sony's unmodified A6700 help guide.
 """
 from __future__ import annotations
 
+from ..operation_workflow import build_evidence, build_workflow
+
 
 FL23_STARTUP_NOTICE = ('每次取出电池并重新装入后，开机需等待约 40 秒，'
                        '待 FL2／FL3 自动加载后再使用。刚开机时未显示这两项，请先等待加载。')
@@ -66,6 +68,7 @@ def build_aftercare(action, report, selected, simulation):
     before = {row['id']: row for row in report.get('plan', {}).get('features', [])}
     final = {row['id']: row for row in report.get('final_features', [])}
     checks = []
+    changed_ids = set()
     # Follow the catalog/preflight display order, not request sorting.
     ordered = [identifier for identifier in before if identifier in (selected or [])]
     ordered.extend(identifier for identifier in selected or [] if identifier not in ordered)
@@ -77,16 +80,17 @@ def build_aftercare(action, report, selected, simulation):
         unchanged = report['status'] == 'no-op' or (before.get(identifier, {}).get('state') == target and not updating)
         verb = '更新' if updating else '解锁' if action == 'unlock' else '关闭'
         row = final.get(identifier, before.get(identifier, {}))
+        if not unchanged:
+            changed_ids.add(identifier)
         checks.append(dict(id=identifier, name=row.get('name', identifier), path=menu['path'],
                            expected=menu[action], note=(menu.get('close_note', menu['note'])
                                                        if action == 'close' else menu['note']),
                            outcome=('原已%s，未重复写入' % verb if unchanged
                                     else '已%s · 回读通过' % verb)))
     steps = [dict(step) for step in RESTART_STEPS]
-    startup_notice = None
-    if action == 'unlock' and any(row['id'] == 'fl23' for row in checks):
-        startup_notice = FL23_STARTUP_NOTICE
-        steps[-1].update(title='开机并等待',
-                         detail='开机后等待约 40 秒，待 FL2／FL3 加载后再按下方路径检查。')
-    return dict(simulation=simulation, restart_required=report['status'] != 'no-op',
-                steps=steps, features=checks, startup_notice=startup_notice)
+    startup_notice = FL23_STARTUP_NOTICE if action == 'unlock' and 'fl23' in changed_ids else None
+    restart_required = report['status'] != 'no-op'
+    return dict(simulation=simulation, restart_required=restart_required,
+                steps=steps, features=checks, startup_notice=startup_notice,
+                workflow=build_workflow(action, steps, checks, changed_ids, restart_required),
+                evidence=build_evidence(action, report, checks, restart_required))

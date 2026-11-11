@@ -3,3 +3,6 @@ pyusb==1.2.1
 libusb-package==1.0.30.0
 PySide6-Essentials==6.10.3
 pyinstaller==6.22.3
+cryptography==46.0.3
+cffi==2.1.1
+pycparser==3.12

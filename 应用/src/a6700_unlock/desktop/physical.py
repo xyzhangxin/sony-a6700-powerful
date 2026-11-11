@@ -26,12 +26,19 @@ class PhysicalService:
         from ..fl23_package import available, names_available
         self.fl23_available = backend_factory is None and available()
         self.names_available = backend_factory is None and names_available()
+        from ..capability_packages import builtin_adapter_set
+        self.adapter_set = builtin_adapter_set(
+            self.profile,
+            fl23_available=self.fl23_available,
+            names_available=self.names_available,
+            include_creative_looks=self.fl23_available or self.names_available)
         self.connected = False
         self.simulation = False
         # Keep one authenticated USB session open for this app process. The
         # first operation asks for authorization; inspection and the chosen
         # write reuse it. Unlock/close then end the session before power-off.
         self._session_backend = None
+        self._session_access = None
         self._session_lock = None
         self._last_run_directory = None
 
@@ -43,12 +50,13 @@ class PhysicalService:
 
     def close_session(self):
         backend, self._session_backend = self._session_backend, None
+        access, self._session_access = self._session_access, None
         lock, self._session_lock = self._session_lock, None
         self.connected = False
         exit_error = None
         try:
-            if backend is not None:
-                backend.__exit__(None, None, None)
+            if access is not None:
+                access.release_access()
         except BaseException as exc:
             exit_error = str(exc) or type(exc).__name__
             raise
@@ -72,16 +80,46 @@ class PhysicalService:
                 except Exception:
                     pass
 
-    def _backend(self, progress, capture):
-        if self.backend_factory is not None:
-            try:
-                return self.backend_factory(progress, capture=capture)
-            except TypeError:
-                return self.backend_factory(progress)
-        from ..usb.backend import UsbBackend
-        return UsbBackend(self.profile, progress, capture=capture)
+    def start_operation_log(self, operation_id, progress):
+        """Reuse the inspection session and its lock; never reauthenticate at Start."""
+        if self._session_backend is None or not self.connected:
+            raise ValueError('请先连接并检查相机，再开始录制。')
+        from ..operations import default_state_dir
+        from .. import diagnostics
+        try:
+            return diagnostics.start_operation_log(
+                state_dir=self.state_dir if self.state_dir is not None else default_state_dir(),
+                operation_id=operation_id, progress=progress, backend=self._session_backend)
+        except BaseException:
+            self.close_session()
+            raise
+
+    def collect_operation_log(self, operation_id, recorder, progress, guided_events=None):
+        """Stop/recover the recorder over the still-open inspection session."""
+        if self._session_backend is None or not self.connected:
+            raise ValueError('当前没有可复用的相机服务连接。')
+        from ..operations import default_state_dir
+        from .. import diagnostics
+        try:
+            result = diagnostics.export(
+                camera=True,
+                state_dir=self.state_dir if self.state_dir is not None else default_state_dir(),
+                operation_id=operation_id, mode='guided', guided_events=guided_events,
+                recorder=recorder, progress=progress, backend=self._session_backend)
+        except BaseException:
+            self.close_session()
+            raise
+        return result
+
+    def _refresh_adapter_set(self):
+        from ..capability_packages import builtin_adapter_set
+        self.adapter_set = builtin_adapter_set(
+            self.profile, fl23_available=self.fl23_available,
+            names_available=self.names_available,
+            include_creative_looks=self.fl23_available or self.names_available)
 
     def perform(self, action, progress=lambda _message: None, backup_id=None, features=None):
+        self._refresh_adapter_set()
         if action not in ("inspect", "unlock", "close", "backup", "restore"):
             raise ValueError("未知设备操作；当前支持检查、解锁、关闭、功能状态备份与恢复")
         # Reject package feature injection before acquiring/authenticating USB.
@@ -93,6 +131,13 @@ class PhysicalService:
             raise ValueError('所选功能暂未开放实机写入。')
         if features is not None and set(features)&package_ids and action not in ('unlock','close'):
             raise ValueError('创意外观选项当前仅支持解锁或关闭。')
+        capability_resolution = None
+        if features is not None:
+            from ..capability_packages import resolve_capability_selection
+            try:
+                capability_resolution = resolve_capability_selection(self.adapter_set, features, action)
+            except ValueError as exc:
+                raise ValueError('所选功能暂未开放实机写入。') from exc
         from ..operations import (_execute_session, _backup_session, _restore_session,
                                   default_state_dir, device_lock)
         directory = self.state_dir if self.state_dir is not None else default_state_dir()
@@ -103,8 +148,11 @@ class PhysicalService:
             lock.__enter__()
             self._session_lock = lock
             try:
-                backend = self._backend(progress, capture=True)
-                backend.__enter__()
+                from ..device_access import UsbDeviceAccess
+                access = UsbDeviceAccess(self.profile, self.backend_factory)
+                self._session_access = access
+                access.prepare_access(progress, capture=True)
+                backend = access.open_transport(progress)
                 self._session_backend = backend
                 from ..close_setting import verify_pending_settings
                 verify_pending_settings(backend,directory)
@@ -155,6 +203,8 @@ class PhysicalService:
             else:
                 result['cleanup_status'] = getattr(backend, 'cleanup_status', None)
                 result['cleanup_warning'] = getattr(backend, 'cleanup_warning', None)
+        if capability_resolution is not None:
+            result['capability_resolution'] = capability_resolution
         self.connected = self._session_backend is not None and result.get('status') in (
             'inspected', 'dry-run', 'completed', 'no-op', 'backup-completed', 'restored', 'settings-prepared')
         return result

@@ -123,7 +123,7 @@ class TakeoverTests(unittest.TestCase):
         self.assertTrue(result['released']); self.assertEqual(result['signals'], ['SIGTERM'])
         self.assertFalse(lock_busy(self.lock)); self.assertEqual(self.lock.stat().st_ino, inode)
         journal = list((self.root / 'state/connection-takeovers').iterdir())
-        intent = json.loads((journal[0] / 'intent.json').read_text(encoding='utf-8'))
+        intent = json.loads((journal[0] / 'intent.json').read_text())
         self.assertTrue(intent['user_confirmed']); self.assertEqual(intent['owner']['pid'], child.pid)
 
     def test_confirmation_can_escalate_only_for_the_same_stuck_holder(self):
@@ -211,10 +211,13 @@ class WindowsBusyTests(TakeoverTests):
         self.assertFalse(self.manager.prepare(self.lock)['available'])
     def test_application_mutex_raises_busy_with_shared_path(self):
         from a6700_unlock.operations import _flock
-        self.holder()
+        child = self.holder()
         with self.lock.open('a+b') as handle:
-            with self.assertRaises(DeviceBusyError) as error:_flock(handle)
-        self.assertEqual(error.exception.lock_path,self.lock)
+            try:
+                with _flock(handle):
+                    self.fail('共享设备锁不应被重复获取')
+            except DeviceBusyError as error:
+                self.assertEqual(error.lock_path, self.lock)
 
 
 def load_tests(loader, tests, pattern):

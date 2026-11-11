@@ -115,6 +115,13 @@ class WindowsDriverTests(unittest.TestCase):
 
     def test_backend_closes_driver_helper_after_success_or_failure(self):
         from a6700_unlock.usb.backend import UsbBackend
+        # The patch target below resolves through the package attribute, which
+        # only exists once the submodule has been imported; that import needs
+        # PyUSB, so hosts without it skip instead of erroring.
+        try:
+            from a6700_unlock.usb import legacy  # noqa: F401
+        except ImportError:
+            self.skipTest('PyUSB required for backend patch target')
         for error in (None, DeviceError('synthetic auth failure')):
             session = Mock()
             with patch('sys.platform', 'win32'), \

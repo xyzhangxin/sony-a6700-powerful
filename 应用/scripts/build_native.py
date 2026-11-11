@@ -29,8 +29,8 @@ def main():
     if not args.clang or not args.linker:
         parser.error("Need clang plus aarch64-elf-ld or ld.lld")
     if args.catalog:
-        catalog=Catalog.from_dict(json.loads(args.catalog.read_text()))
-        profile=DeviceProfile.from_dict(json.loads(args.profile.read_text()),catalog)
+        catalog=Catalog.from_dict(json.loads(args.catalog.read_text(encoding="utf-8")))
+        profile=DeviceProfile.from_dict(json.loads(args.profile.read_text(encoding="utf-8")),catalog)
     else:profile=load_device_profile(load_catalog())
     source=ROOT/"src/a6700_unlock/native/transaction.c"
     destination=args.output_dir or ROOT/"src/a6700_unlock/data/native"

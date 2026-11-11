@@ -6,32 +6,17 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
-import sys
 import uuid
 
 from .backup import Backup, create_backup, default_backup_dir, restore_plan
 from .device_profile import inspect_sectors
 from .device_protocol import DeviceError, DeviceBusyError
 from .close_preparation import prepare_close, attach_preparation, recheck_preparation
+from . import host_io
 
 
 def default_state_dir():
-    if sys.platform == "darwin":
-        return Path.home() / "Library/Application Support/a6700-unlock"
-    if sys.platform == "win32":
-        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local")) / "a6700-unlock"
-    return Path.home() / ".local/state/a6700-unlock"
-
-
-def _sync_directory(path):
-    """POSIX directory sync. Windows critical files use write-through handles."""
-    if os.name != "posix":
-        return
-    fd = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
+    return host_io.default_state_dir()
 
 
 def make_directory(path):
@@ -47,13 +32,17 @@ def make_directory(path):
         except FileExistsError:
             if not directory.is_dir():
                 raise
-        _sync_directory(directory.parent)
+        host_io.sync_directory(directory.parent)
+
+
+def _sync_directory(path):
+    """Compatibility wrapper for platform-specific package code."""
+    return host_io.sync_directory(path)
 
 
 def save_json(path, data):
     """Exclusive, durable files; no accidental input/report overwrites."""
-    from .host_io import open_exclusive
-    fd = open_exclusive(path)
+    fd = host_io.open_exclusive(path)
     with os.fdopen(fd, "w", encoding="utf-8") as out:
         json.dump(data, out, ensure_ascii=False, indent=2)
         out.write("\n")
@@ -61,7 +50,7 @@ def save_json(path, data):
         os.fsync(out.fileno())
     # A successful file fsync is insufficient if its new directory entry has
     # not reached storage. If directory syncing is unsupported, stop pre-write.
-    _sync_directory(Path(path).parent)
+    host_io.sync_directory(Path(path).parent)
 
 
 def record_warning(result, message):
@@ -70,31 +59,14 @@ def record_warning(result, message):
 
 
 def host_lock_path():
-    # Shared with the existing research wizards, independent of report paths.
-    if sys.platform == "darwin":
-        base = Path.home() / "Library/Application Support"
-    elif sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local"))
-    else:
-        base = Path.home() / ".local/state"
-    return base / "sony-a6700-ftp/.assistant.lock"
+    return host_io.host_lock_path()
 
 
+@contextlib.contextmanager
 def _flock(lock):
-    """Advisory exclusive lock; fcntl on POSIX, msvcrt byte-range on Windows."""
-    if os.name == "nt":
-        import msvcrt
-        lock.seek(0)
-        try:
-            msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
-        except OSError as exc:
-            raise DeviceBusyError("本机已有相机工具运行，请等待其完成；更换记录目录不会绕过设备锁", Path(lock.name)) from exc
-        return
-    import fcntl
-    try:
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError as exc:
-        raise DeviceBusyError("本机已有相机工具运行，请等待其完成；更换记录目录不会绕过设备锁", Path(lock.name)) from exc
+    """Compatibility wrapper for Windows callers of the former helper."""
+    with host_io.exclusive_lock(lock):
+        yield lock
 
 
 @contextlib.contextmanager
@@ -104,8 +76,8 @@ def device_lock(directory, *, observe_returned_settings=False):
     with contextlib.ExitStack() as stack:
         for path in (host_lock_path(), Path(directory) / "device.lock"):
             make_directory(path.parent)
-            lock = stack.enter_context(path.open("a+"))
-            _flock(lock)
+            lock = stack.enter_context(path.open("a+b"))
+            stack.enter_context(host_io.exclusive_lock(lock))
         from .close_setting import guard_pending_settings
         guard_pending_settings(directory,observe_returned=observe_returned_settings)
         yield

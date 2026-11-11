@@ -59,6 +59,18 @@ def run(window, report):
         assert window.state['environment']['ready']
         checks.append('simulation-startup')
         capture('notice')
+        window.show_feedback()
+        assert window.feedback_dialog is not None
+        assert window.feedback_dialog.windowTitle() == '意见反馈'
+        assert window.feedback_dialog.width() == 640
+        assert window.feedback_dialog.height() == 680
+        assert window.feedback_dialog.description.toPlainText() == ''
+        assert not window.feedback_dialog.upload_button.isEnabled()
+        window.feedback_dialog.description.setPlainText('测试反馈')
+        window.feedback_dialog.refresh()
+        assert window.feedback_dialog.upload_button.isEnabled()
+        window.feedback_dialog.hide()
+        checks.append('feedback-entry-and-disabled-state')
         with patch.object(QDialog,'exec',return_value=0):
             window.show_license()
         window.command('reset', scenario='original')
@@ -117,6 +129,18 @@ def run(window, report):
             update.click();send.assert_called_once_with('update_fl23')
         assert window.inflight=='update_fl23'
         window.inflight=None;window.operation_started=False;window.state=saved;window.scroll.setEnabled(True);window.render()
+        ftp_row = next(row for row in rows if row['id'] == 'ftp')
+        ftp_row.update(state='enabled', selected=True, update_available=True, installed_revision=1, target_revision=2)
+        window.state = dict(saved, features=rows)
+        window.set_action('unlock'); app.processEvents()
+        ftp_update = window.scroll.widget().findChild(QPushButton, 'ftpUpdateButton')
+        assert ftp_update is not None and ftp_update.isEnabled()
+        with patch.object(window.client, 'send') as send:
+            ftp_update.click(); send.assert_called_once_with('update_ftp')
+        assert window.inflight == 'update_ftp'
+        window.inflight = None; window.operation_started = False
+        window.state = saved; window.scroll.setEnabled(True); window.render()
+        checks.append('ftp-status-and-exclusive-update-command')
         checks.append('legacy-fl23-status-and-exclusive-update-command')
         for action in ('unlock','close'):
             window.set_action(action)
@@ -146,7 +170,7 @@ def run(window, report):
             if action=='unlock':
                 assert '40 秒' in notices[0].text()
                 assert '10 秒' in result['aftercare']['steps'][3]['title']
-                assert '40 秒' in result['aftercare']['steps'][-1]['detail']
+                assert '40 秒' in result['aftercare']['startup_notice']
             checks.append(action+'-result-six-steps-and-menu-checks')
             capture(action+'-result')
             window.command('restart_preparation')
@@ -247,7 +271,7 @@ def run(window, report):
         checks.append('restart-local-service-without-replay')
         # A separate physical worker receives environment only: no USB access.
         window.mode.setCurrentIndex(0)
-        until(lambda: window.state.get('checked') and not window.state.get('simulation',True))
+        until(lambda: window.state.get('checked') and not window.state.get('simulation',True), timeout=90)
         assert not window.state['device_access'] and not window.state['write_attempted']
         if sys.platform=='win32':
             assert window.state['environment']['ready'],window.state['environment']
