@@ -52,7 +52,15 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: 安装原生测试编译器（Linux）
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y clang lld
+        run: |
+          # GitHub 的 ubuntu 镜像已带 clang／lld；仅在缺失时才访问 apt，
+          # 避免镜像源 DNS 故障把整条检查卡死。
+          if command -v clang >/dev/null && command -v ld.lld >/dev/null; then
+            clang --version | head -1
+            ld.lld --version | head -1
+          else
+            sudo apt-get update && sudo apt-get install -y clang lld
+          fi
       - name: 安装原生测试链接器（macOS）
         if: runner.os == 'macOS'
         run: brew install lld
