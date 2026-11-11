@@ -53,21 +53,30 @@ jobs:
       - name: 安装原生测试编译器（Linux）
         if: runner.os == 'Linux'
         run: |
-          # GitHub 的 ubuntu 镜像已带带版本号的 clang／lld；优先复用，
-          # 避免镜像源 DNS 故障把整条检查卡死。
-          set -e
-          pick() { for c in "$@"; do if command -v "$c" >/dev/null; then command -v "$c"; return 0; fi; done; return 1; }
-          CLANG=$(pick clang clang-18 clang-17 clang-16 || true)
-          LLD=$(pick ld.lld ld.lld-18 ld.lld-17 ld.lld-16 || true)
+          # 优先复用镜像自带的 clang／lld；镜像源不可达时不要让整条检查卡死，
+          # 退化为纯 Python 套件并在日志中明确标注。
+          set +e
+          pick() { for c in "$@"; do if command -v "$c" >/dev/null 2>&1; then command -v "$c"; return 0; fi; done; return 1; }
+          CANDIDATES="clang clang-22 clang-21 clang-20 clang-19 clang-18 clang-17 clang-16"
+          LLD_CANDIDATES="ld.lld ld.lld-22 ld.lld-21 ld.lld-20 ld.lld-19 ld.lld-18 ld.lld-17 ld.lld-16"
+          CLANG=$(pick $CANDIDATES)
+          LLD=$(pick $LLD_CANDIDATES)
           if [ -z "$CLANG" ] || [ -z "$LLD" ]; then
-            sudo apt-get update && sudo apt-get install -y clang lld
-            CLANG=$(pick clang clang-18 clang-17 clang-16)
-            LLD=$(pick ld.lld ld.lld-18 ld.lld-17 ld.lld-16)
+            timeout 240 sudo apt-get update
+            timeout 240 sudo apt-get install -y clang lld
+            CLANG=$(pick $CANDIDATES)
+            LLD=$(pick $LLD_CANDIDATES)
           fi
-          sudo ln -sf "$CLANG" /usr/local/bin/clang
-          sudo ln -sf "$LLD" /usr/local/bin/ld.lld
-          clang --version | head -1
-          ld.lld --version | head -1
+          if [ -n "$CLANG" ] && [ -n "$LLD" ]; then
+            sudo ln -sf "$CLANG" /usr/local/bin/clang
+            sudo ln -sf "$LLD" /usr/local/bin/ld.lld
+            echo "NATIVE_TOOLS=1" >> "$GITHUB_ENV"
+            clang --version | head -1
+            ld.lld --version | head -1
+          else
+            echo "NATIVE_TOOLS=0" >> "$GITHUB_ENV"
+            echo "::warning::clang/lld unavailable; Linux job runs the pure-Python suite only"
+          fi
       - name: 安装原生测试链接器（macOS）
         if: runner.os == 'macOS'
         run: brew install lld
@@ -78,7 +87,11 @@ jobs:
       - name: 安装开发依赖
         run: python -m pip install 'setuptools>=77' wheel '.[usb,test]'
       - name: 合成测试及原生 ELF 仿真，不访问相机
+        if: env.NATIVE_TOOLS != '0'
         run: python scripts/check.py --native --strict
+      - name: 合成测试（无原生工具链时退化为纯 Python）
+        if: env.NATIVE_TOOLS == '0'
+        run: python scripts/check.py
       - name: 构建 wheel
         run: python scripts/build_wheel.py --offline
       - name: 构建独立源码包
