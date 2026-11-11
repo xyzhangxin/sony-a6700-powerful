@@ -53,14 +53,21 @@ jobs:
       - name: 安装原生测试编译器（Linux）
         if: runner.os == 'Linux'
         run: |
-          # GitHub 的 ubuntu 镜像已带 clang／lld；仅在缺失时才访问 apt，
+          # GitHub 的 ubuntu 镜像已带带版本号的 clang／lld；优先复用，
           # 避免镜像源 DNS 故障把整条检查卡死。
-          if command -v clang >/dev/null && command -v ld.lld >/dev/null; then
-            clang --version | head -1
-            ld.lld --version | head -1
-          else
+          set -e
+          pick() { for c in "$@"; do if command -v "$c" >/dev/null; then command -v "$c"; return 0; fi; done; return 1; }
+          CLANG=$(pick clang clang-18 clang-17 clang-16 || true)
+          LLD=$(pick ld.lld ld.lld-18 ld.lld-17 ld.lld-16 || true)
+          if [ -z "$CLANG" ] || [ -z "$LLD" ]; then
             sudo apt-get update && sudo apt-get install -y clang lld
+            CLANG=$(pick clang clang-18 clang-17 clang-16)
+            LLD=$(pick ld.lld ld.lld-18 ld.lld-17 ld.lld-16)
           fi
+          sudo ln -sf "$CLANG" /usr/local/bin/clang
+          sudo ln -sf "$LLD" /usr/local/bin/ld.lld
+          clang --version | head -1
+          ld.lld --version | head -1
       - name: 安装原生测试链接器（macOS）
         if: runner.os == 'macOS'
         run: brew install lld
