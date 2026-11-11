@@ -46,6 +46,9 @@ def validate_public_file(path, relative):
 
 
 def main():
+    if hasattr(sys.stdout, 'reconfigure'):
+        # 仓库路径含中文；Windows 控制台默认 ANSI 代码页无法输出。
+        sys.stdout.reconfigure(errors='replace')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output-dir', type=Path, default=ROOT / 'dist')
     args = parser.parse_args()

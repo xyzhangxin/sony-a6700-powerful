@@ -19,6 +19,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        # 仓库路径含中文；Windows 控制台默认 ANSI 代码页无法输出。
+        sys.stdout.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=ROOT / "dist")
     parser.add_argument("--offline", action="store_true", help="使用已有构建依赖；禁止索引和构建隔离下载")

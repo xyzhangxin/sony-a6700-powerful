@@ -24,6 +24,9 @@ jobs:
       - run: python -m compileall -q -x '/\._' 核心 脚本
   application:
     name: 应用 / ${{ matrix.os }} / Python ${{ matrix.python }}
+    env:
+      # 仓库路径含中文；Windows 控制台默认 ANSI 代码页无法输出。
+      PYTHONIOENCODING: utf-8
     strategy:
       fail-fast: false
       matrix:
