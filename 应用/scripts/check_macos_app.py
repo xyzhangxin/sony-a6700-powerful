@@ -23,6 +23,7 @@ def check_worker(resources, physical):
                      PYTHONHOME='/nonexistent/a6700',PYTHONPATH='/nonexistent/a6700')
     events=Queue()
     with tempfile.TemporaryDirectory(prefix='a6700-app-check-') as folder:
+        environment['HOME']=folder
         worker=subprocess.Popen(command,cwd=folder,env=environment,stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
         def receive():
@@ -47,10 +48,8 @@ def check_worker(resources, physical):
             assert all(isinstance(check['detail'],str) for check in state['environment']['checks']), 'Native UI requires text check details'
             assert not state['device_access'] and not state['write_attempted']
             if not physical:
-                send('acknowledge',value=True);send('prepare')
-                send('confirm_preparation',value=True)
-                state_until(lambda s:s['ready'])
-                send('inspect');state_until(lambda s:not s['busy'] and s['compatible'])
+                send('prepare_and_inspect',acknowledged=True,prepared=True)
+                state_until(lambda s:not s['busy'] and s['compatible'])
                 send('select',mode='none');state=state_until(lambda s:not s['busy'])
                 assert all(not row['selected'] for row in state['features']),state
                 send('select',mode='missing');state=state_until(lambda s:not s['busy'])
@@ -64,11 +63,11 @@ def check_worker(resources, physical):
                 assert state['simulation'] and not state['device_access'] and not state['write_attempted']
                 assert state['result']['status']=='completed',state['result']
                 assert state['result']['aftercare']['simulation']
-                assert len(state['result']['aftercare']['features'])==5
+                assert len(state['result']['aftercare']['features'])==6
                 assert not state['compatible'] and not state['ready']
                 send('restart_preparation');state_until(lambda s:s['phase']=='preparation')
-                send('confirm_preparation',value=True);state_until(lambda s:s['ready'])
-                send('inspect');state_until(lambda s:not s['busy'] and s['phase']=='home')
+                send('prepare_and_inspect',acknowledged=True,prepared=True)
+                state_until(lambda s:not s['busy'] and s['phase']=='home')
                 send('select',mode='all');state_until(lambda s:all(row['selected'] for row in s['features'] if row.get('available',True)))
                 send('restore',backup_id=backup_id)
                 state=state_until(lambda s:not s['busy'] and s['result'] is not None)
@@ -77,7 +76,7 @@ def check_worker(resources, physical):
                 send('restart_preparation')
                 state=state_until(lambda s:s['phase']=='preparation')
                 assert not state['ready'] and not state['compatible'] and not state['features']
-            return dict(mode='physical-environment-only' if physical else 'simulation-backup-restore',
+            return dict(mode='physical-environment-only' if physical else 'simulation-merged-preparation-backup-restore',
                         ready=state['environment']['ready'],device_access=state['device_access'],
                         write_attempted=state['write_attempted'])
         finally:

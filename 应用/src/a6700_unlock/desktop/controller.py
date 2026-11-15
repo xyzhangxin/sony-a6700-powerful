@@ -228,6 +228,20 @@ class DesktopController:
             self.revision += 1
         return self.snapshot()
 
+    def prepare_and_reserve(self, acknowledged, prepared):
+        """One-page declaration, then the existing readiness and inspect guards."""
+        with self.lock:
+            if acknowledged is not True or prepared is not True:
+                raise ValueError('请阅读须知并确认相机准备已完成。')
+            if self.phase not in ('notice', 'preparation') or self.busy:
+                raise ValueError('当前不能开始连接。')
+            if self.phase == 'preparation':
+                self.phase = 'notice'
+            self.acknowledge_notice(True)
+            self.begin_preparation()
+            self.confirm_preparation(True)
+            self.reserve('inspect')
+
     def restart_preparation(self):
         """Release the current session before the user changes the connection."""
         with self.lock:
@@ -426,6 +440,7 @@ class DesktopController:
                 raise ValueError('只有恢复操作可以选择备份。')
             self.cancel.clear()
             self.inspect_summary = None
+            self.operation_id = str(uuid.uuid4())
             self.busy = True
             self.action = action
             self.backup_id = backup_id
@@ -441,6 +456,7 @@ class DesktopController:
                     or confirmed is not True):
                 raise ValueError('请先检查当前连接占用，并明确确认强制接管。')
             self.takeover_request = (confirmation, confirmed)
+            self.operation_id = str(uuid.uuid4())
             self.busy = True
             self.action = 'takeover'
             self.phase = 'running'
@@ -533,6 +549,8 @@ class DesktopController:
                                    backup_sha256=result.get('backup_sha256', ''),
                                    backup_id=result.get('backup_id', ''),
                                    cleanup_warning=result.get('cleanup_warning') or '',
+                                   cleanup_status=result.get('cleanup_status'),
+                                   verified=result.get('verified'),
                                    close_preparation=result.get('close_preparation'),
                                    aftercare=build_aftercare(action, result, features,
                                                              self.mode == 'simulation'))

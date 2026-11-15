@@ -81,13 +81,13 @@ class Views:
         return layout
 
     def refresh_chrome(self,phase):
-        s=self.state;stage=0 if phase=='notice' else 1 if phase=='preparation' or (phase in ('progress','result') and s.get('action')=='inspect') else 2
+        s=self.state;stage=0 if phase in ('notice','preparation') or (phase in ('progress','result') and s.get('action')=='inspect') else 1
         self.mode_segments.select(self.mode.currentIndex());self.mode_segments.setEnabled(self.mode.isEnabled())
         self.demo_button.setVisible(not self.physical);self.demo_button.setEnabled(not self.inflight and not s.get('busy'))
         self.mode_symbol.kind='cable' if self.physical else 'play';self.mode_symbol.update()
         self.mode_status.setText(('相机已检查' if s.get('compatible') else '相机模式') if self.physical else '演示模式 · 不连接相机')
         self.clear(self.step_layout)
-        for i,name in enumerate(['操作前须知','准备并连接','功能管理']):
+        for i,name in enumerate(['准备并连接','功能管理']):
             if i:self.step_layout.addWidget(label('›','small',False))
             group=QWidget();r=QHBoxLayout(group);r.setContentsMargins(0,0,0,0);r.setSpacing(7)
             badge=label('✓' if stage>i else str(i+1),'',False);badge.setFixedSize(19,19);badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -155,6 +155,7 @@ class Views:
             self.disclosures.clear()
             if phase=='progress':self.progress=[];self.cancel_requested=False;self.operation_started_at=time.monotonic()
             if phase=='home':self.action='unlock'
+            if phase in ('notice','preparation'):self.preparation_acknowledged=False
         self.page_key=key;self.refresh_chrome(phase)
         if hasattr(self,'update_dot'):
             self.update_dot.setVisible(bool(getattr(self,'update_available',False)))
@@ -163,8 +164,9 @@ class Views:
         elif hasattr(self,'_update_banner') and self._update_banner is not None:
             self._update_banner.hide()
         l=self.page('')
-        if phase=='notice':self.notice(l)
-        elif phase=='preparation':self.preparation(l)
+        if phase in ('notice','preparation'):
+            self.notice(l)
+            self.preparation(l)
         elif phase=='home':self.workspace(l)
         elif phase=='progress':self.operation_progress(l)
         elif phase=='result':self.operation_result(l)
@@ -189,7 +191,12 @@ class Views:
             self._update_banner.hide()
 
     def notice(self,l):
-        s=self.state;title(l,'操作前须知','请先确认机型与操作风险，再准备相机。')
+        s=self.state
+        scope = next((entry['title'] for entry in s.get('notice', {}).get('sections', [])
+                      if entry['id'] == 'scope'), '仅适配 A6700 · 固件 2.00')
+        title(l, '准备并连接相机', scope)
+        if not s.get('checked') or s.get('environment', {}).get('ready'):
+            return
         _,box=panel(l,padding=13);r=row(box);ready=s.get('environment',{}).get('ready')
         r.addWidget(Symbol('check' if ready else 'warning',18,ACCENT if ready else AMBER))
         r.addWidget(label('本机组件已就绪' if ready else '本机组件检查未通过'));r.addStretch()
@@ -198,7 +205,6 @@ class Views:
         for item in s.get('environment',{}).get('checks',[]):
             if 'environment' in self.disclosures:box.addWidget(label(('✓ ' if item['ok'] else '○ ')+item['name']+' · '+str(item['detail']),'small'))
             if not item['ok']:box.addWidget(label(item['name']+'：'+item.get('remediation',''),'amber'))
-        self.notice_sections(l,s.get('notice',{}).get('sections',[]))
 
     def notice_sections(self,l,sections,reviewing=False):
         scope=next((x for x in sections if x['id']=='scope'),None)
@@ -221,7 +227,6 @@ class Views:
             disclosure(l,'当前验证范围',[validation['body'],'Windows 预览仍待本版实机连接与功能验收。'],'validation' in self.disclosures,lambda:self.toggle_details('validation'))
 
     def preparation(self,l):
-        title(l,'准备相机','按下面四项完成设置，最后连接数据线。已经准备好的话，确认后即可检查。')
         _,box=panel(l,padding=0,spacing=0)
         summaries={
             'ftp_stopped':'没有 FTP 菜单可直接跳过；如已有且开启，关闭传输后重启相机。',
@@ -230,7 +235,7 @@ class Views:
             'usb_connection':'使用可传数据的 USB 线，只连接一台相机；普通使用不接 Pico。'}
         for i,step in enumerate(self.state.get('steps',[])):
             if i:line(box)
-            w=QWidget();r=QHBoxLayout(w);r.setContentsMargins(18,17,18,17);r.setSpacing(16);box.addWidget(w)
+            w=QWidget();r=QHBoxLayout(w);r.setContentsMargins(16,10,16,10);r.setSpacing(16);box.addWidget(w)
             n=label(str(i+1),'',False);n.setAlignment(Qt.AlignmentFlag.AlignCenter);n.setFixedSize(27,27);n.setStyleSheet('background:#edf3f1;color:#145e4f;border-radius:8px;font-weight:600;');r.addWidget(n,0,Qt.AlignmentFlag.AlignTop)
             text=column(r,7,1);text.addWidget(label(step['title'],'heading'));text.addWidget(label(summaries.get(step['id'],step['instruction']),'muted'))
             guides=step.get('menu_guides',[])
@@ -242,11 +247,9 @@ class Views:
                 pc=column(pr,2,1);pc.addWidget(label(g['title'],'small'));target=label(g['target']);target.setStyleSheet('color:#ffa13d;font-size:13px;font-weight:600;');pc.addWidget(target)
             else:
                 preview.setObjectName('tint');v.addWidget(label('连接方式 · 关键项                          示意','small',False));pr=row(v,7);pr.addWidget(Symbol('document',24));pr.addWidget(label('────','accent',False));pr.addWidget(Symbol('camera',24));pr.addWidget(label('MSC','pill',False));v.addWidget(label('只连一台 · 不接 Pico','small'))
-        l.addWidget(label('右侧只展示相机界面右上角的关键项，不是实机截图。下方确认只代表人工声明，连接后仍会检查固件与功能状态。','muted'))
-        _,box=panel(l,'tint',15);r=row(box,11);r.addWidget(Symbol('info',18),0,Qt.AlignmentFlag.AlignTop);text=column(r,6,1)
-        text.addWidget(label('MSC 提示为什么会消失？Windows 需要怎样准备？','heading'))
-        text.addWidget(label('连接后会切到维护服务，MSC 提示消失本身不等于断线；保持数据线连接，以应用结果为准。首次连接会由专用助手一次授权、自动准备 MSC 与维护服务共用的 WinUSB；主应用不提权，后续无需重复安装。','muted'))
-        if self.physical:button(text,'驱动说明与恢复普通 SD 访问',self.driver_help,'link')
+        if self.physical:
+            l.addWidget(label('首次连接可能请求管理员授权并自动准备驱动。MSC 提示消失后，请保持 USB 连接。','muted'))
+            button(l,'驱动说明与恢复普通 SD 访问',self.driver_help,'link')
 
     def set_action(self,action):
         self.action=action;self.render()
@@ -360,7 +363,10 @@ class Views:
             t.addWidget(label('保留本次记录，不要盲目重复写入。' if uncertain else '确认相机模式、驱动、供电与连接后，再主动重新检查。','muted'))
             if not self.physical:t.addWidget(label('这是演示场景，真实相机没有被访问或修改。','accent'))
             line(box);disclosure(box,'查看诊断详情',[r.get('error',''),'状态：'+r.get('status','error')]+self.progress,'diagnostic' in self.disclosures,lambda:self.toggle_details('diagnostic'))
-            b=row(l);button(b,'重新准备并检查',lambda:self.command('restart_preparation'),'primary');b.addStretch()
+            b=row(l);button(b,'重新准备并检查',lambda:self.command('restart_preparation'),'primary')
+            if self.physical and r.get('status') not in ('cancelled','connection-released'):
+                button(b,'上传本次异常日志',self.show_failure_feedback,'quiet')
+            b.addStretch()
 
     def success(self,l,r,after):
         text='已经是目标状态' if r.get('status')=='no-op' else ('固件已关闭，设置已恢复' if r.get('status')=='settings-prepared' else '关闭完成' if self.state.get('action')=='close' else '解锁或更新完成')
@@ -398,12 +404,23 @@ class Views:
     def render_footer(self,phase):
         self.clear(self.footer_layout);line(self.footer_layout);frame=QFrame();frame.setObjectName('footer');h=QHBoxLayout(frame);h.setContentsMargins(28,16 if phase in ('notice','preparation','result') else 12,28,16 if phase in ('notice','preparation','result') else 12);h.setSpacing(16);self.footer_layout.addWidget(frame)
         s=self.state;success=phase=='result' and (s.get('result') or {}).get('success') and (s.get('result') or {}).get('aftercare')
-        if phase=='notice':
-            h.addStretch();ack=CheckBox('我已阅读并了解适用范围与操作风险');ack.setObjectName('noticeAcknowledgement');ack.setChecked(s.get('notice_acknowledged',False));ack.toggled.connect(lambda v:self.command('acknowledge',value=v));h.addWidget(ack)
-            button(h,'开始准备相机',lambda:self.command('prepare'),'primary',s.get('checked',False) and s.get('environment',{}).get('ready',False) and s.get('notice_acknowledged',False))
-        elif phase=='preparation':
-            button(h,'返回',lambda:self.command('cancel'),'quiet');h.addStretch();ack=CheckBox('以上设置已完成，相机已连接并保持开机');ack.setObjectName('preparationAcknowledgement');ack.setChecked(s.get('ready',False));ack.toggled.connect(lambda v:self.command('confirm_preparation',value=v));h.addWidget(ack)
-            button(h,'连接并自动准备驱动' if self.physical else '检查演示设备',lambda:self.command('inspect'),'primary',s.get('ready',False) and not self.inflight)
+        if phase in ('notice','preparation'):
+            notice = column(h, 4, 1)
+            notice.addWidget(label('非官方工具。修改固件有变砖风险，可能影响保修。','muted'))
+            notice_links = row(notice)
+            button(notice_links,'查看完整须知',self.review_notice,'link')
+            if not s.get('checked'):
+                notice_links.addWidget(label('正在检查本机组件…','muted'))
+            notice_links.addStretch()
+            ack=CheckBox('我已阅读风险说明，并完成相机准备')
+            ack.setObjectName('preparationAcknowledgement');ack.setChecked(self.preparation_acknowledged);h.addWidget(ack)
+            ready=s.get('checked',False) and s.get('environment',{}).get('ready',False) and not self.inflight
+            connect=button(h,'连接并自动准备驱动' if self.physical else '检查演示设备',lambda:self.command('prepare_and_inspect',acknowledged=True,prepared=True),'primary',ready and self.preparation_acknowledged)
+            connect.setObjectName("preparationConnect")
+            def acknowledge(value):
+                self.preparation_acknowledged=value
+                connect.setEnabled(ready and value)
+            ack.toggled.connect(acknowledge)
         elif success:
             t=column(h,4,1);t.addWidget(label('还想管理其他功能？'));t.addWidget(label('完成机身检查后，重新连接 MSC；应用会重新检查当前状态。' if self.physical else '返回准备页，重新检查演示设备后可继续体验。','muted'))
             button(h,'继续操作，重新连接',lambda:self.command('restart_preparation'),'primary')

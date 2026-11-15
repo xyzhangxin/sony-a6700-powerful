@@ -303,17 +303,39 @@ class UsbTests(unittest.TestCase):
     def test_native_capture_routes_three_commands_and_stops_on_exit(self):
         nonce=bytes(range(16));count=len(self.profile.entries)
         raw=RESPONSE.pack(b'A67R',1,nonce,0,count,0xffffffff,0,0)+bytes(count*512)
-        channel=Mock();channel.send.side_effect=[(0,bytes(4)),(0,bytes(4)),(0,bytes(4)+raw)]
+        channel=Mock();channel.send.side_effect=[
+            (0,bytes(4)),
+            (0,bytes(4)),(0,bytes(4)),(0,bytes(4)+raw),
+            (0,bytes(4)),(0,bytes(4)),(0,bytes(4)+raw),
+        ]
         target=SimpleNamespace(device=object())
         with patch.object(self.legacy,'get_libusb_backend',return_value=object()),\
              patch.object(self.legacy,'run_authentication',return_value=(target,channel)),\
              patch.object(self.legacy,'vendor_request_out') as stop,patch.object(self.legacy,'close_target') as close:
             with UsbBackend(self.profile,capture=False) as backend:
                 self.assertEqual(backend.read(nonce),[bytes(512)]*count)
+                self.assertEqual(backend.read(nonce),[bytes(512)]*count)
             stop.assert_called_once_with(target.device,self.legacy.STOP_SENSER,strict=True)
             close.assert_called_once_with(target)
         calls=channel.send.call_args_list
-        self.assertEqual([struct.unpack_from('<HH',c.args[1])[1] for c in calls],[0x4010,0x4007,0x4008])
+        self.assertEqual(calls[0].args,(0x40,struct.pack('<HH',0x1001,0x4002)+bytes(3)))
+        self.assertEqual([struct.unpack_from('<HH',c.args[1])[1] for c in calls],
+                         [0x4002,0x4010,0x4007,0x4008,0x4010,0x4007,0x4008])
+
+    def test_mount_failure_stops_before_file_upload_and_releases_service(self):
+        channel=Mock();channel.send.return_value=(0,bytes.fromhex('04000010'))
+        target=SimpleNamespace(device=object())
+        with patch.object(self.legacy,'get_libusb_backend',return_value=object()),\
+             patch.object(self.legacy,'run_authentication',return_value=(target,channel)),\
+             patch.object(self.legacy,'vendor_request_out') as stop,patch.object(self.legacy,'close_target') as close:
+            with self.assertRaisesRegex(DeviceError,'04000010'):
+                with UsbBackend(self.profile,capture=False) as backend:
+                    backend.read(bytes(16))
+        self.assertEqual(channel.send.call_count,1)
+        self.assertEqual(struct.unpack_from('<HH',channel.send.call_args.args[1])[1],0x4002)
+        self.assertFalse(backend._jiritsu_mounted)
+        stop.assert_called_once_with(target.device,self.legacy.STOP_SENSER,strict=True)
+        close.assert_called_once_with(target)
     def test_stop_failure_is_reported_and_interface_is_still_released(self):
         from usb.core import USBError
         device=Mock();device.ctrl_transfer.side_effect=USBError('synthetic stop stall')

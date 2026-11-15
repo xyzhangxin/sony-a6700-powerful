@@ -14,6 +14,11 @@ sys.path.insert(0, str(ROOT/'src'))
 from a6700_unlock import __version__
 
 
+def app_name(*, standalone):
+    name = 'Powerful6700' if standalone else 'Powerful6700 预览'
+    return f'{name} {__version__}' if '.dev' in __version__ else name
+
+
 def build_ui(bundle, work, python=None):
     """The standalone builder reuses this exact UI and application source copy."""
     executable = work/'A6700Preview'
@@ -36,8 +41,15 @@ def build_ui(bundle, work, python=None):
     resources = bundle/'Contents/Resources';resources.mkdir(parents=True)
     macos = bundle/'Contents/MacOS';macos.mkdir()
     shutil.copyfile(executable, macos/'A6700Preview');(macos/'A6700Preview').chmod(0o755)
+    def shipping_files(directory, names):
+        ignored = set(shutil.ignore_patterns('._*', '__pycache__', '*.pyc', '.DS_Store')(directory, names))
+        # Deferred research contains firmware before/after images. The desktop
+        # adapter set excludes this capability; never stage its assets in an app.
+        if Path(directory) == ROOT/'src/a6700_unlock/data':
+            ignored.add('custom-sound')
+        return ignored
     shutil.copytree(ROOT/'src/a6700_unlock', resources/'python/a6700_unlock', copy_function=shutil.copyfile,
-                   ignore=shutil.ignore_patterns('._*', '__pycache__', '*.pyc', '.DS_Store'))
+                   ignore=shipping_files)
     for name in ('LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md'):
         shutil.copyfile(ROOT/name, resources/name)
     for name in ('Powerful6700.png', 'Powerful6700.icns'):
@@ -45,11 +57,15 @@ def build_ui(bundle, work, python=None):
     if python:
         (resources/'runtime.json').write_text(json.dumps(dict(kind='development', python=str(python)), indent=2)+'\n')
     standalone = python is None
+    display_name = app_name(standalone=standalone)
+    bundle_id = 'org.a6700unlock.desktop' if standalone else 'org.a6700unlock.preview'
+    if '.dev' in __version__:
+        bundle_id = f'{bundle_id}.{__version__}'
     (bundle/'Contents/Info.plist').write_bytes(plistlib.dumps(dict(
-        CFBundleName='Powerful6700',
-        CFBundleDisplayName='Powerful6700' if standalone else 'Powerful6700 预览',
+        CFBundleName=display_name,
+        CFBundleDisplayName=display_name,
         CFBundleIconFile='Powerful6700.icns',
-        CFBundleIdentifier='org.a6700unlock.desktop' if standalone else 'org.a6700unlock.preview',
+        CFBundleIdentifier=bundle_id,
         CFBundleExecutable='A6700Preview', CFBundlePackageType='APPL',
         CFBundleShortVersionString=__version__.split('.dev')[0],
         CFBundleVersion=__version__.split('.dev')[-1], A6700DevelopmentVersion=__version__,
@@ -60,7 +76,8 @@ def build_ui(bundle, work, python=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output', type=Path, default=ROOT/'dist/Powerful6700 预览.app')
+    name = app_name(standalone=False) + '.app'
+    parser.add_argument('--output', type=Path, default=ROOT/'dist'/name)
     parser.add_argument('--python', type=Path, default=Path(sys.executable))
     args = parser.parse_args()
     if sys.platform != 'darwin':
@@ -70,7 +87,7 @@ def main():
     python = args.python.absolute()
     subprocess.run([str(python), '-c', 'import sys; assert sys.version_info >= (3,10)'], check=True)
     with tempfile.TemporaryDirectory(prefix='a6700-swift-preview-') as folder:
-        work=Path(folder);bundle=work/'Powerful6700 预览.app'
+        work=Path(folder);bundle=work/name
         build_ui(bundle, work, python)
         subprocess.run(['codesign', '--force', '--sign', '-', str(bundle)], check=True)
         args.output.parent.mkdir(parents=True, exist_ok=True)

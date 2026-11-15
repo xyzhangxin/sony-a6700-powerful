@@ -82,10 +82,12 @@ struct WorkspaceView: View {
                             Spacer(minLength: 4)
                             Text(feature.isAvailable ? feature.stateText : "暂未开放").font(.system(size: 10, weight: .medium))
                                 .foregroundColor(feature.state == "enabled" ? UI.accent : UI.muted)
-                            if feature.id == "fl23" && feature.update_available == true {
-                                Button("更新 FL2／FL3") { model.send("update_fl23") }
-                                    .buttonStyle(.bordered).tint(UI.accent)
-                                    .accessibilityHint("仅更新 FL2／FL3 修复包，保留中文名称和其他功能")
+                            if feature.update_available == true {
+                                Button(feature.id == "ftp" ? "更新 FTP" : "更新 FL2／FL3") {
+                                    model.send(feature.id == "ftp" ? "update_ftp" : "update_fl23")
+                                }
+                                .buttonStyle(.bordered).tint(UI.accent)
+                                .accessibilityHint("仅更新当前功能，保留其他功能和设置")
                             }
                         }.padding(.leading, 6)
                     }.toggleStyle(.checkbox).disabled(!feature.isAvailable).opacity(feature.isAvailable ? 1 : 0.55).padding(.horizontal, 16).padding(.vertical, 12)

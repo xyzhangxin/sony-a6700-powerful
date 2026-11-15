@@ -3,15 +3,11 @@ import SwiftUI
 /// The service owns risk and scope copy; the view only groups it for reading.
 struct OperationNoticeView: View {
     let state: Snapshot?
-    let onRecheck: () -> Void
     let onLicense: () -> Void
-    var reviewing = false
-    @State private var diagnostics = false
     @State private var validation = false
     var body: some View {
         VStack(alignment: .leading, spacing: 17) {
-            PageTitle(title: state?.notice.title ?? "操作前须知", subtitle: "请先确认机型与操作风险，再准备相机。")
-            if !reviewing { startupCheck }
+            PageTitle(title: "操作前须知", subtitle: "适用范围、固件修改风险与开源许可")
             if let sections = state?.notice.sections {
                 if let scope = sections.first(where: { $0.id == "scope" }) {
                     HStack(alignment: .top, spacing: 12) {
@@ -39,7 +35,31 @@ struct OperationNoticeView: View {
             }
         }
     }
-    private var startupCheck: some View {
+    private func noticeCard(_ section: NoticeSection, equalHeight: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Label(section.title, systemImage: section.icon).font(.system(size: 12, weight: .semibold))
+                .foregroundColor(section.level == "risk" ? UI.amber : UI.ink)
+            Text(section.body).font(.system(size: 11)).foregroundColor(UI.muted)
+                .lineSpacing(3).fixedSize(horizontal: false, vertical: true)
+            if !section.source_url.isEmpty, let url = URL(string: section.source_url) {
+                Link("Sony 服务政策 ↗", destination: url).font(.system(size: 10)).foregroundColor(UI.accent)
+            }
+            if section.id == "disclaimer" {
+                Button("查看开源许可", action: onLicense).buttonStyle(.plain)
+                    .font(.system(size: 10)).foregroundColor(UI.accent)
+            }
+        }.padding(16).frame(maxWidth: .infinity, maxHeight: equalHeight ? .infinity : nil, alignment: .topLeading)
+            .background(.white).cornerRadius(10)
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(UI.line))
+    }
+}
+
+struct StartupCheckView: View {
+    let state: Snapshot?
+    let onRecheck: () -> Void
+    @State private var diagnostics = false
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 if state?.checked != true { ProgressView().controlSize(.small) }
@@ -70,22 +90,5 @@ struct OperationNoticeView: View {
             }
         }.padding(13).background(.white).cornerRadius(9)
             .overlay(RoundedRectangle(cornerRadius: 9).stroke(UI.line))
-    }
-    private func noticeCard(_ section: NoticeSection, equalHeight: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Label(section.title, systemImage: section.icon).font(.system(size: 12, weight: .semibold))
-                .foregroundColor(section.level == "risk" ? UI.amber : UI.ink)
-            Text(section.body).font(.system(size: 11)).foregroundColor(UI.muted)
-                .lineSpacing(3).fixedSize(horizontal: false, vertical: true)
-            if !section.source_url.isEmpty, let url = URL(string: section.source_url) {
-                Link("Sony 服务政策 ↗", destination: url).font(.system(size: 10)).foregroundColor(UI.accent)
-            }
-            if section.id == "disclaimer" {
-                Button("查看开源许可", action: onLicense).buttonStyle(.plain)
-                    .font(.system(size: 10)).foregroundColor(UI.accent)
-            }
-        }.padding(16).frame(maxWidth: .infinity, maxHeight: equalHeight ? .infinity : nil, alignment: .topLeading)
-            .background(.white).cornerRadius(10)
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(UI.line))
     }
 }

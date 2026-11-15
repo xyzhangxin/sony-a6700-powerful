@@ -18,6 +18,8 @@ from .controller import DesktopController
 from .update_service import DesktopUpdateService
 from .protocol import decode_request, event
 from ..device_protocol import DeviceBusyError
+from ..failure_feedback import FailureTrace
+from ..feedback import build_feedback
 
 
 def main():
@@ -28,11 +30,28 @@ def main():
                         help='功能状态备份目录；默认 ~/Documents/A6700 Backups')
     args = parser.parse_args()
 
+    failure_report = None
+    failure_preview_id = None
+    support_thread = None
+    failure_trace = FailureTrace()
     output_lock = Lock()
     # Authentication suppresses raw legacy ProductInfo through a stdout
     # redirect. Keep protocol progress on the original JSON output stream.
     protocol_output = sys.stdout
     def emit(kind, request_id=None, **values):
+        nonlocal failure_report, failure_preview_id
+        if kind == 'state':
+            state = values['state']
+            if state.get('busy') and failure_trace.identity != state.get('operation_id'):
+                failure_trace.begin(state['operation_id'], state)
+            candidate = failure_trace.report(state)
+            if candidate is not None:
+                if failure_report is None or candidate['operation_id'] != failure_report['operation_id']:
+                    failure_report = candidate
+                    failure_preview_id = None
+            elif state.get('busy'):
+                failure_report = None
+                failure_preview_id = None
         with output_lock:
             print(json.dumps(event(kind, request_id=request_id, **values), ensure_ascii=False), flush=True,
                   file=protocol_output)
@@ -61,6 +80,7 @@ def main():
 
     def run(request_id):
         def progress(message):
+            failure_trace.progress(message)
             emit('progress', message=message, request_id=request_id)
         try:
             emit('state', state=(controller.run_takeover(progress) if controller.action == 'takeover'
@@ -470,6 +490,51 @@ def main():
             request = decode_request(raw)
             request_id = request.get('request_id')
             command = request['command']
+            if command == 'preview_failure_feedback':
+                if controller.busy or failure_report is None:
+                    raise ValueError('请先完成当前操作。')
+                failure_preview_id = failure_report['operation_id']
+                preview = build_feedback(failure_report)
+                preview.pop('feedback_id')  # Assigned when confirming the final description.
+                emit('failure-feedback-preview', result=dict(
+                    operation_id=failure_report['operation_id'],
+                    payload=preview,
+                    destination='https://powerful6700-api.susukele.com', retention_days=30),
+                    request_id=request_id)
+                continue
+            if command == 'upload_failure_feedback':
+                if (controller.busy or failure_report is None or request.get('confirmed') is not True
+                        or request.get('operation_id') != failure_report['operation_id']
+                        or failure_preview_id != failure_report['operation_id']
+                        or (support_thread is not None and support_thread.is_alive())):
+                    raise ValueError('请先打开并确认本次失败报告。')
+                from .. import feedback
+                report = dict(failure_report)
+                description = request.get('description', '')
+                email = request.get('email', '')
+                if not isinstance(description, str) or len(description) > 2000:
+                    raise ValueError('问题描述无效。')
+                try:
+                    build_feedback(report, description, email=email)
+                except ValueError as exc:
+                    emit('failure-feedback-result', result=dict(status='invalid', error=str(exc)), request_id=request_id)
+                    continue
+                def upload_failure(report=report, description=description, email=email, identity=request_id):
+                    try:
+                        value = feedback.upload_feedback(report, description,
+                            state_dir=controller.service.state_dir, include_artifact=False, email=email)
+                    except Exception:
+                        value = dict(status='error', error='日志上传未完成，请稍后重试。')
+                    emit('failure-feedback-result', result=value, request_id=identity)
+                support_thread = Thread(target=upload_failure, daemon=True)
+                support_thread.start()
+                continue
+            if command == 'prepare_and_inspect':
+                controller.prepare_and_reserve(request.get('acknowledged'), request.get('prepared'))
+                emit('state', state=controller.snapshot(), request_id=request_id)
+                thread = Thread(target=run, args=(request_id,), daemon=True)
+                thread.start()
+                continue
             if command == 'check_updates':
                 if controller.busy or (thread is not None and thread.is_alive()) or (guided_thread is not None and guided_thread.is_alive()) or (update_thread is not None and update_thread.is_alive()):
                     raise ValueError('请等待当前相机操作或更新检查结束。')
@@ -509,8 +574,8 @@ def main():
                         status='error', camera=request['camera'],
                         error=str(exc).strip() or '诊断导出未完成。'), request_id=request_id)
                 continue
-            if command in ('inspect', 'unlock', 'close', 'backup', 'restore', 'takeover', 'diagnostic', 'guided_diagnostic') and update_thread is not None and update_thread.is_alive():
-                raise ValueError('正在检查更新，请等待完成后再操作相机。')
+            # Auto update checks are advisory only and never block user operations.
+            # Manual check_updates is still serialized via the check_updates handler above.
             if command == 'takeover':
                 controller.reserve_takeover(request.get('confirmation'), request.get('confirmed'))
                 emit('state', state=controller.snapshot(), request_id=request_id)
@@ -558,6 +623,8 @@ def main():
             emit('state', state=state, request_id=request_id)
         except (ValueError, TypeError, KeyError):
             emit('error', message='当前操作不可用，请先完成前置步骤或等待当前操作结束。', request_id=request_id)
+    if support_thread is not None:
+        support_thread.join(timeout=6)
     controller.cancel.set()
     if guided_cancel is not None:
         guided_cancel.set()

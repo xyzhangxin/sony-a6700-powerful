@@ -1,10 +1,12 @@
 """Windows feedback sheet aligned with the macOS DiagnosticsView."""
+import json
 from pathlib import Path
+import re
 
-from PySide6.QtCore import QPoint, QPointF, QRectF, QSize, Qt, QTimer
+from PySide6.QtCore import QPoint, QPointF, QRectF, QSize, Qt, QTimer, QSettings
 from PySide6.QtGui import (QColor, QFont, QPainter, QPainterPath, QPen, QPixmap)
 from PySide6.QtWidgets import (QDialog, QFileDialog, QGridLayout, QHBoxLayout,
-                               QMessageBox, QPlainTextEdit, QPushButton,
+                               QMessageBox, QPlainTextEdit, QPushButton, QLineEdit,
                                QScrollArea, QSizePolicy, QVBoxLayout, QWidget)
 
 from design import (ACCENT, AMBER, BACKGROUND, INK, MUTED, ActivityIndicator, Symbol,
@@ -681,3 +683,125 @@ class FeedbackDialog(QDialog):
         else:
             hint = '不录制日志也可以上传；将提交问题描述和所选图片。'
         self.upload_hint.setText(hint)
+
+
+class FailureFeedbackDialog(QDialog):
+    """Report only the worker's prepared, redacted operation evidence."""
+
+    def __init__(self, window):
+        super().__init__(window)
+        self.window = window
+        self.operation_id = ''
+        self.payload = None
+        self.uploading = False
+        self.preferences = QSettings('Powerful6700', 'Feedback')
+        self.setWindowTitle('上传本次异常日志')
+        self.setWindowModality(Qt.WindowModality.WindowModal)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.resize(560, 380)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(24, 24, 24, 24)
+        outer.setSpacing(12)
+        outer.addWidget(label('上传本次异常日志', 'heading'))
+        outer.addWidget(label('报告包含应用版本、环境检查、本次操作步骤与可用错误码。仅发送脱敏数据，保留 30 天。', 'muted'))
+        outer.addWidget(label('联系邮箱（选填）'))
+        self.email = QLineEdit(self.preferences.value('lastEmail', '', str))
+        self.email.setAccessibleName('联系邮箱')
+        self.email.setPlaceholderText('仅用于跟进这次反馈')
+        self.email.setMaxLength(254)
+        outer.addWidget(self.email)
+        outer.addWidget(label('问题说明（选填）'))
+        self.description = QPlainTextEdit()
+        self.description.setMaximumHeight(74)
+        self.description.setPlaceholderText('请勿填写密码、序列号或其他私人信息')
+        outer.addWidget(self.description)
+        self.status = label('正在准备本次诊断报告…', 'muted')
+        outer.addWidget(self.status)
+        footer = QHBoxLayout()
+        outer.addLayout(footer)
+        self.close_button = button(footer, '关闭', self.reject, 'quiet')
+        self.export_button = button(footer, '导出报告', self.export_report, 'quiet', False)
+        footer.addStretch()
+        self.upload_button = button(footer, '确认上传日志', self.upload, 'primary', False)
+
+    def refresh(self):
+        self.upload_button.setEnabled(bool(self.operation_id) and not self.uploading)
+        self.export_button.setEnabled(self.payload is not None and not self.uploading)
+        self.close_button.setEnabled(not self.uploading)
+        self.email.setEnabled(not self.uploading)
+        self.description.setEnabled(not self.uploading)
+
+    def handle_event(self, event):
+        kind = event.get('type')
+        result = event.get('result', {})
+        if kind == 'failure-feedback-preview':
+            self.operation_id = result.get('operation_id', '')
+            self.payload = result.get('payload')
+            self.status.clear()
+        elif kind == 'failure-feedback-result':
+            self.uploading = False
+            if result.get('status') == 'received':
+                self.accept()
+                self.window.show_feedback_toast(result.get('feedback_id') or '')
+                return True
+            self.status.setText(result.get('error') or '上传未完成，可重试或导出报告。')
+        elif kind == 'error':
+            self.uploading = False
+            self.status.setText(event.get('message', '日志操作未完成。'))
+        else:
+            return False
+        self.refresh()
+        return True
+
+    def upload(self):
+        if not self.upload_button.isEnabled():
+            return
+        email = self.email.text().strip()
+        if email and (not re.fullmatch(r'[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+', email)
+                      or any(ord(char) < 32 or ord(char) == 127 for char in email)):
+            self.status.setText('请输入有效的联系邮箱，或留空。')
+            return
+        description = self.description.toPlainText().strip()
+        if len(description) > 1700:
+            self.status.setText('问题说明最多填写 1700 字。')
+            return
+        self.uploading = True
+        self.status.setText('正在上传…')
+        self.refresh()
+        if self.window.command('upload_failure_feedback', operation_id=self.operation_id,
+                               description=description, email=email, confirmed=True):
+            self.preferences.setValue('lastEmail', email)
+        else:
+            self.service_exited()
+
+    def export_report(self):
+        if self.payload is None:
+            return
+        destination, _ = QFileDialog.getSaveFileName(self, '导出脱敏报告',
+                                                     'Powerful6700-异常报告.json', 'JSON (*.json)')
+        if not destination:
+            return
+        try:
+            payload = dict(self.payload)
+            if description := self.description.toPlainText().strip():
+                payload['description'] = description
+            Path(destination).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+            self.status.setText('脱敏报告已导出。')
+        except OSError:
+            self.status.setText('未能保存报告，请选择可写入的位置。')
+
+    def service_exited(self):
+        self.uploading = False
+        self.operation_id = ''
+        self.status.setText('本地服务已退出，上传结果未确认。可先导出报告。')
+        self.refresh()
+
+    def reject(self):
+        if not self.uploading:
+            super().reject()
+
+    def closeEvent(self, event):
+        if self.uploading:
+            event.ignore()
+        else:
+            super().closeEvent(event)

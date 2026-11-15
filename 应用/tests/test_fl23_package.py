@@ -92,11 +92,14 @@ class PlanningTests(unittest.TestCase):
 
 class ServiceTests(unittest.TestCase):
     class Wire:
-        def __init__(self,fail=False):
+        def __init__(self,fail=False,mount_reply=None):
             self.files={0:b'original configuration',2:b'original library'};self.calls=[];self.fail=fail;self.alias=False
-            self.cleanup_warning=None
+            self.cleanup_warning=None;self.mount_reply=mount_reply
         def _command(self,code,data):
             self.calls.append((code,data))
+            if code==0x4002:
+                if data!=bytes(3):raise AssertionError('unexpected mount payload')
+                return bytes(4) if self.mount_reply is None else self.mount_reply
             if code==0x4008:return bytes(4)+self.files[data[1]]
             if code==0x400f:
                 if data!=b'\0/tmp/jiritsu/./libJit.so':raise AssertionError('unsafe alias')
@@ -117,6 +120,7 @@ class ServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with service_files(wire,Path(tmp)) as invoke:self.assertEqual(invoke(b'new native',b'config'),b'new report')
         self.assertEqual(wire.files,original)
+        self.assertEqual(wire.calls[0],(0x4002,bytes(3)))
         self.assertEqual(sum(code==0x4007 for code,_ in wire.calls),1)
         self.assertTrue(wire.alias)
     def test_unknown_execution_not_replayed_or_restored_blindly(self):
@@ -129,7 +133,20 @@ class ServiceTests(unittest.TestCase):
         wire=self.Wire();wire.files[0]=b''
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(DeviceError),service_files(wire,Path(tmp)):raise AssertionError('entered')
-        self.assertTrue(all(code==0x4008 for code,_ in wire.calls))
+        self.assertEqual([code for code,_ in wire.calls],[0x4002,0x4008,0x4008])
+    def test_service_files_uses_shared_mount_hook_and_stops_on_mount_error(self):
+        for bad in (bytes.fromhex('04000010'),bytes(4)+b'\x01'):
+            wire=self.Wire(mount_reply=bad)
+            with tempfile.TemporaryDirectory() as tmp:
+                with self.assertRaises(DeviceError),service_files(wire,Path(tmp)):raise AssertionError('entered')
+            self.assertEqual([code for code,_ in wire.calls],[0x4002])
+        wire=self.Wire()
+        mounts=[]
+        wire.ensure_jiritsu_mount=lambda:mounts.append('ok')
+        with tempfile.TemporaryDirectory() as tmp:
+            with service_files(wire,Path(tmp)) as invoke:self.assertEqual(invoke(b'new native',b'config'),b'new report')
+        self.assertEqual(mounts,['ok'])
+        self.assertEqual(sum(code==0x4002 for code,_ in wire.calls),0)
     def test_preservation_reads_exact_38_native_keys_and_rejects_short_reply(self):
         calls=[]
         def send(category,packet):

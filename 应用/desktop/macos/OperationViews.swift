@@ -318,6 +318,10 @@ struct OperationFailureView: View {
                 Button { model.send("restart_preparation") } label: {
                     Text("重新准备并检查").frame(minWidth: 112)
                 }.buttonStyle(PrimaryStyle())
+                if physical && status != "cancelled" && status != "connection-released" {
+                    Button("上传本次异常日志") { model.previewFailureFeedback() }
+                        .buttonStyle(PrimaryStyle(secondary: true))
+                }
                 if physical, let takeover = model.state?.result?.takeover, takeover.available {
                     Button { confirmingTakeover = true } label: {
                         Text("强制接管…").frame(minWidth: 112)
@@ -363,5 +367,49 @@ struct OperationFailureView: View {
         case "rolled-back": return "已确认回退结果。重新连接并检查后，再决定是否继续。"
         default: return "确认相机为 MSC 模式、保持唤醒；如有 FTP 菜单，请先关闭传输。"
         }
+    }
+}
+
+struct FailureFeedbackView: View {
+    @ObservedObject var model: PreviewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            PageTitle(title: "上传本次异常日志", subtitle: "把这次操作的诊断报告发送给项目维护者。")
+            VStack(alignment: .leading, spacing: 7) {
+                Label("随报告发送", systemImage: "doc.text").font(.system(size: 12, weight: .semibold))
+                Text("应用与系统版本、所选功能、组件检查、连接和写入步骤及耗时，以及已有的错误码、回读和退出结果。")
+                Text("报告保留 30 天。请勿在说明中填写密码、序列号或其他私人信息。报告不包含固件、照片、备份或机内原始日志。")
+                    .foregroundColor(UI.muted)
+            }.font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                .padding(13).frame(maxWidth: .infinity, alignment: .leading)
+                .background(UI.accent.opacity(0.055)).cornerRadius(9)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("联系邮箱（选填）").font(.system(size: 12, weight: .semibold))
+                TextField("your@email.com", text: $model.failureEmail).textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("联系邮箱（选填）")
+                Text("仅用于跟进这次反馈。确认上传后将在本机记住，可清空后匿名提交。")
+                    .font(.system(size: 11)).foregroundColor(UI.muted)
+            }.disabled(model.failureUploadBusy)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("问题说明（选填）").font(.system(size: 12, weight: .semibold))
+                TextField("例如：首次连接，在系统授权后提示失败", text: $model.failureDescription, axis: .vertical)
+                    .textFieldStyle(.roundedBorder).lineLimit(2...3).accessibilityLabel("问题说明（选填）")
+            }.disabled(model.failureUploadBusy)
+            if !model.failureUploadStatus.isEmpty {
+                Text(model.failureUploadStatus).font(.system(size: 12)).textSelection(.enabled)
+            } else if model.failureOperationID.isEmpty {
+                Text("正在准备本次诊断报告…").font(.system(size: 11)).foregroundColor(UI.muted)
+            }
+            HStack(spacing: 12) {
+                Button("关闭") { model.showFailureFeedback = false }.buttonStyle(.bordered).disabled(model.failureUploadBusy)
+                Button("导出报告") { model.exportFailureFeedback() }.buttonStyle(.bordered)
+                    .disabled(model.failureFeedbackJSON.isEmpty || model.failureUploadBusy)
+                Spacer()
+                Button(model.failureUploadBusy ? "正在上传…" : "确认上传日志") { model.uploadFailureFeedback() }
+                    .buttonStyle(PrimaryStyle()).disabled(model.failureUploadBusy || model.failureOperationID.isEmpty || model.serviceExited)
+            }
+        }.padding(24).frame(width: 560)
+            .interactiveDismissDisabled(model.failureUploadBusy)
     }
 }

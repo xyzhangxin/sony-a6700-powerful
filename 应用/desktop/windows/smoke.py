@@ -6,7 +6,7 @@ from unittest.mock import patch
 from PySide6.QtCore import QTimer, Qt, QEvent
 from PySide6.QtGui import QKeyEvent
 from dialogs import OperationConfirmation
-from design import ActivityIndicator
+from design import ActivityIndicator, CheckBox
 from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton, QDialog, QWidget, QVBoxLayout
 
 
@@ -76,9 +76,15 @@ def run(window, report):
         window.command('reset', scenario='original')
         until(lambda: window.state.get('scenario')=='original' and window.state.get('checked'))
         def prepare(expected_phase='home'):
-            window.command('confirm_preparation', value=True)
-            until(lambda: window.state.get('ready'))
-            window.command('inspect')
+            ack = window.footer_host.findChild(CheckBox, 'preparationAcknowledgement')
+            connect = window.footer_host.findChild(QPushButton, 'preparationConnect')
+            assert ack is not None and connect is not None
+            assert not connect.isEnabled()
+            ack.setChecked(True)
+            assert connect.isEnabled()
+            with patch.object(window.client, 'send', wraps=window.client.send) as sent:
+                connect.click()
+                sent.assert_called_once_with('prepare_and_inspect', acknowledged=True, prepared=True)
             if 'animated-spinner-elapsed-and-live-details' not in checks:
                 until(lambda: window.state.get('busy'))
                 assert isinstance(window.spinner,ActivityIndicator)
@@ -93,13 +99,11 @@ def run(window, report):
                 capture('progress')
                 checks.append('animated-spinner-elapsed-and-live-details')
             until(lambda: window.state.get('phase')==expected_phase and not window.inflight)
-        window.command('acknowledge', value=True)
-        until(lambda: window.state.get('notice_acknowledged'))
-        window.command('prepare'); until(lambda: window.state.get('phase')=='preparation')
         capture('preparation')
         from PySide6.QtWidgets import QLabel
-        assert any('自动准备' in item.text() for item in window.scroll.widget().findChildren(QLabel))
-        checks.append('automatic-driver-preparation-presented')
+        assert any('A6700' in item.text() and '2.00' in item.text() for item in window.scroll.widget().findChildren(QLabel))
+        assert not any('免责声明与开源许可' in item.text() for item in window.scroll.widget().findChildren(QLabel))
+        checks.append('merged-preparation-first-screen')
         prepare()
         assert sum(row.get('available',True) for row in window.state['features'])==6
         assert {row['id'] for row in window.state['features'] if row.get('available',True)}=={'ftp','shutter','exposure','sound','fl23','creative_look_names'}
@@ -229,9 +233,6 @@ def run(window, report):
         # allow a second operation or close the window before busy arrives.
         window.command('reset', scenario='original')
         until(lambda: window.state.get('scenario')=='original' and window.state.get('phase')=='notice')
-        window.command('acknowledge', value=True)
-        until(lambda: window.state.get('notice_acknowledged'))
-        window.command('prepare'); until(lambda: window.state.get('phase')=='preparation')
         prepare()
         window.command('unlock')
         with patch.object(window.client, 'send') as send:
@@ -251,9 +252,6 @@ def run(window, report):
         # Unknown firmware blocks both write buttons and offers reconnection.
         window.command('reset', scenario='incompatible')
         until(lambda: window.state.get('scenario')=='incompatible' and window.state.get('phase')=='notice')
-        window.command('acknowledge', value=True)
-        until(lambda: window.state.get('notice_acknowledged'))
-        window.command('prepare'); until(lambda: window.state.get('phase')=='preparation')
         prepare('result')
         assert window.state['result']['status']=='blocked'
         assert not window.state['compatible'] and not window.state['ready']
@@ -276,6 +274,36 @@ def run(window, report):
         if sys.platform=='win32':
             assert window.state['environment']['ready'],window.state['environment']
         checks.append('physical-environment-only-no-usb')
+        with patch('feedback.QSettings') as settings, patch.object(window.client, 'send') as send:
+            settings.return_value.value.return_value = ''
+            window.show_failure_feedback()
+            send.assert_called_once_with('preview_failure_feedback')
+            dialog = window.failure_dialog
+            assert dialog is not None and dialog.isVisible()
+            assert not dialog.upload_button.isEnabled()
+            assert dialog.email.text() == ''
+            generation = window.client.generation
+            window.on_event(generation, dict(type='failure-feedback-preview', result={
+                'operation_id': 'synthetic-op', 'payload': {'description': 'sanitized fixture'}}))
+            assert dialog.upload_button.isEnabled()
+            dialog.email.setText('synthetic@example.com')
+            dialog.upload_button.click()
+            send.assert_called_with('upload_failure_feedback', operation_id='synthetic-op',
+                                    description='', email='synthetic@example.com', confirmed=True)
+            window.on_event(generation, dict(type='failure-feedback-result',
+                                             result={'status':'error','error':'synthetic network error'}))
+            assert dialog.isVisible() and dialog.upload_button.isEnabled()
+            assert dialog.status.text() == 'synthetic network error'
+            page = window.scroll.widget()
+            dialog.upload_button.click()
+            window.on_event(generation, dict(type='failure-feedback-result',
+                                             result={'status':'received','feedback_id':'synthetic-receipt'}))
+            assert not dialog.isVisible() and window.failure_dialog is None
+            assert window.scroll.widget() is page
+            assert window.feedback_toast.isVisible()
+            assert any('synthetic-receipt' in label.text() for label in window.feedback_toast.findChildren(QLabel))
+            until(lambda: window.feedback_toast is None, timeout=7)
+        checks.append('failure-feedback-retry-then-dismiss-and-toast-no-network')
         value=dict(ok=True, checks=checks, device_access=False, write_attempted=False)
     except Exception as exc:
         value=dict(ok=False,checks=checks,error=str(exc),device_access=False)

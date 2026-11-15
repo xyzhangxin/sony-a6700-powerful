@@ -20,5 +20,26 @@
     "binary_url": "https://github.com/Timocop/libwdi-wdi-releases/releases/download/v1.0/x64.zip",
     "binary_sha256": "27b6d9847d874674b7c412af124acf64b0b1efa397e3bbea8eab9950a6a08ee0",
     "source": "https://github.com/pbatard/libwdi/tree/v1.5.0"
+  },
+  "cryptography": {
+    "version": "46.0.3",
+    "filename": "cryptography-46.0.3-cp311-abi3-macosx_10_9_universal2.whl",
+    "url": "https://files.pythonhosted.org/packages/1d/42/9c391dd801d6cf0d561b5890549d4b27bafcc53b39c31a817e69d87c625b/cryptography-46.0.3-cp311-abi3-macosx_10_9_universal2.whl",
+    "sha256": "109d4ddfadf17e8e7779c39f9b18111a09efb969a301a31e987416a0191ed93a",
+    "source": "https://pypi.org/project/cryptography/46.0.3/"
+  },
+  "cffi": {
+    "version": "2.1.1",
+    "filename": "cffi-2.1.1-cp313-cp313-macosx_11_0_arm64.whl",
+    "url": "https://files.pythonhosted.org/packages/55/41/4c7042f317b9217502988f0873af87e16ad606dc20f84e546e3e6ce9764c/cffi-2.1.1-cp313-cp313-macosx_11_0_arm64.whl",
+    "sha256": "19ee6127ee34de7d83ce3d371ebc5ed91addbdcc39f9ab15ce4eb35a4e534971",
+    "source": "https://pypi.org/project/cffi/2.1.1/"
+  },
+  "pycparser": {
+    "version": "3.12",
+    "filename": "pycparser-3.12-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/b6/ae/315bbeee126a769cbde43cf4908acb4b40408d8bf8bbf334dd7368d8dadf/pycparser-3.12-py3-none-any.whl",
+    "sha256": "a076f3f489b39b43ed13563a1dafe42447445bec2e294154ec5c57fcdda4c85e",
+    "source": "https://pypi.org/project/pycparser/3.12/"
   }
 }

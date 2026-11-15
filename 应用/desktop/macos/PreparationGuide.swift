@@ -30,24 +30,11 @@ struct PreparationGuideView: View {
                     }
                     Spacer(minLength: 12)
                     PreparationPreview(row: row)
-                }.padding(18)
+                }.padding(.horizontal, 16).padding(.vertical, 10)
                 if index + 1 < steps.count { Divider().padding(.leading, 59) }
             }
         }.background(.white).cornerRadius(12)
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(UI.line))
-        Text("右侧只展示相机界面右上角的关键项，不是实机截图。下方确认只代表人工声明，连接后仍会检查固件与功能状态。")
-            .font(.system(size: 11)).foregroundColor(UI.muted)
-            .fixedSize(horizontal: false, vertical: true)
-        HStack(alignment: .top, spacing: 11) {
-            Image(systemName: "info.circle").foregroundColor(UI.accent)
-            VStack(alignment: .leading, spacing: 6) {
-                Text("为什么要授权，MSC 提示为什么会消失？").font(.system(size: 12, weight: .semibold))
-                Text("相机模式会请求 Mac 管理员密码或 Touch ID，临时接管 USB 并进入维护服务。它不是相机密码；普通导照片无需此授权。相机退出 MSC 提示本身不等于断线，请保持数据线连接，以应用的操作结果为准。若应用提示会话中断或需要重新检查，请按错误指引处理。")
-                    .font(.system(size: 11)).foregroundColor(UI.muted)
-                    .fixedSize(horizontal: false, vertical: true).lineSpacing(3)
-            }
-        }.padding(15).frame(maxWidth: .infinity, alignment: .leading)
-            .background(UI.accent.opacity(0.045)).cornerRadius(10)
     }
 
     private func summary(_ row: PreparationRow) -> String {

@@ -17,7 +17,7 @@ import tempfile
 import urllib.request
 import zipfile
 
-from build_macos_preview import ROOT, build_ui
+from build_macos_preview import ROOT, app_name, build_ui
 from macos_runtime import obtain_archive, stage_runtime, verify_digest, sign_bundle
 
 
@@ -41,20 +41,35 @@ def dependency(pin, cache, download):
     return path
 
 
-def stage_pyusb(wheel, resources):
+def stage_wheel(wheel, resources, package):
+    """Extract one pinned wheel and its licenses; thin native code for arm64."""
     with zipfile.ZipFile(wheel) as archive:
-        for name in archive.namelist():
+        names = archive.namelist()
+        for name in names:
             path = PurePosixPath(name)
             if path.is_absolute() or '..' in path.parts:
                 raise ValueError('Wheel path escapes package')
-            if name.startswith('usb/') and not name.endswith('/'):
+            if path.parts and (path.parts[0] == package or (package == 'cffi' and path.parts[0].startswith('_cffi_backend'))) and not name.endswith('/'):
                 destination = resources / 'python' / name
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 destination.write_bytes(archive.read(name))
-        licenses = [name for name in archive.namelist() if '.dist-info/' in name and name.endswith('LICENSE')]
-        if len(licenses) != 1:
-            raise ValueError('PyUSB license missing')
-        (resources/'runtime-licenses/PyUSB-LICENSE.txt').write_bytes(archive.read(licenses[0]))
+                if destination.suffix == '.so':
+                    architectures = subprocess.check_output(['lipo', '-archs', str(destination)], text=True).split()
+                    if architectures != ['arm64']:
+                        subprocess.run(['lipo', str(destination), '-thin', 'arm64',
+                                        '-output', str(destination)], check=True)
+        licenses = [name for name in names if '.dist-info/' in name and
+                    PurePosixPath(name).name.upper().startswith('LICENSE')]
+        if not licenses:
+            raise ValueError(package + ' license missing')
+        for name in licenses:
+            target = resources / 'runtime-licenses' / (package + '-' + PurePosixPath(name).name)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(archive.read(name))
+
+
+def stage_pyusb(wheel, resources):
+    stage_wheel(wheel, resources, 'usb')
 
 
 def stage_libusb(archive, pin, resources, work):
@@ -92,7 +107,8 @@ def stage_libusb(archive, pin, resources, work):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output', type=Path, default=ROOT/'dist/Powerful6700.app')
+    name = app_name(standalone=True) + '.app'
+    parser.add_argument('--output', type=Path, default=ROOT/'dist'/name)
     parser.add_argument('--runtime-archive', type=Path)
     parser.add_argument('--cache', type=Path, default=ROOT/'.cache/desktop')
     parser.add_argument('--download-runtime', action='store_true', help='Allow fixed runtime/dependency downloads during build')
@@ -104,14 +120,17 @@ def main():
     cache = args.cache.resolve()
     archive = args.runtime_archive or obtain_archive(cache, download=args.download_runtime)
     pins = json.loads((ROOT/'desktop/runtime-dependencies.json').read_text())
-    dependencies = {name: dependency(pin, cache, args.download_runtime) for name, pin in pins.items()}
+    dependencies = {name: dependency(pin, cache, args.download_runtime) for name, pin in pins.items() if name != 'libwdi'}
+    pins = {name: pins[name] for name in dependencies}
     with tempfile.TemporaryDirectory(prefix='a6700-standalone-') as folder:
-        work=Path(folder);bundle=work/'Powerful6700.app'
+        work=Path(folder);bundle=work/name
         print("Compiling native UI…", flush=True)
         resources=build_ui(bundle, work)
         print("Staging pinned runtime…", flush=True)
         pin=stage_runtime(archive, resources)
         stage_pyusb(dependencies['pyusb'], resources)
+        for package in ('cryptography', 'cffi', 'pycparser'):
+            stage_wheel(dependencies[package], resources, package)
         print("Building bundled libusb for macOS 13…", flush=True)
         stage_libusb(dependencies['libusb'], pins['libusb'], resources, work)
         helper=resources/'helpers/mac-capture';helper.parent.mkdir()

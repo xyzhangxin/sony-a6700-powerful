@@ -138,6 +138,7 @@ class UsbBackend:
         self.target = None
         self.cleanup_warning = None
         self.cleanup_status = None
+        self._jiritsu_mounted = False
         self.assets = payloads(profile)
 
     def __enter__(self):
@@ -178,6 +179,7 @@ class UsbBackend:
         finally:
             if driver_session is not None:
                 driver_session.close()
+        self._jiritsu_mounted = False
         return self
 
     def _command(self, command, payload):
@@ -191,8 +193,15 @@ class UsbBackend:
         if len(body) != 4 or body != b"\0" * 4:
             raise DeviceError("文件写入或载荷执行失败，状态：" + body[:16].hex())
 
+    def ensure_jiritsu_mount(self):
+        if getattr(self, "_jiritsu_mounted", False):
+            return
+        self._file(0x4002, 0, b"")
+        self._jiritsu_mounted = True
+
     def _run(self, name, config, nonce, count):
         try:
+            self.ensure_jiritsu_mount()
             self._file(0x4010, 0, config)
             self._file(0x4007, 2, self.assets[name])
             body = self._command(0x4008, bytes([0, 0, 0]))
@@ -247,6 +256,7 @@ class UsbBackend:
                     self.cleanup_warning = ((self.cleanup_warning + "；") if self.cleanup_warning else "") + warning
                 finally:
                     self.target = None
+                    self._jiritsu_mounted = False
             if self.cleanup_status == "unconfirmed":
                 try:
                     observed = self.legacy.normal_mode_observed()

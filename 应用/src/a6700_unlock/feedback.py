@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import secrets
 import sys
 import time
@@ -45,7 +46,7 @@ def _channel():
     return 'testing' if '.dev' in __version__ or '-rc.' in __version__ else 'stable'
 
 
-def build_feedback(result, description=''):
+def build_feedback(result, description='', *, email=''):
     status = result.get('status', 'error')
     transaction = {'collected': 'verified', 'incomplete': 'partial',
                    'not_requested': 'not_started'}.get(status, 'error')
@@ -66,7 +67,30 @@ def build_feedback(result, description=''):
         stage_id=('guided_reproduce' if mode == 'guided' else
                   'not_requested' if mode == 'not_requested' else 'direct_collect'),
         packages=[], events=list(result.get('events', [])), adapter_version=__version__)
-    text = description.strip() or '选择 FL2／FL3 后相机重启。'
+    if result.get('mode') == 'operation_failure':
+        action = result.get('action')
+        diagnostic.update(
+            action='update' if action in ('update_fl23', 'update_ftp') else 'close' if action == 'restore' else action,
+            transaction_status=result['transaction_status'], error_code=result['error_code'],
+            stage_id=result['stage_id'], events=result.get('events', []))
+        if result.get('package_set_sha256'):
+            diagnostic['package_set_sha256'] = result['package_set_sha256']
+        if result.get('camera_status_code'):
+            diagnostic['events'] = list(diagnostic['events']) + [dict(
+                step_id='camera_status_' + result['camera_status_code'], phase=result['stage_id'],
+                status='failed', source='core', elapsed_ms=0)]
+    default_description = '相机连接或功能操作失败，请协助排查。' if mode == 'operation_failure' else '选择 FL2／FL3 后相机重启。'
+    text = description.strip() or default_description
+    if not isinstance(email, str):
+        raise ValueError('邮箱格式无效。')
+    email = email.strip()
+    if email:
+        if len(email) > 254 or not re.fullmatch(r'[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+', email):
+            raise ValueError('请输入有效的联系邮箱，或留空。')
+        if any(ord(char) < 32 or ord(char) == 127 for char in email):
+            raise ValueError('邮箱格式无效。')
+        # Existing deployed feedback-v1 stores this in the private report body.
+        text += '\n\n联系邮箱：' + email
     if len(text) > 2000:
         raise ValueError('描述不能超过 2000 字。')
     return dict(schema_version=1, feedback_id=str(uuid.uuid4()),
@@ -159,19 +183,24 @@ def _request_with_retries(opener, request, attempts=3, timeout=15):
     raise last_error
 
 
-def upload_feedback(result, description='', state_dir=None, api_base=API_BASE, opener=None, include_artifact=False, images=None, connection_factory=None):
+def upload_feedback(result, description='', state_dir=None, api_base=API_BASE, opener=None, include_artifact=False, images=None, connection_factory=None, *, email=''):
     state = Path(state_dir) if state_dir is not None else Path.home() / 'Library/Application Support/a6700-unlock'
     pending = state / 'feedback-pending'
     sent = state / 'feedback-sent'
     pending.mkdir(parents=True, exist_ok=True)
     operation_id = result.get('operation_id') or str(uuid.uuid4())
+    candidate = build_feedback(result, description, email=email)
+    if result.get('mode') == 'operation_failure':
+        # Edited failure descriptions form separate reports. An uncertain old
+        # upload retains its exact bytes/token instead of being overwritten.
+        text = candidate['description']
+        operation_id += '-' + hashlib.sha256(text.encode('utf-8')).hexdigest()[:16]
     record = pending / (operation_id + '.json')
     sent_record = sent / (operation_id + '.json')
     if sent_record.exists():
         if sent_record.is_symlink() or sent_record.stat().st_size > 2 * 1024 * 1024:
             raise ValueError('已发送反馈记录无效。')
         saved_sent = json.loads(sent_record.read_text())
-        candidate = build_feedback(result, description)
         if {k: v for k, v in saved_sent['payload'].items() if k != 'feedback_id'} == \
                 {k: v for k, v in candidate.items() if k != 'feedback_id'}:
             # JSON was already accepted. Reuse its identity for attachment
@@ -203,7 +232,7 @@ def upload_feedback(result, description='', state_dir=None, api_base=API_BASE, o
             _save(temporary, saved)
             os.replace(temporary, record)
     else:
-        feedback = build_feedback(result, description)
+        feedback = candidate
         token = secrets.token_hex(32)
         _save(record, dict(payload=feedback, delete_token=token,
                            body_sha256=hashlib.sha256(

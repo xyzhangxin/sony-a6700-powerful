@@ -146,6 +146,9 @@ def service_files(backend,directory):
     """Preserve both service files; restore library via non-executing alias."""
     directory=Path(directory);make_directory(directory);original={};dirty=False;uncertain=False
     backend._fl23_transport_uncertain=False
+    ensure=getattr(backend,'ensure_jiritsu_mount',None)
+    if callable(ensure):ensure()
+    elif _command(backend,0x4002,bytes(3)):raise DeviceError('FL23 服务挂载返回异常')
     def get(ident):return _command(backend,0x4008,bytes((0,ident,0)))
     for ident in (0,2):
         a,b=get(ident),get(ident)

@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 enum AppBrand {
-    static let name = "Powerful6700"
+    static let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Powerful6700"
     static var icon: NSImage? {
         guard let url = Bundle.main.url(forResource: "Powerful6700", withExtension: "png") else { return nil }
         return NSImage(contentsOf: url)

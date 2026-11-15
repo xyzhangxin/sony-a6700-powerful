@@ -14,6 +14,9 @@ API_VERSION = 1
 MAX_REQUEST_BYTES = 8192
 
 _COMMAND_FIELDS = {
+    "prepare_and_inspect": {"acknowledged", "prepared"},
+    "preview_failure_feedback": set(),
+    "upload_failure_feedback": {"operation_id", "description", "email", "confirmed"},
     "environment": set(), "reset": {"scenario"}, "acknowledge": {"value"},
     "prepare": set(), "confirm": {"id", "value"}, "confirm_preparation": {"value"},
     "restart_preparation": set(), "select_feature": {"id", "value"}, "select": {"mode"},
@@ -31,7 +34,7 @@ CAPABILITIES = dict(
     execution="local-core", arbitrary_device_requests=False,
 )
 _SIMULATION_ONLY = {"reset", "disconnect", "reconnect"}
-_PHYSICAL_ONLY = {"takeover", "diagnostic", "guided_diagnostic", "upload_feedback", "check_updates"}
+_PHYSICAL_ONLY = {"preview_failure_feedback", "upload_failure_feedback", "takeover", "diagnostic", "guided_diagnostic", "upload_feedback", "check_updates"}
 
 
 def capabilities(mode):

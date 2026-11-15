@@ -4,26 +4,35 @@ import AppKit
 struct PreviewView: View {
     @StateObject var model = PreviewModel()
     @State private var physicalMode = true
+    @State private var preparationAcknowledged = false
     @State private var license = false
     @State private var noticeSheet = false
     @State private var noticeLicense = false
     @State private var demoSettings = false
+    @State private var uploadToast: String?
     private var phase: String { model.serviceExited ? "service-stopped" : (model.state?.phase ?? "notice") }
     private var busy: Bool { model.isBusy }
     private var hasAftercare: Bool {
         phase == "result" && model.state?.result?.success == true && model.state?.result?.aftercare != nil
     }
     private var stage: Int {
-        if phase == "notice" { return 0 }
-        if phase == "preparation" || (["running", "result"].contains(phase) && model.state?.action == "inspect") { return 1 }
-        return 2
-    }
-    private var canPrepare: Bool {
-        model.state?.checked == true && model.state?.environment.ready == true && model.state?.notice_acknowledged == true
+        if ["notice", "preparation"].contains(phase) || (["running", "result"].contains(phase) && model.state?.action == "inspect") { return 0 }
+        return 1
     }
     var body: some View {
         VStack(spacing: 0) {
             appHeader
+            if model.updateAvailable {
+                HStack(spacing: 10) {
+                    Image(systemName: "arrow.down.circle.fill").foregroundColor(.blue)
+                    Text("已更新到最新版本")
+                        .font(.system(size: 11)).foregroundColor(.blue)
+                    Spacer()
+                    Button("知道了") { model.updateAvailable = false }
+                        .buttonStyle(.plain).font(.system(size: 11, weight: .medium)).foregroundColor(.blue)
+                }.padding(.horizontal, 28).padding(.vertical, 6)
+                    .background(Color.blue.opacity(0.06))
+            }
             stepper
             Divider()
             ScrollView {
@@ -38,9 +47,37 @@ struct PreviewView: View {
         }
         .frame(minWidth: 980, minHeight: 720)
         .foregroundColor(UI.ink).background(UI.background).preferredColorScheme(.light)
+        .overlay(alignment: .topTrailing) {
+            if let receipt = uploadToast {
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 19)).foregroundColor(UI.accent)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("异常日志已上传").font(.system(size: 13, weight: .semibold))
+                        if !receipt.isEmpty {
+                            Text("反馈编号 \(receipt)").font(.system(size: 10)).foregroundColor(UI.muted)
+                        }
+                    }
+                }
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(UI.line))
+                .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+                .padding(.trailing, 24).padding(.top, 70)
+                .allowsHitTesting(false)
+                .task(id: receipt) {
+                    do { try await Task.sleep(for: .seconds(5)) }
+                    catch { return }
+                    uploadToast = nil
+                }
+            }
+        }
         .background(OperationWindowGuard(model: model))
         .onAppear { AppDelegate.operationModel = model; model.start(physical: physicalMode) }
-        .onChange(of: physicalMode) { model.setMode($0) }
+        .onChange(of: physicalMode) { preparationAcknowledged = false; model.setMode($0) }
+        .onChange(of: phase) { value in
+            if value == "notice" { preparationAcknowledged = false }
+            if value != "result" { uploadToast = nil }
+        }
         .onChange(of: model.state?.revision) { _ in
             // Hidden developer backup/restore commands retain their navigation.
             // Unlock/close keep their dedicated result until explicit reconnect.
@@ -49,10 +86,20 @@ struct PreviewView: View {
                model.state?.result?.aftercare == nil { model.send("home") }
         }
         .onDisappear { model.shutdown() }
+        .sheet(isPresented: $model.showFailureFeedback, onDismiss: {
+            uploadToast = model.failureUploadReceipt
+            model.failureUploadReceipt = nil
+        }) { FailureFeedbackView(model: model) }
+        .onChange(of: model.showFailureFeedback) { showing in
+            if showing { uploadToast = nil }
+        }
         .sheet(isPresented: $license) { LicenseView { license = false } }
+        .sheet(isPresented: $model.showDiagnostics) { DiagnosticsView(model: model, physical: physicalMode) }
         .sheet(isPresented: $noticeSheet) {
             VStack(alignment: .leading, spacing: 18) {
-                ScrollView { OperationNoticeView(state: model.state, onRecheck: {}, onLicense: { noticeLicense = true }, reviewing: true) }
+                ScrollView {
+                    OperationNoticeView(state: model.state, onLicense: { noticeLicense = true })
+                }
                 HStack { Spacer(); Button("返回当前操作") { noticeSheet = false }.buttonStyle(PrimaryStyle()) }
             }.padding(24).frame(width: 780, height: 620)
                 .sheet(isPresented: $noticeLicense) { LicenseView { noticeLicense = false } }
@@ -61,15 +108,22 @@ struct PreviewView: View {
     @ViewBuilder private var content: some View {
         switch phase {
         case "service-stopped": OperationServiceStoppedView(model: model, physical: physicalMode)
-        case "preparation":
-            PageTitle(title: "准备相机", subtitle: "按下面四项完成设置，最后连接数据线。已经准备好的话，确认后即可检查。")
+        case "notice", "preparation":
+            PageTitle(title: "准备并连接相机", subtitle: model.state?.notice.sections.first(where: { $0.id == "scope" })?.title ?? "仅适配 A6700 · 固件 2.00")
+            if model.state?.checked == true && model.state?.environment.ready != true {
+                StartupCheckView(state: model.state) { model.send("environment") }
+            }
             PreparationGuideView(steps: model.state?.steps ?? [])
+            if physicalMode {
+                Text("连接时 macOS 可能要求管理员授权。相机的 MSC 提示消失后，请保持 USB 连接。")
+                    .font(.system(size: 11)).foregroundColor(UI.muted)
+            }
         case "home": WorkspaceView(model: model, physical: physicalMode)
         case "running": OperationProgressView(model: model, physical: physicalMode)
         case "result":
             if hasAftercare { OperationSuccessView(model: model, physical: physicalMode) }
             else { OperationFailureView(model: model, physical: physicalMode) }
-        default: OperationNoticeView(state: model.state, onRecheck: { model.send("environment") }, onLicense: { license = true })
+        default: OperationNoticeView(state: model.state, onLicense: { license = true })
         }
     }
     private var appHeader: some View {
@@ -92,8 +146,14 @@ struct PreviewView: View {
                 }
                 .buttonStyle(.plain).help("演示场景与连接设置").disabled(busy)
                 .accessibilityLabel("演示设置")
-                .popover(isPresented: $demoSettings, arrowEdge: .bottom) { demoPanel }
+                .popover(isPresented: $demoSettings, arrowEdge: .bottom) {
+                    DemoSettingsPanel(model: model) { demoSettings = false }
+                }
             }
+            Button { model.showDiagnostics = true } label: {
+                Label("意见反馈", systemImage: "bubble.left.and.bubble.right")
+            }.buttonStyle(.plain).font(.system(size: 11, weight: .medium)).foregroundColor(UI.accent)
+                .help("填写问题和图片，按需采集并上传相机日志")
             Label(physicalMode ? (model.state?.compatible == true ? "相机已检查" : "相机模式") : "演示模式 · 不连接相机",
                   systemImage: physicalMode ? "cable.connector" : "play.circle")
                 .font(.system(size: 11, weight: .medium)).foregroundColor(UI.accent)
@@ -102,6 +162,14 @@ struct PreviewView: View {
             }.labelsHidden().pickerStyle(.segmented).frame(width: 122).disabled(busy)
                 .accessibilityLabel("设备模式")
             Menu {
+                if physicalMode {
+                    Button(model.updateBusy ? "正在检查更新…" : "检查更新") { model.send("check_updates") }
+                        .disabled(model.isBusy)
+                    if let updateStatus = model.updateStatus {
+                        Text(updateStatus).font(.system(size: 10)).foregroundColor(UI.muted)
+                    }
+                    Divider()
+                }
                 Button("查看操作前须知") { noticeSheet = true }
                 Button("开源许可") { license = true }
                 Divider()
@@ -115,15 +183,20 @@ struct PreviewView: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .accessibilityLabel("帮助与版本")
+                .overlay(alignment: .topTrailing) {
+                    if model.updateAvailable {
+                        Circle().fill(Color.red).frame(width: 8, height: 8)
+                            .offset(x: 4, y: -4)
+                            .help("有可用更新，点击查看")
+                    }
+                }
         }.padding(.horizontal, 28).padding(.vertical, 16).background(.white)
     }
     private var stepper: some View {
         HStack(spacing: 20) {
-            stageLabel(0, "操作前须知")
+            stageLabel(0, "准备并连接")
             Image(systemName: "chevron.right").font(.system(size: 9)).foregroundColor(UI.muted.opacity(0.5))
-            stageLabel(1, "准备并连接")
-            Image(systemName: "chevron.right").font(.system(size: 9)).foregroundColor(UI.muted.opacity(0.5))
-            stageLabel(2, "功能管理")
+            stageLabel(1, "功能管理")
             Spacer()
             if stage > 0 {
                 Button("查看须知") { noticeSheet = true }.buttonStyle(.plain)
@@ -142,24 +215,24 @@ struct PreviewView: View {
         VStack(spacing: 0) {
             Divider()
             HStack(spacing: 16) {
-                if phase == "notice" {
-                    Spacer()
-                    Toggle(isOn: Binding(get: { model.state?.notice_acknowledged == true },
-                                         set: { model.send("acknowledge", extra: ["value": $0]) })) {
-                        Text("我已阅读并了解适用范围与操作风险").font(.system(size: 12))
-                    }.toggleStyle(.checkbox).disabled(model.state == nil)
-                        .accessibilityLabel("阅读确认")
-                    Button("开始准备相机") { model.send("prepare") }.buttonStyle(PrimaryStyle()).disabled(!canPrepare)
-                } else {
-                    Button("返回") { model.send("cancel") }.buttonStyle(.plain).foregroundColor(UI.muted)
-                    Spacer()
-                    Toggle(isOn: Binding(get: { model.state?.ready == true },
-                                         set: { model.send("confirm_preparation", extra: ["value": $0]) })) {
-                        Text("以上设置已完成，相机已连接并保持开机").font(.system(size: 12))
-                    }.toggleStyle(.checkbox).accessibilityLabel("相机准备确认")
-                    Button(physicalMode ? "连接并检查相机" : "检查演示设备") { model.send("inspect") }
-                        .buttonStyle(PrimaryStyle()).disabled(model.state?.ready != true || busy)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("非官方工具。修改固件有变砖风险，可能影响保修。")
+                        .font(.system(size: 11)).foregroundColor(UI.muted)
+                    HStack(spacing: 12) {
+                        Button("查看完整须知") { noticeSheet = true }
+                            .buttonStyle(.plain).foregroundColor(UI.accent)
+                        if model.state?.checked != true {
+                            Text("正在检查本机组件…").foregroundColor(UI.muted)
+                        }
+                    }.font(.system(size: 11))
                 }
+                Spacer(minLength: 8)
+                Toggle("我已阅读风险说明，并完成以上相机设置", isOn: $preparationAcknowledged)
+                    .toggleStyle(.checkbox).font(.system(size: 12)).accessibilityLabel("阅读与相机准备确认")
+                Button(physicalMode ? "连接并检查相机" : "检查演示设备") {
+                    model.send("prepare_and_inspect", extra: ["acknowledged": true, "prepared": true])
+                }.buttonStyle(PrimaryStyle())
+                    .disabled(!preparationAcknowledged || model.state?.environment.ready != true || busy)
             }.padding(.horizontal, 28).padding(.vertical, 17)
         }.background(.white)
     }
@@ -203,15 +276,20 @@ struct PreviewView: View {
             .padding(14).frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.red.opacity(0.05)).cornerRadius(9)
     }
-    private var demoPanel: some View {
+}
+
+struct DemoSettingsPanel: View {
+    @ObservedObject var model: PreviewModel
+    let close: () -> Void
+    var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("演示设置").font(.headline)
             Text("只改变演示数据，不访问 USB。").font(.system(size: 11)).foregroundColor(UI.muted)
             Picker("场景", selection: Binding(get: { model.state?.scenario ?? "enabled" }, set: {
-                demoSettings = false; model.send("reset", extra: ["scenario": $0])
+                close(); model.send("reset", extra: ["scenario": $0])
             })) { ForEach(model.state?.scenarios ?? []) { Text($0.name).tag($0.id) } }
             Button(model.state?.connected == true ? "模拟断开连接" : "重新连接演示设备") {
-                demoSettings = false; model.send(model.state?.connected == true ? "disconnect" : "reconnect")
+                close(); model.send(model.state?.connected == true ? "disconnect" : "reconnect")
             }.buttonStyle(PrimaryStyle(secondary: true))
         }.padding(22).frame(width: 310)
     }
@@ -240,6 +318,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.operationModel?.shutdown(); return .terminateNow
     }
 }
+#if !UI_RENDER
 @main
 struct A6700PreviewApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
@@ -248,3 +327,4 @@ struct A6700PreviewApp: App {
             .windowStyle(.titleBar).defaultSize(width: 1060, height: 770)
     }
 }
+#endif

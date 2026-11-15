@@ -4,12 +4,12 @@ from pathlib import Path
 import sys
 if not getattr(sys,'frozen',False):
     sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'src'))
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import QTimer, QUrl, Qt
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QFont
-from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
+from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QMainWindow, QMessageBox, QVBoxLayout
 from client import ServiceClient
-from design import STYLE
-from feedback import FeedbackDialog
+from design import STYLE, ACCENT, Symbol, label
+from feedback import FeedbackDialog, FailureFeedbackDialog
 from dialogs import OperationConfirmation
 from views import Views
 
@@ -38,7 +38,11 @@ class Window(Views,QMainWindow):
         self.client.event.connect(self.on_event);self.client.exited.connect(self.on_exit)
         self.state={};self.pending_mode=None;self.closing=False;self.update_status=None;self.update_available=False;self._auto_update_check=False
         self.transitioning=False;self.inflight=None;self.operation_started=False;self.page_key=None
-        self.feedback_dialog=None
+        self.feedback_dialog=None;self.failure_dialog=None;self.preparation_acknowledged=False
+        self.feedback_toast = None
+        self.feedback_toast_timer = QTimer(self)
+        self.feedback_toast_timer.setSingleShot(True)
+        self.feedback_toast_timer.timeout.connect(self.dismiss_feedback_toast)
         self.build_shell(demo)
         QTimer.singleShot(0,self.start)
 
@@ -49,7 +53,7 @@ class Window(Views,QMainWindow):
     def start(self):
         try:
             self.transitioning = False; self.inflight = None; self.state = {}; self.page_key = None
-            self.operation_started = False; self.scroll.setEnabled(True)
+            self.operation_started = False; self.preparation_acknowledged=False; self.scroll.setEnabled(True)
             self.client.start(self.physical)
             self.command('environment')
             if self.physical:
@@ -59,7 +63,7 @@ class Window(Views,QMainWindow):
             self.render_interrupted('本机服务未能启动。请保留完整目录，重新解压应用。')
 
     def command(self, name, **values):
-        if name in ('inspect', 'unlock', 'close', 'update_fl23', 'update_ftp', 'check_updates'):
+        if name in ('prepare_and_inspect', 'inspect', 'unlock', 'close', 'update_fl23', 'update_ftp', 'check_updates'):
             if self.inflight or self.state.get('busy'):
                 return
             if name == 'check_updates':
@@ -69,15 +73,71 @@ class Window(Views,QMainWindow):
                     return
                 self.update_status = None
                 self.update_available = False
-            self.inflight = name
+            self.inflight = 'inspect' if name=='prepare_and_inspect' else name
             self.operation_started = False
             self.mode.setEnabled(False)
             self.mode_segments.setEnabled(False)
             self.scroll.setEnabled(False)
         try:
             self.client.send(name, **values)
+            return True
         except (OSError, RuntimeError):
-            self.render_interrupted('本机服务连接已中断；上一次操作不会自动重发。')
+            if name not in ('preview_failure_feedback', 'upload_failure_feedback'):
+                self.render_interrupted('本机服务连接已中断；上一次操作不会自动重发。')
+            return False
+
+    def show_failure_feedback(self):
+        if self.state.get('busy') or self.inflight:
+            return
+        if self.failure_dialog is not None and self.failure_dialog.isVisible():
+            return
+        dialog = FailureFeedbackDialog(self)
+        self.failure_dialog = dialog
+        dialog.finished.connect(lambda _: self.clear_failure_feedback(dialog))
+        dialog.show()
+        self.dismiss_feedback_toast()
+        if not self.command('preview_failure_feedback'):
+            self.failure_dialog.service_exited()
+
+    def clear_failure_feedback(self, dialog):
+        if self.failure_dialog is dialog:
+            self.failure_dialog = None
+
+    def show_feedback_toast(self, receipt):
+        self.dismiss_feedback_toast()
+        bubble = QFrame(self)
+        bubble.setObjectName('feedbackToast')
+        bubble.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        bubble.setStyleSheet('QFrame#feedbackToast {background:#f1f8f5;border:1px solid #bbd8cc;border-radius:10px;}')
+        layout = QHBoxLayout(bubble)
+        layout.setContentsMargins(13, 9, 13, 9)
+        layout.addWidget(Symbol('success', 20, ACCENT))
+        messages = QVBoxLayout()
+        messages.setSpacing(3)
+        messages.addWidget(label('异常日志已上传', 'heading', False))
+        if receipt:
+            messages.addWidget(label(f'反馈编号 {receipt}', 'muted', False))
+        layout.addLayout(messages)
+        self.feedback_toast = bubble
+        bubble.adjustSize()
+        self.place_feedback_toast()
+        bubble.show()
+        bubble.raise_()
+        self.feedback_toast_timer.start(5000)
+
+    def place_feedback_toast(self):
+        if getattr(self, 'feedback_toast', None) is not None:
+            self.feedback_toast.move(max(12, self.width() - self.feedback_toast.width() - 24), 72)
+
+    def dismiss_feedback_toast(self):
+        if self.feedback_toast is not None:
+            self.feedback_toast.hide()
+            self.feedback_toast.deleteLater()
+            self.feedback_toast = None
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.place_feedback_toast()
 
     def show_feedback(self):
         if self.feedback_dialog is None:
@@ -102,6 +162,7 @@ class Window(Views,QMainWindow):
             QTimer.singleShot(0, self.close); return
         if self.transitioning:
             self.pending_mode = None; self.start(); return
+        if self.failure_dialog is not None:self.failure_dialog.service_exited()
         uncertain = self.inflight in ('unlock', 'close', 'update_fl23', 'update_ftp') or (self.state.get('busy') and self.state.get('action') in ('unlock', 'close'))
         self.render_interrupted('结果待核实：服务在功能操作中退出。请保留本机记录，先重新检查，不要盲目重复写入。'
                                 if uncertain else '本机服务已退出。重新启动服务后，重新准备并连接相机。')
@@ -111,8 +172,13 @@ class Window(Views,QMainWindow):
             return
         if self.feedback_dialog is not None:
             self.feedback_dialog.handle_event(event)
+        if self.failure_dialog is not None and self.failure_dialog.isVisible():
+            if self.failure_dialog.handle_event(event):
+                return
         if event.get('type') == 'state':
             self.state = event['state']
+            if self.state.get('phase') != 'result':
+                self.dismiss_feedback_toast()
             if self.state.get('busy'):
                 self.operation_started = True
                 self.inflight = self.state.get('action')
