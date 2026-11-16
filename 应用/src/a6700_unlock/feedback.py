@@ -128,7 +128,7 @@ def recover_diagnostic(state_dir=None, download_dir=None):
     archives = [path for _, path in sorted(archives, reverse=True)[:20]]
     for _, record in sorted(records, reverse=True)[:8]:
         try:
-            payload = json.loads(record.read_text())['payload']
+            payload = json.loads(record.read_text(encoding='utf-8'))['payload']
             diagnostic = payload['diagnostic']
             if diagnostic['transaction_status'] != 'verified':
                 continue
@@ -200,7 +200,7 @@ def upload_feedback(result, description='', state_dir=None, api_base=API_BASE, o
     if sent_record.exists():
         if sent_record.is_symlink() or sent_record.stat().st_size > 2 * 1024 * 1024:
             raise ValueError('已发送反馈记录无效。')
-        saved_sent = json.loads(sent_record.read_text())
+        saved_sent = json.loads(sent_record.read_text(encoding='utf-8'))
         if {k: v for k, v in saved_sent['payload'].items() if k != 'feedback_id'} == \
                 {k: v for k, v in candidate.items() if k != 'feedback_id'}:
             # JSON was already accepted. Reuse its identity for attachment
@@ -223,7 +223,7 @@ def upload_feedback(result, description='', state_dir=None, api_base=API_BASE, o
     if record.exists():
         if record.is_symlink() or record.stat().st_size > 2 * 1024 * 1024:
             raise ValueError('待发送反馈记录无效。')
-        saved = json.loads(record.read_text())
+        saved = json.loads(record.read_text(encoding='utf-8'))
         feedback, token = saved['payload'], saved['delete_token']
         if _repair_legacy_payload(feedback):
             saved['body_sha256'] = hashlib.sha256(
@@ -298,7 +298,7 @@ def upload_artifact(result, state_dir=None, api_base=API_BASE, opener=None, *, r
     record = next((p for p in candidates if p.exists()), None)
     if record is None:
         return dict(status='error', error='请先上传结构化反馈，再上传 ZIP 附件。')
-    saved = json.loads(record.read_text())
+    saved = json.loads(record.read_text(encoding='utf-8'))
     feedback_id = saved['payload']['feedback_id']
     token = saved['delete_token']
     limit = 5 * 1024 * 1024
@@ -345,7 +345,7 @@ def _feedback_record(result, state):
     for folder in ('feedback-sent', 'feedback-pending'):
         path = state / folder / (str(operation_id) + '.json')
         if path.exists():
-            return json.loads(path.read_text())
+            return json.loads(path.read_text(encoding='utf-8'))
     raise ValueError('请先上传结构化反馈，再上传图片。')
 
 
