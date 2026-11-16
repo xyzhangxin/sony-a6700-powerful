@@ -11,7 +11,7 @@ import zipfile
 
 from a6700_unlock.desktop.controller import DesktopController
 from a6700_unlock.failure_feedback import operation_failure, FailureTrace, build_failure_archive
-from a6700_unlock.feedback import build_feedback, upload_feedback
+from a6700_unlock.feedback import auto_failure_enabled, build_feedback, set_auto_failure_enabled, upload_feedback
 
 
 class AppSupportTests(unittest.TestCase):
@@ -171,10 +171,22 @@ class AppSupportTests(unittest.TestCase):
         self.assertEqual([r.data for r in requests[1:]], [blob, blob])
         self.assertEqual(len({r.get_header('X-delete-token') for r in requests}), 1)
 
-    def test_automatic_failure_upload_requires_opt_in_and_sends_no_email(self):
+    def test_automatic_failure_preference_preserves_explicit_off(self):
+        with tempfile.TemporaryDirectory() as folder:
+            state = Path(folder)
+            self.assertTrue(auto_failure_enabled(state))
+            set_auto_failure_enabled(state, False)
+            self.assertFalse(auto_failure_enabled(state))
+            set_auto_failure_enabled(state, True)
+            self.assertTrue(auto_failure_enabled(state))
+            (state / 'automatic-failure-feedback.json').write_text('{"enabled":1}', encoding='utf-8')
+            self.assertFalse(auto_failure_enabled(state))
+
+    def test_automatic_failure_upload_defaults_on_and_sends_no_email(self):
         from a6700_unlock.desktop import physical_bridge
-        for enabled in (False, True):
-            with self.subTest(enabled=enabled), tempfile.TemporaryDirectory() as folder:
+        for preference in (None, False, True):
+            enabled = preference is not False
+            with self.subTest(preference=preference), tempfile.TemporaryDirectory() as folder:
                 controller = DesktopController(None, mode='physical', physical_state_dir=folder,
                     environment_provider=lambda: dict(ready=True, checks=[], device_access=False))
                 controller.check_environment()
@@ -187,8 +199,8 @@ class AppSupportTests(unittest.TestCase):
 
                 def commands():
                     yield json.dumps(dict(command='set_usage', enabled=False))
-                    if enabled:
-                        yield json.dumps(dict(command='set_automatic_failure_feedback', enabled=True))
+                    if preference is not None:
+                        yield json.dumps(dict(command='set_automatic_failure_feedback', enabled=preference))
                     yield json.dumps(dict(command='start_usage'))
                     yield json.dumps(dict(command='prepare_and_inspect', acknowledged=True, prepared=True))
                     if enabled:

@@ -8,6 +8,7 @@ import hashlib
 import http.client
 import json
 import os
+import stat
 from pathlib import Path
 import platform
 import re
@@ -410,8 +411,14 @@ def upload_images(result, paths, state_dir=None, api_base=API_BASE, connection_f
 def auto_failure_enabled(state_dir):
     path = state_dir / 'automatic-failure-feedback.json'
     try:
-        if path.is_symlink() or path.stat().st_size > 128:
-            return False
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 128:
+        return False
+    try:
         value = json.loads(path.read_text(encoding='utf-8'))
         return isinstance(value, dict) and value.get('enabled') is True
     except (OSError, ValueError):

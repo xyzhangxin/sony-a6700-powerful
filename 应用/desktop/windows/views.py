@@ -150,7 +150,7 @@ class Views:
         automatic.setChecked(prior_automatic is True)
         automatic.setEnabled(prior_automatic is not None and not self.inflight and not self.state.get('busy'))
         layout.addWidget(automatic)
-        layout.addWidget(label('开启后，失败时在后台发送本次的脱敏预检和操作结果。自动报告不含邮箱，保留 30 天。', 'muted'))
+        layout.addWidget(label('默认开启。失败时在后台发送本次脱敏预检和操作结果，不含邮箱，保留 30 天。', 'muted'))
         actions = row(layout)
         actions.addStretch()
         button(actions, '保存', dialog.accept, 'primary')

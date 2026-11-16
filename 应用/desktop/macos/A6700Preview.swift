@@ -119,7 +119,7 @@ struct PreviewView: View {
                     set: { model.send("set_automatic_failure_feedback", extra: ["enabled": $0]) }
                 )).toggleStyle(.checkbox)
                     .disabled(model.state?.automatic_failure_feedback == nil || model.isBusy)
-                Text("开启后，失败时在后台发送本次的脱敏预检和操作结果。自动报告不含邮箱，保留 30 天。")
+                Text("默认开启。失败时在后台发送本次脱敏预检和操作结果，不含邮箱，保留 30 天。")
                     .font(.system(size: 12)).foregroundColor(UI.muted)
                 HStack { Spacer(); Button("完成") { usageSheet = false }.buttonStyle(PrimaryStyle()) }
             }.padding(24).frame(width: 460)
