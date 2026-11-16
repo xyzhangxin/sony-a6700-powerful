@@ -703,7 +703,7 @@ class FailureFeedbackDialog(QDialog):
         outer.setContentsMargins(24, 24, 24, 24)
         outer.setSpacing(12)
         outer.addWidget(label('上传本次异常日志', 'heading'))
-        outer.addWidget(label('报告包含应用版本、环境检查、本次操作步骤与可用错误码。仅发送脱敏数据，保留 30 天。', 'muted'))
+        outer.addWidget(label('报告包含应用版本、环境检查、操作步骤、可用错误码和本次的脱敏预检及执行结果。保留 30 天。', 'muted'))
         outer.addWidget(label('联系邮箱（选填）'))
         self.email = QLineEdit(self.preferences.value('lastEmail', '', str))
         self.email.setAccessibleName('联系邮箱')

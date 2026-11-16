@@ -378,7 +378,7 @@ struct FailureFeedbackView: View {
             PageTitle(title: "上传本次异常日志", subtitle: "把这次操作的诊断报告发送给项目维护者。")
             VStack(alignment: .leading, spacing: 7) {
                 Label("随报告发送", systemImage: "doc.text").font(.system(size: 12, weight: .semibold))
-                Text("应用与系统版本、所选功能、组件检查、连接和写入步骤及耗时，以及已有的错误码、回读和退出结果。")
+                Text("应用与系统版本、所选功能、组件检查、连接和写入步骤及耗时，以及已有的错误码、回读和退出结果。随报告附上可用的脱敏预检计划和执行结果。")
                 Text("报告保留 30 天。请勿在说明中填写密码、序列号或其他私人信息。报告不包含固件、照片、备份或机内原始日志。")
                     .foregroundColor(UI.muted)
             }.font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)

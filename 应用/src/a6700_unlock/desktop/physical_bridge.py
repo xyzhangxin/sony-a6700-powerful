@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+from queue import Empty, Full, Queue
 import sys
 from threading import Event, Lock, Thread
 import time
@@ -21,9 +22,9 @@ from .update_service import DesktopUpdateService
 from .protocol import decode_request, event
 from ..device_protocol import DeviceBusyError
 from ..operations import default_state_dir
-from ..failure_feedback import FailureTrace
+from ..failure_feedback import FailureTrace, build_failure_archive
 from ..usage import UsageReporter
-from ..feedback import build_feedback
+from .. import feedback as failure_feedback
 
 
 def main():
@@ -35,7 +36,12 @@ def main():
     args = parser.parse_args()
 
     usage = UsageReporter(args.state_dir)
+    feedback_state = args.state_dir or default_state_dir()
     failure_report = None
+    failure_archive = None
+    failure_upload_lock = Lock()
+    automatic_reports = Queue(maxsize=4)
+    automatic_thread = None
     failure_preview_id = None
     support_thread = None
     failure_trace = FailureTrace()
@@ -43,8 +49,24 @@ def main():
     # Authentication suppresses raw legacy ProductInfo through a stdout
     # redirect. Keep protocol progress on the original JSON output stream.
     protocol_output = sys.stdout
+    def send_failure(report, archive, description='', email='', *, automatic=False):
+        with failure_upload_lock:
+            if automatic and not failure_feedback.auto_failure_enabled(feedback_state):
+                return None
+            return failure_feedback.upload_feedback(report, description, state_dir=feedback_state,
+                                                   email=email, failure_archive=archive)
+
+    def upload_automatic_failures():
+        while True:
+            report, archive = automatic_reports.get()
+            try:
+                send_failure(report, archive, automatic=True)
+            except (OSError, ValueError, TypeError, KeyError):
+                pass
+
     def emit(kind, request_id=None, **values):
-        nonlocal failure_report, failure_preview_id
+        nonlocal failure_report, failure_archive, failure_preview_id
+        scheduled = None
         if kind == 'state':
             state = values['state']
             try:
@@ -52,6 +74,7 @@ def main():
             except (OSError, ValueError, DeviceBusyError):
                 pass
             state['usage'] = usage.snapshot()
+            state['automatic_failure_feedback'] = failure_feedback.auto_failure_enabled(feedback_state)
             if state.get('busy') and failure_trace.identity != state.get('operation_id'):
                 failure_trace.begin(state['operation_id'], state)
             candidate = failure_trace.report(state)
@@ -59,12 +82,25 @@ def main():
                 if failure_report is None or candidate['operation_id'] != failure_report['operation_id']:
                     failure_report = candidate
                     failure_preview_id = None
+                    try:
+                        edits = {edit.id for edit in controller.service.profile.catalog.edits}
+                        failure_archive = build_failure_archive(candidate, state, controller.last_report, edits)
+                    except (ValueError, TypeError, KeyError):
+                        failure_archive = None
+                    if automatic_thread is not None and state['automatic_failure_feedback']:
+                        scheduled = candidate, failure_archive
             elif state.get('busy'):
                 failure_report = None
+                failure_archive = None
                 failure_preview_id = None
         with output_lock:
             print(json.dumps(event(kind, request_id=request_id, **values), ensure_ascii=False), flush=True,
                   file=protocol_output)
+        if scheduled is not None:
+            try:
+                automatic_reports.put_nowait(scheduled)
+            except Full:
+                pass
 
     controller = DesktopController(None, mode='physical', physical_state_dir=args.state_dir,
                                    physical_backup_dir=args.backup_dir)
@@ -92,6 +128,9 @@ def main():
             emit('diagnostic-result', result=last_diagnostic)
 
     def run(request_id):
+        # Keep fallback exception reports from attaching a previous run.
+        controller.last_report = None
+
         def progress(message):
             failure_trace.progress(message)
             emit('progress', message=message, request_id=request_id)
@@ -532,6 +571,9 @@ def main():
             if command in ('start_usage', 'set_usage'):
                 try:
                     if command == 'start_usage':
+                        if automatic_thread is None:
+                            automatic_thread = Thread(target=upload_automatic_failures, daemon=True)
+                            automatic_thread.start()
                         usage.start_session()
                     else:
                         usage.set_enabled(request.get('enabled'))
@@ -540,11 +582,25 @@ def main():
                         raise ValueError('统计设置未能保存，请稍后重试。') from None
                 emit('state', state=controller.snapshot(), request_id=request_id)
                 continue
+            if command == 'set_automatic_failure_feedback':
+                enabled = request.get('enabled')
+                try:
+                    failure_feedback.set_auto_failure_enabled(feedback_state, enabled)
+                except OSError:
+                    raise ValueError('自动上传设置未能保存，请稍后重试。') from None
+                if not enabled:
+                    while True:
+                        try:
+                            automatic_reports.get_nowait()
+                        except Empty:
+                            break
+                emit('state', state=controller.snapshot(), request_id=request_id)
+                continue
             if command == 'preview_failure_feedback':
                 if controller.busy or failure_report is None:
                     raise ValueError('请先完成当前操作。')
                 failure_preview_id = failure_report['operation_id']
-                preview = build_feedback(failure_report)
+                preview = failure_feedback.build_feedback(failure_report)
                 preview.pop('feedback_id')  # Assigned when confirming the final description.
                 emit('failure-feedback-preview', result=dict(
                     operation_id=failure_report['operation_id'],
@@ -558,21 +614,20 @@ def main():
                         or failure_preview_id != failure_report['operation_id']
                         or (support_thread is not None and support_thread.is_alive())):
                     raise ValueError('请先打开并确认本次失败报告。')
-                from .. import feedback
                 report = dict(failure_report)
+                archive = failure_archive
                 description = request.get('description', '')
                 email = request.get('email', '')
                 if not isinstance(description, str) or len(description) > 2000:
                     raise ValueError('问题描述无效。')
                 try:
-                    build_feedback(report, description, email=email)
+                    failure_feedback.build_feedback(report, description, email=email)
                 except ValueError as exc:
                     emit('failure-feedback-result', result=dict(status='invalid', error=str(exc)), request_id=request_id)
                     continue
-                def upload_failure(report=report, description=description, email=email, identity=request_id):
+                def upload_failure(report=report, archive=archive, description=description, email=email, identity=request_id):
                     try:
-                        value = feedback.upload_feedback(report, description,
-                            state_dir=controller.service.state_dir, include_artifact=False, email=email)
+                        value = send_failure(report, archive, description, email)
                     except Exception:
                         value = dict(status='error', error='日志上传未完成，请稍后重试。')
                     emit('failure-feedback-result', result=value, request_id=identity)

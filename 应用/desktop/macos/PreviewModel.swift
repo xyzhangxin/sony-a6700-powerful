@@ -80,6 +80,7 @@ struct UsageState: Decodable { let enabled: Bool }
 
 struct Snapshot: Decodable {
     let usage: UsageState?
+    let automatic_failure_feedback: Bool?
     let revision: Int; let phase: String; let scenario: String; let scenarios: [ScenarioRow]
     let environment: EnvironmentState; let checked: Bool; let steps: [PreparationRow]
     let notice: NoticeContent; let notice_acknowledged: Bool

@@ -126,7 +126,7 @@ class Views:
             m.addAction('检查相机功能包',lambda:self.command('check_updates'))
             if getattr(self,'update_status',None):
                 m.addSection(self.update_status)
-            m.addAction('使用统计…', self.show_usage_settings)
+            m.addAction('统计与诊断…', self.show_usage_settings)
             m.addSeparator()
         m.addAction('查看操作前须知',self.review_notice);m.addAction('Windows 驱动准备',self.driver_help)
         m.addAction('开源许可',self.show_license);m.addSeparator();a=m.addAction('Windows 预览 · '+__version__);a.setEnabled(False)
@@ -134,22 +134,31 @@ class Views:
 
     def show_usage_settings(self):
         dialog = QDialog(self)
-        dialog.setWindowTitle('使用统计')
+        dialog.setWindowTitle('统计与诊断')
         dialog.setFixedWidth(440)
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(24, 24, 24, 24)
-        title(layout, '使用统计', '默认开启，可随时关闭')
+        title(layout, '统计与诊断', '可随时修改')
         layout.addWidget(label('用于统计页面访问、活跃安装实例、写入成功和报错。每个安装生成随机标识，帮助去重。统计内容不包含序列号、邮箱、相机数据或日志。', 'muted'))
         option = CheckBox('分享使用统计')
         usage = self.state.get('usage')
         option.setChecked(bool(usage and usage.get('enabled')))
         option.setEnabled(usage is not None and not self.inflight and not self.state.get('busy'))
         layout.addWidget(option)
+        automatic = CheckBox('自动上传脱敏故障报告')
+        prior_automatic = self.state.get('automatic_failure_feedback')
+        automatic.setChecked(prior_automatic is True)
+        automatic.setEnabled(prior_automatic is not None and not self.inflight and not self.state.get('busy'))
+        layout.addWidget(automatic)
+        layout.addWidget(label('开启后，失败时在后台发送本次的脱敏预检和操作结果。自动报告不含邮箱，保留 30 天。', 'muted'))
         actions = row(layout)
         actions.addStretch()
         button(actions, '保存', dialog.accept, 'primary')
-        if dialog.exec() and option.isEnabled() and option.isChecked() != bool(usage.get('enabled')):
-            self.command('set_usage', enabled=option.isChecked())
+        if dialog.exec():
+            if option.isEnabled() and option.isChecked() != bool(usage.get('enabled')):
+                self.command('set_usage', enabled=option.isChecked())
+            if automatic.isEnabled() and automatic.isChecked() != prior_automatic:
+                self.command('set_automatic_failure_feedback', enabled=automatic.isChecked())
 
     def demo_settings(self):
         m=QMenu(self);m.addSection('演示场景 · 不访问 USB')

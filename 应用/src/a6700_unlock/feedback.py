@@ -183,7 +183,7 @@ def _request_with_retries(opener, request, attempts=3, timeout=15):
     raise last_error
 
 
-def upload_feedback(result, description='', state_dir=None, api_base=API_BASE, opener=None, include_artifact=False, images=None, connection_factory=None, *, email=''):
+def upload_feedback(result, description='', state_dir=None, api_base=API_BASE, opener=None, include_artifact=False, images=None, connection_factory=None, *, email='', failure_archive=None):
     state = Path(state_dir) if state_dir is not None else Path.home() / 'Library/Application Support/a6700-unlock'
     pending = state / 'feedback-pending'
     sent = state / 'feedback-sent'
@@ -207,8 +207,9 @@ def upload_feedback(result, description='', state_dir=None, api_base=API_BASE, o
             # retries instead of creating a second feedback for the same form.
             feedback_id = saved_sent['payload']['feedback_id']
             artifact = None
-            if include_artifact and result.get('path'):
-                artifact = upload_artifact(result, state_dir=state, api_base=api_base, opener=opener)
+            if failure_archive is not None or (include_artifact and result.get('path')):
+                artifact = upload_artifact(result, state_dir=state, api_base=api_base, opener=opener,
+                                           raw=failure_archive, record_id=operation_id)
                 if artifact.get('status') != 'received':
                     return dict(status='partial', feedback_id=feedback_id, artifact=artifact,
                                 error=artifact.get('error', 'ZIP 附件未接收，已保留在本机。'))
@@ -251,8 +252,9 @@ def upload_feedback(result, description='', state_dir=None, api_base=API_BASE, o
         if status in (200, 201) and data.get('status') == 'received':
             sent.mkdir(parents=True, exist_ok=True)
             record.replace(sent / record.name)
-            if include_artifact and result.get('path'):
-                artifact = upload_artifact(result, state_dir=state, api_base=api_base, opener=opener)
+            if failure_archive is not None or (include_artifact and result.get('path')):
+                artifact = upload_artifact(result, state_dir=state, api_base=api_base, opener=opener,
+                                           raw=failure_archive, record_id=operation_id)
                 if artifact.get('status') != 'received':
                     image_results = upload_images(result, images or [], state_dir=state, api_base=api_base, connection_factory=connection_factory)
                     return dict(status='partial', feedback_id=feedback['feedback_id'],
@@ -286,10 +288,10 @@ def upload_feedback(result, description='', state_dir=None, api_base=API_BASE, o
         return dict(status='unknown', feedback_id=feedback['feedback_id'],
                     error='无法连接云端：%s；已保留同一份待发送报告。若本机把 susukele.com 解析到内网地址，请在路由器 DNS 中为 API 域名设置公网例外。' % (detail or '连接失败'))
 
-def upload_artifact(result, state_dir=None, api_base=API_BASE, opener=None):
+def upload_artifact(result, state_dir=None, api_base=API_BASE, opener=None, *, raw=None, record_id=None):
     state = Path(state_dir) if state_dir is not None else Path.home() / 'Library/Application Support/a6700-unlock'
-    operation_id = result.get('operation_id')
-    if not operation_id or not result.get('path'):
+    operation_id = record_id or result.get('operation_id')
+    if not operation_id or (raw is None and not result.get('path')):
         return dict(status='error', error='缺少可上传的 ZIP 附件。')
     candidates = [state / 'feedback-sent' / (operation_id + '.json'),
                   state / 'feedback-pending' / (operation_id + '.json')]
@@ -299,10 +301,14 @@ def upload_artifact(result, state_dir=None, api_base=API_BASE, opener=None):
     saved = json.loads(record.read_text())
     feedback_id = saved['payload']['feedback_id']
     token = saved['delete_token']
-    path = Path(result['path'])
-    if path.stat().st_size > 5 * 1024 * 1024:
+    limit = 5 * 1024 * 1024
+    if raw is None:
+        path = Path(result['path'])
+        if path.stat().st_size > limit:
+            return dict(status='error', error='ZIP 超过 5MiB，未上传。')
+        raw = path.read_bytes()
+    if len(raw) > limit:
         return dict(status='error', error='ZIP 超过 5MiB，未上传。')
-    raw = path.read_bytes()
     request = urllib.request.Request(
         api_base.rstrip('/') + '/v1/feedback/' + feedback_id + '/artifact',
         data=raw, method='POST',
@@ -399,3 +405,26 @@ def upload_images(result, paths, state_dir=None, api_base=API_BASE, connection_f
         output.append(upload_image(result, path, state_dir=state_dir, api_base=api_base,
                                    connection_factory=connection_factory))
     return output
+
+
+def auto_failure_enabled(state_dir):
+    path = state_dir / 'automatic-failure-feedback.json'
+    try:
+        if path.is_symlink() or path.stat().st_size > 128:
+            return False
+        value = json.loads(path.read_text(encoding='utf-8'))
+        return isinstance(value, dict) and value.get('enabled') is True
+    except (OSError, ValueError):
+        return False
+
+
+def set_auto_failure_enabled(state_dir, enabled):
+    if type(enabled) is not bool:
+        raise ValueError('异常日志设置无效。')
+    state_dir.mkdir(parents=True, exist_ok=True)
+    temporary = state_dir / ('failure-options-' + uuid.uuid4().hex + '.tmp')
+    try:
+        _save(temporary, {'enabled': enabled})
+        os.replace(temporary, state_dir / 'automatic-failure-feedback.json')
+    finally:
+        temporary.unlink(missing_ok=True)

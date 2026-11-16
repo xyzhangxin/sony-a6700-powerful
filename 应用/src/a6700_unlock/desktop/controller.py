@@ -20,6 +20,7 @@ from .aftercare import MENU_CHECKS, build_aftercare
 from .protocol import API_VERSION, capabilities as protocol_capabilities
 from ..capability_packages import package_versions
 from ..close_preparation import RULES as CLOSE_RULES
+from ..failure_feedback import COMPATIBILITY_DETAILS, compatibility_checks
 
 
 SIMULATION_RESULT_LABELS = {
@@ -537,6 +538,12 @@ class DesktopController:
                     self.features = self._feature_rows(result.get('final_features', result.get('plan', {}).get(
                         'features', []))) if self.compatible else []
                 title, detail = self.result_labels.get(status, ('操作未完成', '请重新检查状态。'))
+                checks = []
+                if self.mode == 'physical' and action == 'inspect' and status == 'blocked':
+                    checks = compatibility_checks(result.get('plan', {}))
+                    if checks:
+                        detail = '。'.join(COMPATIBILITY_DETAILS[check] for check in checks)
+                        detail += '。本次未写入。可上传诊断报告供排查。'
                 if (result.get('close_preparation') or {}).get('completed'):
                     detail += ' 关闭前已确认的机身设置调整保持，具体项目见下方记录。'
                 error = result.get('error', '')
@@ -554,6 +561,8 @@ class DesktopController:
                                    close_preparation=result.get('close_preparation'),
                                    aftercare=build_aftercare(action, result, features,
                                                              self.mode == 'simulation'))
+                if checks:
+                    self.result['compatibility_checks'] = checks
                 if action in ('unlock', 'close'):
                     # The result remains visible, but its inspection cannot
                     # authorize another operation after a camera power cycle.

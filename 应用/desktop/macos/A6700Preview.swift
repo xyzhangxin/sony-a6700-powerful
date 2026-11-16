@@ -105,7 +105,7 @@ struct PreviewView: View {
         .sheet(isPresented: $license) { LicenseView { license = false } }
         .sheet(isPresented: $usageSheet) {
             VStack(alignment: .leading, spacing: 14) {
-                PageTitle(title: "使用统计", subtitle: "默认开启，可随时关闭")
+                PageTitle(title: "统计与诊断", subtitle: "可随时修改")
                 Text("用于统计页面访问、活跃安装实例、写入成功和报错。每个安装生成随机标识，帮助去重。统计内容不包含序列号、邮箱、相机数据或日志。")
                     .font(.system(size: 12)).foregroundColor(UI.muted)
                 Toggle("分享使用统计", isOn: Binding(
@@ -113,6 +113,14 @@ struct PreviewView: View {
                     set: { model.send("set_usage", extra: ["enabled": $0]) }
                 )).toggleStyle(.checkbox)
                     .disabled(model.state?.usage == nil || model.isBusy)
+                Divider()
+                Toggle("自动上传脱敏故障报告", isOn: Binding(
+                    get: { model.state?.automatic_failure_feedback == true },
+                    set: { model.send("set_automatic_failure_feedback", extra: ["enabled": $0]) }
+                )).toggleStyle(.checkbox)
+                    .disabled(model.state?.automatic_failure_feedback == nil || model.isBusy)
+                Text("开启后，失败时在后台发送本次的脱敏预检和操作结果。自动报告不含邮箱，保留 30 天。")
+                    .font(.system(size: 12)).foregroundColor(UI.muted)
                 HStack { Spacer(); Button("完成") { usageSheet = false }.buttonStyle(PrimaryStyle()) }
             }.padding(24).frame(width: 460)
         }
@@ -221,7 +229,7 @@ struct PreviewView: View {
                     }
                     Divider()
                 }
-                if physicalMode { Button("使用统计…") { usageSheet = true } }
+                if physicalMode { Button("统计与诊断…") { usageSheet = true } }
                 Button("查看操作前须知") { noticeSheet = true }
                 Button("开源许可") { license = true }
                 Divider()
