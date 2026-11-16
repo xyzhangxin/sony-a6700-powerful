@@ -139,6 +139,12 @@ def main():
                         '-framework', 'Foundation', '-framework', 'IOUSBHost', '-framework', 'IOKit',
                         str(ROOT/'src/a6700_unlock/native/mac_capture.m'), '-o', str(helper)], check=True)
         helper.chmod(0o755)
+        updater = resources/'helpers/app-update-installer'
+        subprocess.run(['xcrun', 'swiftc', '-target', 'arm64-apple-macosx13.0',
+                        str(ROOT/'desktop/macos/AppUpdateHealth.swift'),
+                        str(ROOT/'desktop/macos/update-installer/main.swift'),
+                        '-o', str(updater)], check=True)
+        shutil.copyfile(ROOT/'desktop/macos/update-installer/public-key.txt', resources/'app-update-public-key.txt')
         shutil.copyfile(ROOT/'desktop/worker.py', resources/'worker.py')
         (resources/'runtime.json').write_text(json.dumps(dict(kind='bundled', python=pin['python']), indent=2)+'\n')
         (resources/'runtime-licenses/dependencies.json').write_text(json.dumps(pins, indent=2)+'\n')

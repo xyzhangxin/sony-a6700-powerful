@@ -44,7 +44,12 @@ class Views:
         icon=(Path(sys._MEIPASS)/'Powerful6700.png' if getattr(sys,'frozen',False) else Path(__file__).resolve().parents[1]/'品牌/Powerful6700.png')
         self.setWindowIcon(QIcon(str(icon)));self.mark.setPixmap(QPixmap(str(icon)).scaled(40,40,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation));h.addWidget(self.mark)
         brand=column(h,3);brand.addWidget(label('Powerful6700','heading',False));brand.addWidget(label('固件 2.00 · 开发测试版','small',False))
-        h.addStretch();self.demo_button=button(h,'',self.demo_settings,'iconButton');self.demo_button.setFixedSize(28,28)
+        h.addStretch()
+        self.app_update_button = button(h, '', self.update_app_download, 'secondary')
+        self.app_update_button.setObjectName('appUpdateButton')
+        self.dismiss_app_update_button = button(h, '稍后', self.dismiss_app_update, 'quiet')
+        self.dismiss_app_update()
+        self.demo_button=button(h,'',self.demo_settings,'iconButton');self.demo_button.setFixedSize(28,28)
         self.demo_button.setAccessibleName('演示设置');self.demo_button.setToolTip('演示场景与连接设置')
         demo_icon=Symbol('sliders',18);demo_icon.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         d=QHBoxLayout(self.demo_button);d.setContentsMargins(5,5,5,5);d.addWidget(demo_icon)
@@ -55,7 +60,7 @@ class Views:
         help_button=button(h,'',self.help_menu,'iconButton');help_button.setFixedSize(28,28);help_button.setAccessibleName('帮助与版本')
         self.update_dot=QWidget(help_button);self.update_dot.setFixedSize(8,8)
         self.update_dot.setStyleSheet('background:#e5484d;border-radius:4px;')
-        self.update_dot.move(18,2);self.update_dot.hide();self.update_dot.setToolTip('有可用更新，点击查看')
+        self.update_dot.move(18,2);self.update_dot.hide();self.update_dot.setToolTip('相机功能包已更新')
         i=QHBoxLayout(help_button);i.setContentsMargins(5,5,5,5);sym=Symbol('more',18,MUTED);sym.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents);i.addWidget(sym)
         self.help_button=help_button;self.outer.addWidget(self.header)
         self.step_frame=QFrame();self.step_frame.setObjectName('steps');self.step_layout=QHBoxLayout(self.step_frame);self.step_layout.setContentsMargins(28,11,28,13);self.step_layout.setSpacing(20)
@@ -105,13 +110,46 @@ class Views:
         self.update_dot.hide()
         m=QMenu(self)
         if self.physical:
-            m.addAction('检查更新',lambda:self.command('check_updates'))
+            check_title = '正在检查应用更新…' if self.app_update_request else '检查应用更新'
+            check = m.addAction(check_title, self.check_app_update)
+            check.setEnabled(not self.app_update_request and not self.inflight and not self.state.get('busy'))
+            startup = m.addAction('启动时检查应用更新')
+            startup.setCheckable(True)
+            startup.setChecked(self.update_preferences.value('checkAtStartup', True, type=bool))
+            startup.toggled.connect(lambda checked: self.update_preferences.setValue('checkAtStartup', checked))
+            if self.app_update_archive:
+                m.addAction('查看已下载的新版', self.update_app_download)
+            elif self.app_release and self.app_download_progress is None:
+                download = m.addAction(f"下载新版 {self.app_release['version']}", self.update_app_download)
+                download.setEnabled(not self.app_update_request and not self.inflight and not self.state.get('busy'))
+            m.addSeparator()
+            m.addAction('检查相机功能包',lambda:self.command('check_updates'))
             if getattr(self,'update_status',None):
                 m.addSection(self.update_status)
+            m.addAction('使用统计…', self.show_usage_settings)
             m.addSeparator()
         m.addAction('查看操作前须知',self.review_notice);m.addAction('Windows 驱动准备',self.driver_help)
         m.addAction('开源许可',self.show_license);m.addSeparator();a=m.addAction('Windows 预览 · '+__version__);a.setEnabled(False)
         m.exec(self.help_button.mapToGlobal(self.help_button.rect().bottomRight()))
+
+    def show_usage_settings(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle('使用统计')
+        dialog.setFixedWidth(440)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 24, 24, 24)
+        title(layout, '使用统计', '默认开启，可随时关闭')
+        layout.addWidget(label('用于统计页面访问、活跃安装实例、写入成功和报错。每个安装生成随机标识，帮助去重。统计内容不包含序列号、邮箱、相机数据或日志。', 'muted'))
+        option = CheckBox('分享使用统计')
+        usage = self.state.get('usage')
+        option.setChecked(bool(usage and usage.get('enabled')))
+        option.setEnabled(usage is not None and not self.inflight and not self.state.get('busy'))
+        layout.addWidget(option)
+        actions = row(layout)
+        actions.addStretch()
+        button(actions, '保存', dialog.accept, 'primary')
+        if dialog.exec() and option.isEnabled() and option.isChecked() != bool(usage.get('enabled')):
+            self.command('set_usage', enabled=option.isChecked())
 
     def demo_settings(self):
         m=QMenu(self);m.addSection('演示场景 · 不访问 USB')
@@ -409,6 +447,9 @@ class Views:
             notice.addWidget(label('非官方工具。修改固件有变砖风险，可能影响保修。','muted'))
             notice_links = row(notice)
             button(notice_links,'查看完整须知',self.review_notice,'link')
+            if self.physical and s.get('usage') is not None:
+                usage_text = '使用统计已开启 · 设置' if s['usage']['enabled'] else '使用统计已关闭 · 设置'
+                button(notice_links, usage_text, self.show_usage_settings, 'link')
             if not s.get('checked'):
                 notice_links.addWidget(label('正在检查本机组件…','muted'))
             notice_links.addStretch()

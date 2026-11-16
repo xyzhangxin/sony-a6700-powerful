@@ -76,7 +76,10 @@ struct Aftercare: Decodable {
     let steps: [RestartStep]; let features: [FeatureCheck]
 }
 
+struct UsageState: Decodable { let enabled: Bool }
+
 struct Snapshot: Decodable {
+    let usage: UsageState?
     let revision: Int; let phase: String; let scenario: String; let scenarios: [ScenarioRow]
     let environment: EnvironmentState; let checked: Bool; let steps: [PreparationRow]
     let notice: NoticeContent; let notice_acknowledged: Bool
@@ -161,6 +164,29 @@ final class PreviewModel: ObservableObject {
     @Published var updateBusy = false
     @Published var updateStatus: String?
     @Published var updateAvailable = false
+    @Published private(set) var appUpdateChecking = false
+    @Published private(set) var appReleaseVersion: String?
+    @Published private(set) var appDownloadProgress: Int?
+    @Published private(set) var appUpdateArchive: URL?
+    @Published var showAppReleaseOffer = false
+    @Published var appUpdateMessage: String?
+    @Published private(set) var appInstallAvailable = false
+    @Published private(set) var appInstallBusy = false
+    @Published private(set) var updateStartupToken = AppUpdateHealth.launchToken
+    var appUpdateBlocksOperations: Bool { appInstallBusy || updateStartupToken != nil }
+    private var updateStartupReported = false
+    private var installRequested = false
+    private var installHelper: Process?
+    private var installControl: FileHandle?
+    private var installShutdownID: String?
+    private var installShutdownAcknowledged = false
+    private var installWorkerExited = false
+    @Published var checkAppAtStartup = UserDefaults.standard.object(forKey: "checkAppAtStartup") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(checkAppAtStartup, forKey: "checkAppAtStartup") }
+    }
+    private var appUpdateRequestID: String?
+    private var manualAppUpdate = false
+    private var checkedAppAtStartup = false
     private var autoUpdateCheck = false
     var isBusy: Bool { !serviceExited && (pendingAction != nil || state?.busy == true || diagnosticBusy || uploadBusy || updateBusy) }
     var serviceWriteUncertain: Bool { physicalMode && ["unlock", "close", "restore"].contains(serviceExitAction ?? "") }
@@ -177,6 +203,9 @@ final class PreviewModel: ObservableObject {
     func start(physical: Bool = true) {
         do {
             physicalMode = physical
+            if ProcessInfo.processInfo.arguments.contains(AppUpdateHealth.rollbackOption) {
+                appUpdateMessage = "新版未通过启动检查，已恢复上一版。"
+            }
             let session = UUID()
             generation = session
             reader.sync { buffer = Data() }
@@ -184,6 +213,13 @@ final class PreviewModel: ObservableObject {
             progress = []
             error = ""
             pendingAction = nil
+            appUpdateRequestID = nil
+            appUpdateChecking = false
+            appDownloadProgress = nil
+            if appUpdateArchive == nil {
+                appReleaseVersion = nil
+                showAppReleaseOffer = false
+            }
             serviceExited = false
             serviceExitAction = nil
             diagnosticBusy = false
@@ -214,6 +250,7 @@ final class PreviewModel: ObservableObject {
             var environment = ProcessInfo.processInfo.environment
             environment["PYTHONPATH"] = resources.appendingPathComponent("python").path
             environment["PYTHONDONTWRITEBYTECODE"] = "1"
+            if updateStartupToken != nil { environment["POWERFUL6700_POST_UPDATE_START"] = "1" }
             worker.environment = environment
             let source = Pipe(), output = Pipe(), diagnostics = Pipe()
             worker.standardInput = source; worker.standardOutput = output; worker.standardError = diagnostics
@@ -243,8 +280,25 @@ final class PreviewModel: ObservableObject {
             worker.terminationHandler = { [weak self] job in
                 DispatchQueue.main.async {
                     guard let self = self, self.generation == session else { return }
+                    if self.installShutdownID != nil {
+                        self.installWorkerExited = job.terminationStatus == 0
+                        if self.installWorkerExited { self.commitAppInstallWhenReady() }
+                        else { self.abortAppInstall("本地服务未能正常退出，应用更新已停止。") }
+                        return
+                    }
                     self.serviceExitAction = self.pendingAction ?? (self.state?.busy == true ? self.state?.action : nil)
                     self.serviceExited = true
+                    if self.appUpdateChecking && self.manualAppUpdate {
+                        self.appUpdateMessage = "本地服务已停止，请重新打开应用后再检查。"
+                    }
+                    self.appUpdateChecking = false
+                    if self.appDownloadProgress != nil {
+                        self.appUpdateMessage = "下载已中断，请重新检查应用更新。"
+                        self.appDownloadProgress = nil
+                        self.appInstallBusy = false
+                        self.installRequested = false
+                    }
+                    self.appUpdateRequestID = nil
                     self.failureUploadBusy = false
                     if self.showFailureFeedback { self.failureUploadStatus = "本地服务已退出，上传结果未确认。可先导出报告。" }
                     self.pendingAction = nil
@@ -258,15 +312,22 @@ final class PreviewModel: ObservableObject {
             updateAvailable = false
             if physical {
                 send("environment")
-                autoUpdateCheck = true
-                send("check_updates")
+                if updateStartupToken == nil && checkAppAtStartup && !checkedAppAtStartup {
+                    checkedAppAtStartup = true
+                    checkAppUpdate(automatic: true)
+                }
+                if updateStartupToken == nil {
+                    autoUpdateCheck = true
+                    send("check_updates")
+                    send("start_usage")
+                }
             } else {
                 send("reset", extra: ["scenario": "enabled"])
             }
         } catch { self.error = error.localizedDescription }
     }
     func setMode(_ physical: Bool) {
-        guard physical != physicalMode, !isBusy else { return }
+        guard physical != physicalMode, !isBusy, !appUpdateBlocksOperations else { return }
         shutdown()
         start(physical: physical)
     }
@@ -327,6 +388,12 @@ final class PreviewModel: ObservableObject {
                         return
                     }
                     self.state = snapshot
+                    self.reportUpdatedStartup(snapshot)
+                    if let shutdownID = self.installShutdownID,
+                       message["request_id"] as? String == shutdownID, !snapshot.connected, !snapshot.busy {
+                        self.installShutdownAcknowledged = true
+                        self.commitAppInstallWhenReady()
+                    }
                     if !snapshot.busy && self.error == Self.operationInProgressMessage {
                         self.error = ""
                     }
@@ -397,6 +464,24 @@ final class PreviewModel: ObservableObject {
                             operation_id: nil, mode: nil, events: nil)
                     }
                 }
+            } else if kind == "app-update-result", let raw = message["result"] as? [String: Any],
+                      let requestID = message["request_id"] as? String {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.generation == session, self.appUpdateRequestID == requestID else { return }
+                    self.finishAppUpdate(raw)
+                }
+            } else if kind == "app-update-download-progress", let percent = message["percent"] as? Int,
+                      let requestID = message["request_id"] as? String {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.generation == session, self.appUpdateRequestID == requestID else { return }
+                    self.appDownloadProgress = percent
+                }
+            } else if kind == "app-update-download-result", let raw = message["result"] as? [String: Any],
+                      let requestID = message["request_id"] as? String {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.generation == session, self.appUpdateRequestID == requestID else { return }
+                    self.finishAppDownload(raw)
+                }
             } else if kind == "update-result", let raw = message["result"] as? [String: Any] {
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self, self.generation == session else { return }
@@ -408,9 +493,9 @@ final class PreviewModel: ObservableObject {
                     }
                     switch status {
                     case "activated":
-                        self.updateStatus = "已更新"
+                        self.updateStatus = "相机功能包已更新"
                     case "unchanged", "not-modified":
-                        self.updateStatus = "当前已是最新版本"
+                        self.updateStatus = "相机功能包已是最新"
                     case "unconfigured":
                         self.updateStatus = "更新暂不可用"
                     case "offline":
@@ -487,7 +572,209 @@ final class PreviewModel: ObservableObject {
         } catch { failureUploadStatus = "报告未能保存，请选择可写入的位置。" }
     }
 
+    private func requestAppUpdate(_ command: String) throws {
+        guard let input, !serviceExited else { throw bridgeError("本地服务未就绪。") }
+        let requestID = UUID().uuidString
+        let request: [String: Any] = ["command": command, "api_version": 1, "request_id": requestID]
+        appUpdateRequestID = requestID
+        let bytes = try JSONSerialization.data(withJSONObject: request)
+        try input.write(contentsOf: bytes + Data([10]))
+    }
+
+    func checkAppUpdate(automatic: Bool = false) {
+        guard physicalMode, !isBusy, !appUpdateBlocksOperations, appUpdateRequestID == nil else { return }
+        manualAppUpdate = !automatic
+        appUpdateChecking = true
+        do { try requestAppUpdate("check_app_update") }
+        catch { finishAppUpdate(["status": "unavailable"]) }
+    }
+
+    func downloadAppUpdate() {
+        guard physicalMode, !isBusy, !appUpdateBlocksOperations,
+              appUpdateRequestID == nil, appReleaseVersion != nil else { return }
+        installRequested = appInstallAvailable
+        if installRequested { appInstallBusy = true }
+        appDownloadProgress = 0
+        showAppReleaseOffer = true
+        do { try requestAppUpdate("download_app_update") }
+        catch { finishAppDownload(["status": "unavailable"]) }
+    }
+
+    func revealAppUpdate() {
+        guard let archive = appUpdateArchive, FileManager.default.fileExists(atPath: archive.path) else {
+            appUpdateArchive = nil
+            appUpdateMessage = "找不到已下载的安装包，请重新下载。"
+            return
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([archive])
+    }
+
+    private func finishAppDownload(_ result: [String: Any]) {
+        appUpdateRequestID = nil
+        appDownloadProgress = nil
+        if result["status"] as? String == "downloaded", let path = result["path"] as? String {
+            let archive = URL(fileURLWithPath: path)
+            appUpdateArchive = archive
+            if installRequested { prepareAppInstall(archive) }
+            return
+        }
+        installRequested = false
+        appInstallBusy = false
+        if result["status"] as? String == "verification-failed" {
+            appUpdateMessage = "安装包校验失败，请重新下载。"
+        } else {
+            appUpdateMessage = "下载未完成，请重新检查应用更新或稍后重试。"
+        }
+    }
+
+    private func finishAppUpdate(_ result: [String: Any]) {
+        appUpdateRequestID = nil
+        appUpdateChecking = false
+        let status = result["status"] as? String
+        if status == "available", let version = result["version"] as? String {
+            if appReleaseVersion != version { appUpdateArchive = nil }
+            appReleaseVersion = version
+            appInstallAvailable = result["installable"] as? Bool == true && appInstallerExecutable != nil
+            showAppReleaseOffer = true
+            return
+        }
+        if status == "up-to-date" {
+            appReleaseVersion = nil
+            appInstallAvailable = false
+            appUpdateArchive = nil
+            showAppReleaseOffer = false
+        }
+        guard manualAppUpdate else { return }
+        switch status {
+        case "up-to-date": appUpdateMessage = "当前已是最新应用版本。"
+        case "offline": appUpdateMessage = "无法连接 GitHub，请检查网络后重试。"
+        case "rate-limited": appUpdateMessage = "GitHub 暂时限制了查询，请稍后重试。"
+        case "checking": appUpdateMessage = "正在检查应用更新，请稍候。"
+        default: appUpdateMessage = "暂时无法检查应用更新，请稍后重试。"
+        }
+    }
+
+    private var appInstallerExecutable: URL? {
+        guard let url = Bundle.main.resourceURL?.appendingPathComponent("helpers/app-update-installer"),
+              FileManager.default.isExecutableFile(atPath: url.path) else { return nil }
+        return url
+    }
+
+    private func prepareAppInstall(_ archive: URL) {
+        guard let executable = appInstallerExecutable, let version = appReleaseVersion,
+              allowWindowExit() else {
+            abortAppInstall("无法开始安装。你可以查看已经下载的安装包。")
+            return
+        }
+        let helper = Process()
+        let control = Pipe(), output = Pipe(), diagnostics = Pipe()
+        helper.executableURL = executable
+        helper.arguments = [String(ProcessInfo.processInfo.processIdentifier), archive.path,
+                            archive.path + ".ed25519", version]
+        helper.standardInput = control
+        helper.standardOutput = output
+        helper.standardError = diagnostics
+        installHelper = helper
+        installControl = control.fileHandleForWriting
+        helper.terminationHandler = { [weak self] _ in
+            let detail = String(data: diagnostics.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            DispatchQueue.main.async {
+                guard let self, self.installHelper === helper else { return }
+                self.abortAppInstall((detail?.isEmpty == false ? detail : nil) ?? "应用安装未完成。")
+            }
+        }
+        do { try helper.run() }
+        catch {
+            abortAppInstall("无法启动安装助手。你可以查看已经下载的安装包。")
+            return
+        }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let response = output.fileHandleForReading.readDataToEndOfFile()
+            guard response == Data("prepared\n".utf8) else { return }
+            DispatchQueue.main.async {
+                guard let self, self.installHelper === helper else { return }
+                self.closeWorkerForAppInstall()
+            }
+        }
+    }
+
+    private func closeWorkerForAppInstall() {
+        guard allowWindowExit(), let input, process?.isRunning == true else {
+            abortAppInstall("请等相机会话结束后重新尝试安装。")
+            return
+        }
+        let identifier = UUID().uuidString
+        installShutdownID = identifier
+        installShutdownAcknowledged = false
+        installWorkerExited = false
+        do {
+            let bytes = try JSONSerialization.data(withJSONObject: ["command": "shutdown", "request_id": identifier])
+            try input.write(contentsOf: bytes + Data([10]))
+        } catch {
+            abortAppInstall("无法正常结束本地服务，应用更新已停止。")
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in
+            guard let self, self.installShutdownID == identifier else { return }
+            self.abortAppInstall("相机会话未确认结束，应用更新已停止。")
+        }
+    }
+
+    private func commitAppInstallWhenReady() {
+        guard installShutdownAcknowledged, installWorkerExited, let control = installControl else { return }
+        do {
+            try control.write(contentsOf: Data("install\n".utf8))
+            try control.close()
+        } catch {
+            abortAppInstall("无法交接安装助手，应用更新已停止。")
+            return
+        }
+        installShutdownID = nil
+        installControl = nil
+        installHelper = nil
+        appInstallBusy = false
+        NSApp.terminate(nil)
+    }
+
+    private func abortAppInstall(_ message: String) {
+        try? installControl?.close()
+        installControl = nil
+        installHelper = nil
+        if installShutdownID != nil && process?.isRunning != true { serviceExited = true }
+        installShutdownID = nil
+        appInstallBusy = false
+        installRequested = false
+        appUpdateMessage = message
+    }
+
+    private func reportUpdatedStartup(_ snapshot: Snapshot) {
+        guard let token = updateStartupToken, !updateStartupReported, snapshot.checked,
+              snapshot.environment.ready, !snapshot.device_access, !snapshot.write_attempted else { return }
+        do {
+            try AppUpdateHealth.ready(token, pid: ProcessInfo.processInfo.processIdentifier)
+            updateStartupReported = true
+            waitForUpdateApproval(token, deadline: ProcessInfo.processInfo.systemUptime + 30)
+        } catch { /* The helper retains the old application and handles rollback. */ }
+    }
+
+    private func waitForUpdateApproval(_ token: UUID, deadline: TimeInterval) {
+        guard updateStartupToken == token, ProcessInfo.processInfo.systemUptime < deadline,
+              let directory = try? AppUpdateHealth.directory(for: token) else { return }
+        if FileManager.default.fileExists(atPath: directory.appendingPathComponent("approved").path) {
+            updateStartupToken = nil
+            if physicalMode { send("start_usage") }
+            try? FileManager.default.removeItem(at: directory)
+            appUpdateMessage = "应用已更新，启动检查通过。"
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            self?.waitForUpdateApproval(token, deadline: deadline)
+        }
+    }
+
     func send(_ command: String, extra: [String: Any] = [:]) {
+        if appUpdateBlocksOperations && !["environment", "shutdown"].contains(command) { return }
         guard !serviceExited else {
             error = "本地设备服务已停止，请先重新启动服务。"
             return

@@ -274,6 +274,35 @@ def run(window, report):
         if sys.platform=='win32':
             assert window.state['environment']['ready'],window.state['environment']
         checks.append('physical-environment-only-no-usb')
+        with patch.object(window.client, 'send') as send, patch.object(QMessageBox, 'information') as information:
+            offer = dict(status='available', version='0.4.10')
+            active_page = window.scroll.widget()
+            window.check_app_update(automatic=True)
+            request = window.app_update_request
+            assert request
+            send.assert_called_once_with('check_app_update', api_version=1, request_id=request)
+            window.on_event(window.client.generation, dict(type='app-update-result', request_id='stale', result=offer))
+            assert not window.app_update_button.isVisible()
+            window.on_event(window.client.generation, dict(type='app-update-result', request_id=request, result=offer))
+            assert window.app_update_button.isVisible() and '0.4.10' in window.app_update_button.text()
+            assert window.scroll.widget() is active_page and not window.inflight
+            information.assert_not_called()
+            window.app_update_button.click()
+            download = window.app_update_request
+            send.assert_called_with('download_app_update', api_version=1, request_id=download)
+            window.on_event(window.client.generation, dict(type='app-update-download-progress', request_id=download, percent=43))
+            assert '43%' in window.app_update_button.text() and not window.app_update_button.isEnabled()
+            window.on_event(window.client.generation, dict(type='app-update-download-result', request_id=download,
+                result=dict(status='downloaded', path='synthetic-update.zip')))
+            assert window.app_update_button.text() == '查看已下载的新版'
+            window.dismiss_app_update_button.click()
+            assert not window.app_update_button.isVisible()
+            window.check_app_update()
+            request = window.app_update_request
+            window.on_event(window.client.generation, dict(type='app-update-result', request_id=request,
+                                                           result={'status':'up-to-date'}))
+            information.assert_called_once_with(window, '应用更新', '当前已是最新应用版本。')
+        checks.append('independent-application-update-offer-dismiss-and-manual-status')
         with patch('feedback.QSettings') as settings, patch.object(window.client, 'send') as send:
             settings.return_value.value.return_value = ''
             window.show_failure_feedback()

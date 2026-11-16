@@ -8,17 +8,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 from threading import Event, Lock, Thread
 import time
 import uuid
 
+from .app_updates import check_app_update, download_app_update, download_install_signature
 from .controller import DesktopController
 from .update_service import DesktopUpdateService
 from .protocol import decode_request, event
 from ..device_protocol import DeviceBusyError
+from ..operations import default_state_dir
 from ..failure_feedback import FailureTrace
+from ..usage import UsageReporter
 from ..feedback import build_feedback
 
 
@@ -30,6 +34,7 @@ def main():
                         help='功能状态备份目录；默认 ~/Documents/A6700 Backups')
     args = parser.parse_args()
 
+    usage = UsageReporter(args.state_dir)
     failure_report = None
     failure_preview_id = None
     support_thread = None
@@ -42,6 +47,11 @@ def main():
         nonlocal failure_report, failure_preview_id
         if kind == 'state':
             state = values['state']
+            try:
+                usage.observe(state)
+            except (OSError, ValueError, DeviceBusyError):
+                pass
+            state['usage'] = usage.snapshot()
             if state.get('busy') and failure_trace.identity != state.get('operation_id'):
                 failure_trace.begin(state['operation_id'], state)
             candidate = failure_trace.report(state)
@@ -60,6 +70,8 @@ def main():
                                    physical_backup_dir=args.backup_dir)
     thread = None
     update_thread = None
+    app_update_thread = None
+    app_update_offer = None
     update_service = DesktopUpdateService(args.state_dir)
     guided_thread = None
     guided_cancel = None
@@ -74,7 +86,8 @@ def main():
                               recorder=dict(recovered_recorder))
     else:
         from .. import feedback as feedback_module
-        last_diagnostic = feedback_module.recover_diagnostic(recovered_state_dir)
+        if os.environ.get('POWERFUL6700_POST_UPDATE_START') != '1':
+            last_diagnostic = feedback_module.recover_diagnostic(recovered_state_dir)
         if last_diagnostic is not None:
             emit('diagnostic-result', result=last_diagnostic)
 
@@ -120,6 +133,32 @@ def main():
             result = dict(status="error", cache_status="unavailable")
         emit("update-result", result=result, request_id=request_id,
              operation_id=controller.operation_id)
+
+    def run_app_update(request_id):
+        nonlocal app_update_offer
+        try:
+            result = check_app_update()
+        except Exception:
+            result = dict(status='unavailable')
+        app_update_offer = result if result['status'] == 'available' else None
+        emit('app-update-result', result={key: result[key] for key in ('status', 'version', 'installable') if key in result},
+             request_id=request_id)
+
+    def run_app_download(offer, request_id):
+        def progress(percent):
+            emit('app-update-download-progress', percent=percent, request_id=request_id)
+        try:
+            folder = (args.state_dir or default_state_dir()) / 'app-updates' / offer['version']
+            path = download_app_update(offer, folder, progress)
+            if offer.get('installable'):
+                download_install_signature(offer, path)
+        except ValueError:
+            result = dict(status='verification-failed')
+        except Exception:
+            result = dict(status='download-failed')
+        else:
+            result = dict(status='downloaded', path=str(path.resolve()))
+        emit('app-update-download-result', result=result, request_id=request_id)
 
     def run_diagnostic(camera, request_id):
         nonlocal last_diagnostic
@@ -490,6 +529,17 @@ def main():
             request = decode_request(raw)
             request_id = request.get('request_id')
             command = request['command']
+            if command in ('start_usage', 'set_usage'):
+                try:
+                    if command == 'start_usage':
+                        usage.start_session()
+                    else:
+                        usage.set_enabled(request.get('enabled'))
+                except (OSError, DeviceBusyError):
+                    if command == 'set_usage':
+                        raise ValueError('统计设置未能保存，请稍后重试。') from None
+                emit('state', state=controller.snapshot(), request_id=request_id)
+                continue
             if command == 'preview_failure_feedback':
                 if controller.busy or failure_report is None:
                     raise ValueError('请先完成当前操作。')
@@ -534,6 +584,20 @@ def main():
                 emit('state', state=controller.snapshot(), request_id=request_id)
                 thread = Thread(target=run, args=(request_id,), daemon=True)
                 thread.start()
+                continue
+            if command == 'download_app_update':
+                if app_update_offer is None or (app_update_thread is not None and app_update_thread.is_alive()):
+                    emit('app-update-download-result', result=dict(status='unavailable'), request_id=request_id)
+                    continue
+                app_update_thread = Thread(target=run_app_download, args=(app_update_offer, request_id), daemon=True)
+                app_update_thread.start()
+                continue
+            if command == 'check_app_update':
+                if app_update_thread is not None and app_update_thread.is_alive():
+                    emit('app-update-result', result=dict(status='checking'), request_id=request_id)
+                    continue
+                app_update_thread = Thread(target=run_app_update, args=(request_id,), daemon=True)
+                app_update_thread.start()
                 continue
             if command == 'check_updates':
                 if controller.busy or (thread is not None and thread.is_alive()) or (guided_thread is not None and guided_thread.is_alive()) or (update_thread is not None and update_thread.is_alive()):

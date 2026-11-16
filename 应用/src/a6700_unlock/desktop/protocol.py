@@ -15,7 +15,7 @@ MAX_REQUEST_BYTES = 8192
 
 _COMMAND_FIELDS = {
     "prepare_and_inspect": {"acknowledged", "prepared"},
-    "preview_failure_feedback": set(),
+    "preview_failure_feedback": set(), "set_usage": {"enabled"}, "start_usage": set(),
     "upload_failure_feedback": {"operation_id", "description", "email", "confirmed"},
     "environment": set(), "reset": {"scenario"}, "acknowledge": {"value"},
     "prepare": set(), "confirm": {"id", "value"}, "confirm_preparation": {"value"},
@@ -26,7 +26,7 @@ _COMMAND_FIELDS = {
     "reconnect": set(), "home": set(), "shutdown": set(),
     "diagnostic": {"camera"}, "guided_diagnostic": {"action"},
     "upload_feedback": {"description", "images"},
-    "check_updates": set(),
+    "check_updates": set(), "check_app_update": set(), "download_app_update": set(),
 }
 CAPABILITIES = dict(
     commands=sorted(_COMMAND_FIELDS), workflow_schema=WORKFLOW_SCHEMA,
@@ -34,7 +34,7 @@ CAPABILITIES = dict(
     execution="local-core", arbitrary_device_requests=False,
 )
 _SIMULATION_ONLY = {"reset", "disconnect", "reconnect"}
-_PHYSICAL_ONLY = {"preview_failure_feedback", "upload_failure_feedback", "takeover", "diagnostic", "guided_diagnostic", "upload_feedback", "check_updates"}
+_PHYSICAL_ONLY = {"set_usage", "start_usage", "preview_failure_feedback", "upload_failure_feedback", "takeover", "diagnostic", "guided_diagnostic", "upload_feedback", "check_updates", "check_app_update", "download_app_update"}
 
 
 def capabilities(mode):

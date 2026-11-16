@@ -2,9 +2,10 @@
 import argparse
 from pathlib import Path
 import sys
+from uuid import uuid4
 if not getattr(sys,'frozen',False):
     sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'src'))
-from PySide6.QtCore import QTimer, QUrl, Qt
+from PySide6.QtCore import QSettings, QTimer, QUrl, Qt
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QFont
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QMainWindow, QMessageBox, QVBoxLayout
 from client import ServiceClient
@@ -30,7 +31,7 @@ https://zadig.akeo.ie/
 
 
 class Window(Views,QMainWindow):
-    def __init__(self,demo=False):
+    def __init__(self,demo=False, *, enable_usage_session=True):
         super().__init__()
         self.setWindowTitle('Powerful6700')
         self.resize(1060,770);self.setMinimumSize(980,720)
@@ -38,6 +39,14 @@ class Window(Views,QMainWindow):
         self.client.event.connect(self.on_event);self.client.exited.connect(self.on_exit)
         self.state={};self.pending_mode=None;self.closing=False;self.update_status=None;self.update_available=False;self._auto_update_check=False
         self.transitioning=False;self.inflight=None;self.operation_started=False;self.page_key=None
+        self.update_preferences = QSettings('Powerful6700', 'ApplicationUpdates')
+        self.checked_app_at_startup = False
+        self.enable_usage_session = enable_usage_session
+        self.app_update_request = None
+        self.manual_app_update = False
+        self.app_release = None
+        self.app_update_archive = None
+        self.app_download_progress = None
         self.feedback_dialog=None;self.failure_dialog=None;self.preparation_acknowledged=False
         self.feedback_toast = None
         self.feedback_toast_timer = QTimer(self)
@@ -55,8 +64,18 @@ class Window(Views,QMainWindow):
             self.transitioning = False; self.inflight = None; self.state = {}; self.page_key = None
             self.operation_started = False; self.preparation_acknowledged=False; self.scroll.setEnabled(True)
             self.client.start(self.physical)
+            self.app_update_request = None
+            self.app_download_progress = None
+            if self.app_update_archive is None:
+                self.app_release = None
+                self.dismiss_app_update()
             self.command('environment')
             if self.physical:
+                if self.enable_usage_session:
+                    self.client.send('start_usage')
+                if not self.checked_app_at_startup and self.update_preferences.value('checkAtStartup', True, type=bool):
+                    self.checked_app_at_startup = True
+                    self.check_app_update(automatic=True)
                 self._auto_update_check=True
                 self.client.send('check_updates')
         except Exception:
@@ -85,6 +104,83 @@ class Window(Views,QMainWindow):
             if name not in ('preview_failure_feedback', 'upload_failure_feedback'):
                 self.render_interrupted('本机服务连接已中断；上一次操作不会自动重发。')
             return False
+
+    def check_app_update(self, automatic=False):
+        if not self.physical or self.inflight or self.state.get('busy') or self.app_update_request:
+            return
+        self.manual_app_update = not automatic
+        try:
+            self.request_app_update('check_app_update')
+        except (OSError, RuntimeError):
+            self.finish_app_update({'status': 'unavailable'})
+
+    def request_app_update(self, command):
+        self.app_update_request = uuid4().hex
+        self.client.send(command, api_version=1, request_id=self.app_update_request)
+
+    def update_app_download(self):
+        if self.app_update_archive:
+            archive = Path(self.app_update_archive)
+            if archive.is_file():
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(archive.parent)))
+                return
+            self.app_update_archive = None
+        if not self.physical or not self.app_release or self.inflight or self.state.get('busy') or self.app_update_request:
+            return
+        self.app_download_progress = 0
+        self.show_app_update()
+        try:
+            self.request_app_update('download_app_update')
+        except (OSError, RuntimeError):
+            self.finish_app_download({'status': 'unavailable'})
+
+    def finish_app_download(self, result):
+        self.app_update_request = None
+        self.app_download_progress = None
+        if result.get('status') == 'downloaded' and result.get('path'):
+            self.app_update_archive = result['path']
+        else:
+            message = '安装包校验失败，请重新下载。' if result.get('status') == 'verification-failed' else '下载未完成，请重新检查应用更新或稍后重试。'
+            QMessageBox.information(self, '应用更新', message)
+        self.show_app_update()
+
+    def show_app_update(self):
+        if self.app_download_progress is not None:
+            title = f'正在下载新版 · {self.app_download_progress}%'
+        elif self.app_update_archive:
+            title = '查看已下载的新版'
+        else:
+            title = f"下载新版 {self.app_release['version']}"
+        self.app_update_button.setText(title)
+        self.app_update_button.setEnabled(self.app_download_progress is None)
+        self.app_update_button.show()
+        self.dismiss_app_update_button.setVisible(self.app_download_progress is None)
+
+    def finish_app_update(self, result):
+        self.app_update_request = None
+        status = result.get('status')
+        if status == 'available' and result.get('version'):
+            if self.app_release != result:
+                self.app_update_archive = None
+            self.app_release = result
+            self.show_app_update()
+            return
+        if status == 'up-to-date':
+            self.app_release = None
+            self.app_update_archive = None
+            self.dismiss_app_update()
+        if self.manual_app_update:
+            messages = {
+                'up-to-date': '当前已是最新应用版本。',
+                'offline': '无法连接 GitHub，请检查网络后重试。',
+                'rate-limited': 'GitHub 暂时限制了查询，请稍后重试。',
+                'checking': '正在检查应用更新，请稍候。',
+            }
+            QMessageBox.information(self, '应用更新', messages.get(status, '暂时无法检查应用更新，请稍后重试。'))
+
+    def dismiss_app_update(self):
+        self.app_update_button.hide()
+        self.dismiss_app_update_button.hide()
 
     def show_failure_feedback(self):
         if self.state.get('busy') or self.inflight:
@@ -162,6 +258,9 @@ class Window(Views,QMainWindow):
             QTimer.singleShot(0, self.close); return
         if self.transitioning:
             self.pending_mode = None; self.start(); return
+        if self.app_download_progress is not None:
+            self.finish_app_download({'status': 'download-failed'})
+        self.app_update_request = None
         if self.failure_dialog is not None:self.failure_dialog.service_exited()
         uncertain = self.inflight in ('unlock', 'close', 'update_fl23', 'update_ftp') or (self.state.get('busy') and self.state.get('action') in ('unlock', 'close'))
         self.render_interrupted('结果待核实：服务在功能操作中退出。请保留本机记录，先重新检查，不要盲目重复写入。'
@@ -186,14 +285,24 @@ class Window(Views,QMainWindow):
                 self.inflight = None
             self.scroll.setEnabled(not self.inflight or self.operation_started)
             self.render()
+        elif event.get('type') == 'app-update-result':
+            if self.app_update_request and event.get('request_id') == self.app_update_request:
+                self.finish_app_update(event.get('result', {}))
+        elif event.get('type') == 'app-update-download-progress':
+            if self.app_update_request and event.get('request_id') == self.app_update_request:
+                self.app_download_progress = event['percent']
+                self.show_app_update()
+        elif event.get('type') == 'app-update-download-result':
+            if self.app_update_request and event.get('request_id') == self.app_update_request:
+                self.finish_app_download(event.get('result', {}))
         elif event.get('type') == 'update-result':
             result = event.get('result', {})
             status = result.get('status', 'error')
             sequence = result.get('sequence')
             labels = {
-                'activated': '已更新',
-                'unchanged': '当前已是最新版本',
-                'not-modified': '当前已是最新版本',
+                'activated': '相机功能包已更新',
+                'unchanged': '相机功能包已是最新',
+                'not-modified': '相机功能包已是最新',
                 'unconfigured': '更新暂不可用',
                 'offline': '网络不可用',
                 'unavailable': '更新暂不可用',
@@ -263,7 +372,10 @@ def main():
         parser.error('--offline-self-test requires --report')
     app = QApplication(sys.argv[:1]); app.setStyle('Fusion')
     font=QFont('Microsoft YaHei UI' if sys.platform=='win32' else 'PingFang SC');font.setPixelSize(12);app.setFont(font);app.setStyleSheet(STYLE)
-    window = Window(args.demo or args.offline_self_test); window.show()
+    window = Window(args.demo or args.offline_self_test, enable_usage_session=not args.offline_self_test)
+    if args.offline_self_test:
+        window.checked_app_at_startup = True
+    window.show()
     if args.offline_self_test:
         from smoke import run
         return run(window, args.report)

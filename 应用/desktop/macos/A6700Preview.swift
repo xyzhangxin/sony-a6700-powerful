@@ -9,9 +9,10 @@ struct PreviewView: View {
     @State private var noticeSheet = false
     @State private var noticeLicense = false
     @State private var demoSettings = false
+    @State private var usageSheet = false
     @State private var uploadToast: String?
     private var phase: String { model.serviceExited ? "service-stopped" : (model.state?.phase ?? "notice") }
-    private var busy: Bool { model.isBusy }
+    private var busy: Bool { model.isBusy || model.appUpdateBlocksOperations }
     private var hasAftercare: Bool {
         phase == "result" && model.state?.result?.success == true && model.state?.result?.aftercare != nil
     }
@@ -25,7 +26,7 @@ struct PreviewView: View {
             if model.updateAvailable {
                 HStack(spacing: 10) {
                     Image(systemName: "arrow.down.circle.fill").foregroundColor(.blue)
-                    Text("已更新到最新版本")
+                    Text("相机功能包已更新")
                         .font(.system(size: 11)).foregroundColor(.blue)
                     Spacer()
                     Button("知道了") { model.updateAvailable = false }
@@ -71,6 +72,14 @@ struct PreviewView: View {
                 }
             }
         }
+        .alert("应用更新", isPresented: Binding(
+            get: { model.appUpdateMessage != nil },
+            set: { if !$0 { model.appUpdateMessage = nil } }
+        )) {
+            Button("知道了", role: .cancel) { model.appUpdateMessage = nil }
+        } message: {
+            Text(model.appUpdateMessage ?? "")
+        }
         .background(OperationWindowGuard(model: model))
         .onAppear { AppDelegate.operationModel = model; model.start(physical: physicalMode) }
         .onChange(of: physicalMode) { preparationAcknowledged = false; model.setMode($0) }
@@ -94,6 +103,19 @@ struct PreviewView: View {
             if showing { uploadToast = nil }
         }
         .sheet(isPresented: $license) { LicenseView { license = false } }
+        .sheet(isPresented: $usageSheet) {
+            VStack(alignment: .leading, spacing: 14) {
+                PageTitle(title: "使用统计", subtitle: "默认开启，可随时关闭")
+                Text("用于统计页面访问、活跃安装实例、写入成功和报错。每个安装生成随机标识，帮助去重。统计内容不包含序列号、邮箱、相机数据或日志。")
+                    .font(.system(size: 12)).foregroundColor(UI.muted)
+                Toggle("分享使用统计", isOn: Binding(
+                    get: { model.state?.usage?.enabled == true },
+                    set: { model.send("set_usage", extra: ["enabled": $0]) }
+                )).toggleStyle(.checkbox)
+                    .disabled(model.state?.usage == nil || model.isBusy)
+                HStack { Spacer(); Button("完成") { usageSheet = false }.buttonStyle(PrimaryStyle()) }
+            }.padding(24).frame(width: 460)
+        }
         .sheet(isPresented: $model.showDiagnostics) { DiagnosticsView(model: model, physical: physicalMode) }
         .sheet(isPresented: $noticeSheet) {
             VStack(alignment: .leading, spacing: 18) {
@@ -150,6 +172,25 @@ struct PreviewView: View {
                     DemoSettingsPanel(model: model) { demoSettings = false }
                 }
             }
+            if model.showAppReleaseOffer, let version = model.appReleaseVersion {
+                if let progress = model.appDownloadProgress {
+                    Text("正在下载新版 · \(progress)%").font(.system(size: 11)).foregroundColor(UI.accent)
+                } else if model.appInstallBusy {
+                    Text("正在验证并准备安装…").font(.system(size: 11)).foregroundColor(UI.accent)
+                } else {
+                    let downloaded = model.appUpdateArchive != nil
+                    Button(action: downloaded ? model.revealAppUpdate : model.downloadAppUpdate) {
+                        Label(downloaded ? "查看已下载的新版" : model.appInstallAvailable ? "更新并重启" : "下载新版 \(version)", systemImage: "arrow.down.circle.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .padding(.horizontal, 9).padding(.vertical, 5)
+                            .background(UI.accent.opacity(0.10), in: Capsule())
+                    }.buttonStyle(.plain).foregroundColor(UI.accent)
+                        .disabled(!downloaded && (busy || !physicalMode || model.appUpdateChecking))
+                    Button { model.showAppReleaseOffer = false } label: {
+                        Image(systemName: "xmark").font(.system(size: 9, weight: .medium))
+                    }.buttonStyle(.plain).foregroundColor(UI.muted).accessibilityLabel("稍后再更新")
+                }
+            }
             Button { model.showDiagnostics = true } label: {
                 Label("意见反馈", systemImage: "bubble.left.and.bubble.right")
             }.buttonStyle(.plain).font(.system(size: 11, weight: .medium)).foregroundColor(UI.accent)
@@ -163,13 +204,24 @@ struct PreviewView: View {
                 .accessibilityLabel("设备模式")
             Menu {
                 if physicalMode {
-                    Button(model.updateBusy ? "正在检查更新…" : "检查更新") { model.send("check_updates") }
+                    Button(model.appUpdateChecking ? "正在检查应用更新…" : "检查应用更新") { model.checkAppUpdate() }
+                        .disabled(busy || model.appUpdateChecking || model.appDownloadProgress != nil)
+                    Toggle("启动时检查应用更新", isOn: $model.checkAppAtStartup)
+                    if model.appUpdateArchive != nil {
+                        Button("查看已下载的新版") { model.revealAppUpdate() }
+                    } else if let version = model.appReleaseVersion, model.appDownloadProgress == nil {
+                        Button(model.appInstallAvailable ? "更新并重启" : "下载新版 \(version)") { model.downloadAppUpdate() }
+                            .disabled(busy || model.appUpdateChecking)
+                    }
+                    Divider()
+                    Button(model.updateBusy ? "正在检查相机功能包…" : "检查相机功能包") { model.send("check_updates") }
                         .disabled(model.isBusy)
                     if let updateStatus = model.updateStatus {
                         Text(updateStatus).font(.system(size: 10)).foregroundColor(UI.muted)
                     }
                     Divider()
                 }
+                if physicalMode { Button("使用统计…") { usageSheet = true } }
                 Button("查看操作前须知") { noticeSheet = true }
                 Button("开源许可") { license = true }
                 Divider()
@@ -187,7 +239,7 @@ struct PreviewView: View {
                     if model.updateAvailable {
                         Circle().fill(Color.red).frame(width: 8, height: 8)
                             .offset(x: 4, y: -4)
-                            .help("有可用更新，点击查看")
+                            .help("相机功能包已更新")
                     }
                 }
         }.padding(.horizontal, 28).padding(.vertical, 16).background(.white)
@@ -221,6 +273,10 @@ struct PreviewView: View {
                     HStack(spacing: 12) {
                         Button("查看完整须知") { noticeSheet = true }
                             .buttonStyle(.plain).foregroundColor(UI.accent)
+                        if physicalMode, let usage = model.state?.usage {
+                            Button(usage.enabled ? "使用统计已开启 · 设置" : "使用统计已关闭 · 设置") { usageSheet = true }
+                                .buttonStyle(.plain).foregroundColor(UI.accent)
+                        }
                         if model.state?.checked != true {
                             Text("正在检查本机组件…").foregroundColor(UI.muted)
                         }
