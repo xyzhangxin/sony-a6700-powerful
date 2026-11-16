@@ -11,6 +11,8 @@ permissions:
 jobs:
   bundle:
     runs-on: windows-latest
+    env:
+      PYTHONIOENCODING: utf-8
     defaults:
       run:
         working-directory: 应用
@@ -28,17 +30,21 @@ jobs:
           "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: 核心与原生仿真，不访问设备
         run: python scripts/check.py --native --strict
-      - name: 下载固定 libusb 对应源包
+      - name: 下载固定 libusb 与 libwdi 对应源包
         shell: python
         run: |
           import hashlib, json, pathlib, urllib.request
-          pin=json.loads(pathlib.Path('desktop/runtime-dependencies.json').read_text(encoding='utf-8'))['libusb']
-          data=urllib.request.urlopen(pin['url'], timeout=120).read()
-          assert hashlib.sha256(data).hexdigest()==pin['sha256']
-          pathlib.Path('dist').mkdir(exist_ok=True)
-          pathlib.Path('dist',pin['filename']).write_bytes(data)
+          pins = json.loads(pathlib.Path('desktop/runtime-dependencies.json').read_text(encoding='utf-8'))
+          dist = pathlib.Path('dist')
+          dist.mkdir(exist_ok=True)
+          for name, hash_field in (('libusb', 'sha256'), ('libwdi', 'source_sha256')):
+              pin = pins[name]
+              data = urllib.request.urlopen(pin['url'], timeout=120).read()
+              if hashlib.sha256(data).hexdigest() != pin[hash_field]:
+                  raise SystemExit(f'{name} source SHA-256 mismatch')
+              (dist / pin['filename']).write_bytes(data)
       - name: 构建 Windows x64 目录包
-        run: python scripts/build_windows_app.py --libusb-source dist/libusb-1.0.30.tar.bz2 --output dist/Windows/Powerful6700
+        run: python scripts/build_windows_app.py --libusb-source dist/libusb-1.0.30.tar.bz2 --libwdi-source dist/libwdi-1.5.0.tar.gz --output dist/Windows/Powerful6700
       - name: 成品演示、退出与服务恢复检查，不访问设备
         run: |
           $env:QT_QPA_PLATFORM='offscreen'
