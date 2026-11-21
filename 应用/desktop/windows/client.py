@@ -1,5 +1,6 @@
 """Process transport only: no USB, firmware rules, or automatic operation replay."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -30,7 +31,9 @@ class ServiceClient(QObject):
             args.append('--physical')
         self.generation += 1
         generation = self.generation
-        self.process = process = subprocess.Popen(args, stdin=subprocess.PIPE,
+        environment = os.environ.copy()
+        environment.setdefault("A6700_AUDIO_IMPORT_PREVIEW", "1")
+        self.process = process = subprocess.Popen(args, stdin=subprocess.PIPE, env=environment,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             encoding='utf-8', errors='strict', bufsize=1,
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))

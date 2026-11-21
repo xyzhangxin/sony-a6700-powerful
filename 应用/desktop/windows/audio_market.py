@@ -435,7 +435,6 @@ class AudioMarketSession(QObject):
         self.selected_sound_id: str | None = None
         self.message = ''
         self.error = ''
-        self._playing_buffer: bytes | None = None
         self._play_timer = QTimer(self)
         self._play_timer.setSingleShot(True)
         self._play_timer.timeout.connect(self._on_playback_timeout)
@@ -583,7 +582,7 @@ class AudioMarketSession(QObject):
             pkg_id = pkg.get('package_id', '')
             pkg_title = pkg.get('title', pkg_id)
             for item in pkg.get('sounds', []):
-                sid = item.get('id', '')
+                sid = item.get('sound_id') or item.get('id', '')
                 loaded.append(
                     MarketSound(
                         id=f'{pkg_id}:{sid}',
@@ -816,12 +815,17 @@ class AudioMarketSession(QObject):
             self.error = '试听音频格式无效。'
             self.changed.emit()
             return
-        self._playing_buffer = raw
         if sys.platform == 'win32':
             try:
-                winsound.PlaySound(raw, winsound.SND_MEMORY | winsound.SND_ASYNC)
+                preview_path = self._samples_dir / 'current-preview.wav'
+                preview_path.write_bytes(raw)
+                winsound.PlaySound(str(preview_path), winsound.SND_FILENAME |
+                                   winsound.SND_ASYNC | winsound.SND_NODEFAULT)
+            except OSError:
+                self.error = '无法保存临时试听文件，请检查临时目录。'
+                self.changed.emit()
+                return
             except RuntimeError:
-                self._playing_buffer = None
                 self.error = '无法播放该声音，请检查系统音频输出设备。'
                 self.changed.emit()
                 return
@@ -831,7 +835,6 @@ class AudioMarketSession(QObject):
 
     def _on_playback_timeout(self) -> None:
         self.playing_id = None
-        self._playing_buffer = None
         self.changed.emit()
 
     def stop_preview(self) -> None:
@@ -844,6 +847,5 @@ class AudioMarketSession(QObject):
         was_playing = self.playing_id is not None or self.preparing_id is not None
         self.playing_id = None
         self.preparing_id = None
-        self._playing_buffer = None
         if was_playing:
             self.changed.emit()

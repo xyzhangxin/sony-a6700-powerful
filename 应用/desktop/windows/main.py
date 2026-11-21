@@ -67,7 +67,7 @@ class Window(Views,QMainWindow):
         self.audio_confirmation = None
         self.audio_execute = None
         self.audio_error_text = ''
-        self._pending_preview_sound_id = None
+        self._pending_preview_request = None
         self.build_shell(demo)
         QTimer.singleShot(0,self.start)
 
@@ -234,8 +234,9 @@ class Window(Views,QMainWindow):
                 self.audio_market.error = '当前模式下请直接导入或试听内置声音。'
                 self.audio_market.changed.emit()
                 return
-            self._pending_preview_sound_id = full_id
-            self.client.send('preview_audio', package_id=pkg_id, sound_id=snd_id, request_id=uuid4().hex)
+            request_id = uuid4().hex
+            self._pending_preview_request = (request_id, full_id)
+            self.client.send('preview_audio', package_id=pkg_id, sound_id=snd_id, request_id=request_id)
 
         self.audio_market.preview(sound, worker_preview_cb=fetch_catalog)
 
@@ -523,22 +524,29 @@ class Window(Views,QMainWindow):
         elif event.get('type') == 'audio-slots-result':
             result = event.get('result', {})
             self.audio_slots_busy = False
-            if result.get('status') == 'ready':
+            if result.get('status') in ('observed', 'ready') and isinstance(result.get('slots'), list) and not result.get('error'):
                 self.audio_slots = result.get('slots')
                 self.audio_slots_loaded_op = self.state.get('operation_id') or 'connected'
                 self.audio_error_text = ''
             else:
+                self.audio_slots = None
+                self.audio_slots_loaded_op = None
                 self.audio_error_text = result.get('error') or '相机槽位读取失败。'
             if hasattr(self, 'market_widget'):
                 self.market_widget.notify_install_state()
         elif event.get('type') == 'audio-preview-result':
             result = event.get('result', {})
-            sid = self._pending_preview_sound_id
-            self._pending_preview_sound_id = None
+            pending = self._pending_preview_request
+            if pending is None or pending[0] != event.get('request_id'):
+                return
+            sid = pending[1]
+            self._pending_preview_request = None
+            if sid != self.audio_market.preparing_id:
+                return
             if result.get('status') == 'ready' and result.get('path'):
                 try:
                     raw = Path(result['path']).read_bytes()
-                    self.audio_market._play_wav_bytes(raw, sid or 'catalog', 350)
+                    self.audio_market._play_wav_bytes(raw, sid, result.get('duration_ms', 350))
                 except OSError:
                     self.audio_market.preparing_id = None
                     self.audio_market.error = '音频试听文件读取失败。'
