@@ -488,7 +488,7 @@ class SessionTests(unittest.TestCase):
         evidence.mkdir(parents=True)
         operations.save_json(evidence / "intent.json", dict(method="apply"))
         with patch.dict(os.environ, A6700_BENCH_JOB="synthetic-recovery"), \
-             patch("a6700_unlock.session.os.kill", side_effect=ProcessLookupError):
+             patch("a6700_unlock.session._process_alive", return_value=False):
             result = recover_descriptor(self.directory)
         self.assertFalse(path.exists())
         self.assertTrue((evidence / "intent.json").exists())

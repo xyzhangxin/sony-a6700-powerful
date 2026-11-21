@@ -84,6 +84,39 @@ def descriptor_path(state_dir=None):
     return Path(state_dir or operations.default_state_dir()) / "msc-session.json"
 
 
+def _process_alive(pid):
+    if os.name != "nt":
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    open_process = kernel.OpenProcess
+    open_process.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    open_process.restype = wintypes.HANDLE
+    wait_single = kernel.WaitForSingleObject
+    wait_single.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    wait_single.restype = wintypes.DWORD
+    close_handle = kernel.CloseHandle
+    close_handle.argtypes = [wintypes.HANDLE]
+    close_handle.restype = wintypes.BOOL
+    # SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION; never use os.kill(pid, 0)
+    # on Windows because signal 0 maps to CTRL_C_EVENT via GenerateConsoleCtrlEvent.
+    handle = open_process(0x00101000, False, pid)
+    if not handle:
+        return ctypes.get_last_error() == 5
+    try:
+        return wait_single(handle, 0) == 258
+    finally:
+        close_handle(handle)
+
+
 def recover_descriptor(state_dir=None):
     """Explicit bench job: retire a dead endpoint, never a lock or transaction.
 
@@ -102,13 +135,8 @@ def recover_descriptor(state_dir=None):
         except ValueError:
             info = {}
         pid = info.get("pid") if isinstance(info, dict) else None
-        if type(pid) is int and pid > 0:
-            try:
-                os.kill(pid, 0)
-            except ProcessLookupError:
-                pass
-            else:
-                raise DeviceError("端点所登记进程仍存在；不能接管或移除，请核对其状态")
+        if type(pid) is int and pid > 0 and _process_alive(pid):
+            raise DeviceError("端点所登记进程仍存在；不能接管或移除，请核对其状态")
         directory = path.parent / "msc-sessions" / ("endpoint-recovery-" + uuid.uuid4().hex)
         operations.make_directory(directory)
         result = dict(schema=SCHEMA, descriptor_sha256=hashlib.sha256(raw).hexdigest(),
