@@ -98,7 +98,7 @@ def _observe(backend, identifiers):
     return rows
 
 
-def prepare_close(backend, features, directory, progress=lambda _: None, *, apply=True):
+def prepare_close(backend, features, directory, progress=lambda _: None, *, apply=True, approval_guard=None):
     """Caller holds the device lock, after ALL selected content preflights.
 
     Every selected feature must be observable/resettable before the first
@@ -117,6 +117,8 @@ def prepare_close(backend, features, directory, progress=lambda _: None, *, appl
         progress('正在检查关闭前的机身设置和运行状态…')
         rows = _observe(backend, identifiers)
         report['checks'] = rows
+        if approval_guard is not None:
+            approval_guard(rows)
         blocked = [r for r in rows if r['status'] not in ('safe', 'needs-reset') or
                    (r['status'] == 'needs-reset' and not r['automatic'])]
         report['planned'] = [r['id'] for r in rows if r['status'] == 'needs-reset']

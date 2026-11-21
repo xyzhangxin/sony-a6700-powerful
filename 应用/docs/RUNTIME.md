@@ -24,6 +24,10 @@
 9. 检查短 I/O、每次写入、同步及回读；失败时逆序回退本次已尝试目标，并验证回退。
 10. 主机用新 nonce 执行另一轮只读载荷，核对所有目标与守卫，最后请求退出服务模式并释放接口。控制状态丢失时独立观察是否回到唯一 MSC；观察失败保留拔插提示，释放异常不会覆盖主要操作结果。
 
+macOS bundled App 在第一次 USB 接管时通过系统管理员授权启动一个受限接管 broker。broker 自行 `fork + setsid` 脱离 `do shell script` 的进程组，避免 shell 返回时把后台助手一并终止；只接受同一 UID 的固定 `capture`／`stop` 文本命令，不执行 shell 请求。root bind 后的 socket 属主为root，必须允许调用者目录属主连接：socket使用0666，但位于当前用户0700私有临时目录，并且helper用`getpeereid`拒绝其他UID。broker仅随本次worker生命周期存在，worker正常退出会发送stop，异常退出时socket EOF使其退出；不安装永久daemon、不写sudoers。物理拔插后仍需重新枚举和认证相机，但无需再次管理员授权。每次设备写入仍重新取得设备锁、做新鲜预检和独立回读，不复用旧兼容或写入授权。
+
+Touch ID边界：本机存在 `/usr/lib/pam/pam_tid.so.2` 与官方 `/etc/pam.d/sudo_local.template`，但macOS 27在SIP启用时拒绝root写入 `/etc/pam.d/sudo` 或创建 `sudo_local`。本项目不绕过SIP、不保存管理员密码到钥匙串。当前App管理员授权可能仍要求密码；跨启动免指纹需要另行设计签名的系统特权helper。
+
 写入前记录失败会阻止发送写入器；写入后若本机执行结果记录失败，仍继续独立回读，并把文件系统故障单独保存为 `record_warning`。原生拒绝且报告未触及扇区，也必须回读确认前值一致，才能标记 `rejected`；前值已漂移则标记 `verification-failed`。
 
 相机必须能正常启动。Pico 冷启动救砖仍为独立专题；本次前镜像是明文小窗口，不会直接作为 Pico 密文镜像使用。

@@ -74,6 +74,18 @@ class ClosePreparationTests(unittest.TestCase):
         for key in ('ftp', 'shutter', 'exposure'):
             self.assertEqual(before[key], self.device.close_settings[key])
 
+    def test_approval_guard_runs_before_any_setting_or_firmware_write(self):
+        from a6700_unlock.device_protocol import DeviceError
+        def reject(rows):
+            self.assertTrue(rows)
+            raise DeviceError('approval snapshot changed')
+        result = self.close(['sound'], preparation_guard=reject)
+        self.assertEqual(result['status'], 'close-preparation-required')
+        self.assertIn('approval snapshot changed', result['error'])
+        self.assertFalse(result['write_attempted'])
+        self.assertFalse(result['settings_write_attempted'])
+        self.assertEqual(self.device.close_setting_writes, [])
+
     def test_both_new_sound_options_return_to_on(self):
         for value in ('electronic-only', 'except-shutter'):
             with self.subTest(value=value), tempfile.TemporaryDirectory() as folder:
@@ -285,7 +297,7 @@ class ClosePreparationTests(unittest.TestCase):
         self.assertTrue(result['verified'])
         self.assertNotIn('never-in-report', json.dumps(result))
         for path in self.root.rglob('*.json'):
-            self.assertNotIn('never-in-report', path.read_text(encoding='utf-8'))
+            self.assertNotIn('never-in-report', path.read_text())
 
     def test_reset_side_effect_on_another_selected_setting_blocks_firmware(self):
         self.device.close_settings['shutter'].update(current='off', saved='off')

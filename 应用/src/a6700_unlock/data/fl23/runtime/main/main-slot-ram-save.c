@@ -1,5 +1,7 @@
 typedef unsigned char u8;typedef unsigned int u32;typedef unsigned long long u64;
 static struct {u64 normal,mr,queued;u32 fallback,ready;} binding __attribute__((used))={0,0,0,0,0x32564153};
+void __attribute__((weak)) fl23_state_set_selector(u32 selector) {(void)selector;}
+int __attribute__((weak)) fl23_state_save_bound(void) {return -19;}
 int fl23_ram_save_bind(u64 normal,u64 mr,u32 fallback) {
     if(!normal||!mr||(normal&3)||(mr&3)||fallback!=0)return 1;
     binding.normal=normal;binding.mr=mr;binding.fallback=fallback;binding.ready=1;return 0;
@@ -20,16 +22,20 @@ int fl23_ram_save_normal(u32 key,const u8 *data,u64 width) {
     if(binding.ready!=1)return -19;
     if(key==0x02cf0370U) {
         u8 out[13];if(width!=13||fl23_ram_save_mr_bytes(data,out))return -22;
-        return ((int(*)(u32,const u8*,u64))binding.normal)(key,out,width);
+        int result=((int(*)(u32,const u8*,u64))binding.normal)(key,out,width);
+        if(!result)fl23_state_save_bound();
+        return result;
     }
     if(key!=0x02cf036fU)return ((int(*)(u32,const u8*,u64))binding.normal)(key,data,width);
     if(!data||width!=1)return -22;
     u32 value=*data;if(value==16||value>18)return -22;
+    fl23_state_set_selector(value);
     /* A crash must not make the next original boot select an extended look.
        Always persist ST, even if a legacy selection was saved in between. */
     u8 saved=0;
     const u8 *out=(value==17||value==18)?&saved:data;
     int result=((int(*)(u32,const u8*,u64))binding.normal)(key,out,width);
+    if(!result)fl23_state_save_bound();
     return result;
 }
 int fl23_ram_save_mr(u32 attr,u32 key,const u8 *data,u64 width) {
@@ -40,7 +46,9 @@ int fl23_ram_save_mr(u32 attr,u32 key,const u8 *data,u64 width) {
     /* Native worker passes one setting-attribute cell, not13 bytes.
        ST is the explicit temporary fallback for a new MR selection. */
     u8 saved=0;const u8 *out=(value==17||value==18)?&saved:data;
-    return ((int(*)(u32,u32,const u8*,u64))binding.mr)(attr,key,out,width);
+    int result=((int(*)(u32,u32,const u8*,u64))binding.mr)(attr,key,out,width);
+    if(!result)fl23_state_save_bound();
+    return result;
 }
 /* Original adapter ABIs have no width argument. The target main item is
    independently pinned to one byte; non-target items retain native behavior. */
@@ -58,11 +66,16 @@ int fl23_ram_save_queued(u32 section,u32 key,const u8 *data) {
     if(binding.ready!=1||!binding.queued)return -19;
     if(section==0x2cf&&key==0x02cf0370U) {
         u8 out[13];if(fl23_ram_save_mr_bytes(data,out))return -22;
-        return ((int(*)(u32,u32,const u8*))binding.queued)(section,key,out);
+        int result=((int(*)(u32,u32,const u8*))binding.queued)(section,key,out);
+        if(!result)fl23_state_save_bound();
+        return result;
     }
     if(section!=0x2cf||key!=0x02cf036fU)
         return ((int(*)(u32,u32,const u8*))binding.queued)(section,key,data);
     if(!data||*data==16||*data>18)return -22;
+    fl23_state_set_selector(*data);
     static const u8 standard=0;
-    return ((int(*)(u32,u32,const u8*))binding.queued)(section,key,(*data==17||*data==18)?&standard:data);
+    int result=((int(*)(u32,u32,const u8*))binding.queued)(section,key,(*data==17||*data==18)?&standard:data);
+    if(!result)fl23_state_save_bound();
+    return result;
 }

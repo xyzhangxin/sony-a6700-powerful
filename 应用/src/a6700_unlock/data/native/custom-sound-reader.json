@@ -1,0 +1,26 @@
+{
+  "schema": "a6700.custom-sound-slot-observer/1",
+  "payload_id": "custom-shutter-sound-slot-observer",
+  "source_sha256": "50c1787ff6311d839229611592ac4d3bd78fe24c1a29127e7ab7ec9eb6862159",
+  "hardware_validation": "pending",
+  "request_header_bytes": 72,
+  "response_bytes": null,
+  "syscalls": {
+    "openat": 56,
+    "close": 57,
+    "read": 63,
+    "write": 64,
+    "fsync": 82
+  },
+  "payloads": {
+    "custom-sound-reader": {
+      "sha256": "a113acac79bd59053d7f1668b72219fb336319797914d8cf714c6f6c0563a724",
+      "bytes": 4432
+    }
+  },
+  "camera_io": false,
+  "not_installable": true,
+  "maximum_response_bytes": 524715,
+  "slot_count": 10,
+  "persistent_writes": false
+}

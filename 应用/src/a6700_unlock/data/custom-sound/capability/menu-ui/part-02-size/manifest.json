@@ -1,0 +1,110 @@
+{
+  "devices": [
+    "/dev/nflasha15",
+    "/dev/nflasha5",
+    "/dev/nflasha8"
+  ],
+  "entries": [
+    {
+      "index": 0,
+      "device": 0,
+      "device_offset": 42221568,
+      "absolute_sector": 1909280,
+      "role": "inode-size",
+      "mask_hex": "10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "unmanaged_sha256": "72ff463bfd4951440f9e7d4cc9465e086bf82d771d362b46b29bbf8bb9d13f3b",
+      "before_sha256": "e98d494fe687517fe538668598813bd3151081aec968f05c4cca44b4aed56421",
+      "after_sha256": "a0a69fd42e966073985e92d91e31f9d9df058e3f8f066976b1c9ed6634f088ff",
+      "edits": [
+        {
+          "offset": 4,
+          "disabled": "c0",
+          "enabled": "e0"
+        }
+      ],
+      "normalized_before_sha256": "1d7cb7db27967634a6e0afc960b31226a30642a591affc4d1e2ca289a33d37cd",
+      "normalized_after_sha256": "f0f7ecf9bffd3e172d765cfd9e3f19f249c77b70c480ae775d85a47efa5020db"
+    },
+    {
+      "index": 1,
+      "device": 0,
+      "device_offset": 42260480,
+      "absolute_sector": 1909356,
+      "role": "inode-size",
+      "mask_hex": "00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000",
+      "unmanaged_sha256": "3295682ae5ca2d2b1c8fb543811f52b0c51851ab5da2ef7a7d7dc1191fff04a0",
+      "before_sha256": "eb151b36745a8cd2df57b3bbea47b94cd68cb5457d7320d4fda7ac8ec71e765d",
+      "after_sha256": "ea54685c00b109fe75d0e1b478eeed0a28bb3294741051e58a0ba792e980cd17",
+      "edits": [
+        {
+          "offset": 260,
+          "disabled": "78",
+          "enabled": "98"
+        }
+      ],
+      "normalized_before_sha256": "42743b0ca465b68328990441d078bf318877c44d502511d85928cafe53ea67b2",
+      "normalized_after_sha256": "9e9d0e141b1889dbcbb5939af53dee6cbb9d2c2d3c7fa16995937fc144b5de29"
+    },
+    {
+      "index": 2,
+      "device": 0,
+      "device_offset": 42240512,
+      "absolute_sector": 1909317,
+      "role": "inode-size",
+      "mask_hex": "10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "unmanaged_sha256": "48bba217a2ea6e819dcf789a42c933bb45ca70526b9c8227bbf4c18dccc05bde",
+      "before_sha256": "6fd8fcd10cbb04255545d144fe557a0e5236a7229dfb66e9ebce3954897544e9",
+      "after_sha256": "77bdbe1d2180ff2364e28152c446966f1b4f3c30fa27ff784a3ec2d14d9db473",
+      "edits": [
+        {
+          "offset": 4,
+          "disabled": "98",
+          "enabled": "d0"
+        }
+      ],
+      "normalized_before_sha256": "61148ddbdd16e510dc73433281f247bb064a7e4e545cd14c1a4b1f159a4890b7",
+      "normalized_after_sha256": "e1256ed9a5fda28e7eb36c3f12b65ca07167afde5ba58c0ad570c92b3edea94d"
+    },
+    {
+      "index": 3,
+      "device": 0,
+      "device_offset": 42223104,
+      "absolute_sector": 1909283,
+      "role": "inode-size",
+      "mask_hex": "00000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000000",
+      "unmanaged_sha256": "3e4f49ec6ef867dcddc2f8cfafe864da621b97cc37103dd056efea1f72820cf5",
+      "before_sha256": "78a761c5f423b8bade5836f87a6a6f62814574a43c6c5baf5c9e23c906d0b4ea",
+      "after_sha256": "a928a60f01a25d60d886d26be8720d115d99abcdb5ce19ef2c7cda839b85e5df",
+      "edits": [
+        {
+          "offset": 260,
+          "disabled": "c82a",
+          "enabled": "042b"
+        }
+      ],
+      "normalized_before_sha256": "8428e05770e7ab1ccdfd8d6ba94dba1649c32322f4faab53adcd88ccc36e2640",
+      "normalized_after_sha256": "5efa3bb5c545528b07a411a4ade7163ce25d28a16eebc1479c0bf1e86698119d"
+    }
+  ],
+  "sector_count": 4,
+  "before_sha256": "5746871121919e36214aed62d067a2705abfa0c2d252f74b1d14c120ed83d02a",
+  "after_sha256": "7c2f69ac84340e01b869c569abc57617ad0fb3d7038f34437bac5ea54cdf0ff5",
+  "part": "part-02-size",
+  "row_address": "0x3781000",
+  "camera_access": false,
+  "inode_size": 256,
+  "volatile_fields": [
+    [
+      8,
+      20
+    ]
+  ],
+  "installable": true,
+  "profile_sha256": "7e8fe32ad7ba703e4ec3b4df663edcc31590991640935d4f0627bd1f5a860579",
+  "files": {
+    "profile.h": "5ebd9e1cf11cf7c820dc21dded596a15882cb3ee3c0d2e8f46947fa4433852cd",
+    "transaction.c": "53cd3393c07dfdb7a219cf73906862ac389df9d853a90d762deec777c0e37e82",
+    "reader.elf": "e05e46eaf651911d80afe3250aee3edd0d35334679e07e3c0137b3cb517cff9d",
+    "writer.elf": "c91d763a9e47e58d866fabf7b93c4c04eb9d6fc70d82b984580f3964185023bd"
+  }
+}

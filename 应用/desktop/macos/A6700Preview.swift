@@ -3,7 +3,7 @@ import AppKit
 
 struct PreviewView: View {
     @StateObject var model = PreviewModel()
-    @State private var physicalMode = true
+    @State private var physicalMode = !ProcessInfo.processInfo.arguments.contains("--audio-market-preview")
     @State private var preparationAcknowledged = false
     @State private var license = false
     @State private var noticeSheet = false
@@ -11,6 +11,14 @@ struct PreviewView: View {
     @State private var demoSettings = false
     @State private var usageSheet = false
     @State private var uploadToast: String?
+    @StateObject private var audioMarket = AudioMarketSession()
+    @State private var viewingMarket = ProcessInfo.processInfo.arguments.contains("--audio-market-preview")
+    @State private var returnToMarketAfterConnect = false
+    @State private var installingSound: MarketSound?
+    @State private var queuedConnectAfterEnv = false
+    private var cameraReady: Bool {
+        phase == "home" && model.state?.compatible == true && model.state?.connected == true
+    }
     private var phase: String { model.serviceExited ? "service-stopped" : (model.state?.phase ?? "notice") }
     private var busy: Bool { model.isBusy || model.appUpdateBlocksOperations }
     private var hasAftercare: Bool {
@@ -23,28 +31,26 @@ struct PreviewView: View {
     var body: some View {
         VStack(spacing: 0) {
             appHeader
-            if model.updateAvailable {
-                HStack(spacing: 10) {
-                    Image(systemName: "arrow.down.circle.fill").foregroundColor(.blue)
-                    Text("相机功能包已更新")
-                        .font(.system(size: 11)).foregroundColor(.blue)
-                    Spacer()
-                    Button("知道了") { model.updateAvailable = false }
-                        .buttonStyle(.plain).font(.system(size: 11, weight: .medium)).foregroundColor(.blue)
-                }.padding(.horizontal, 28).padding(.vertical, 6)
-                    .background(Color.blue.opacity(0.06))
+            navigationBar
+            if viewingMarket {
+                ShutterSoundMarketView(
+                    session: audioMarket,
+                    model: model,
+                    physical: physicalMode,
+                    onConnect: beginMarketConnect,
+                    onGoToFeatures: {
+                        returnToMarketAfterConnect = false
+                        viewingMarket = false
+                    },
+                    onInstall: { sound in
+                        audioMarket.selectedSoundID = sound.id
+                        model.resetAudioImportFlow()
+                        installingSound = sound
+                    }
+                )
+            } else {
+                cameraWorkspace
             }
-            stepper
-            Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    if !model.error.isEmpty { errorBanner }
-                    content
-                }.padding(.horizontal, 28).padding(.top, 20).padding(.bottom, 20)
-            }.id(phase) // Every new page starts at its title, including repeated results.
-            if phase == "notice" || phase == "preparation" { navigationFooter }
-            else if hasAftercare { resultFooter }
-            else if phase != "service-stopped" { sessionFooter }
         }
         .frame(minWidth: 980, minHeight: 720)
         .foregroundColor(UI.ink).background(UI.background).preferredColorScheme(.light)
@@ -82,12 +88,43 @@ struct PreviewView: View {
         }
         .background(OperationWindowGuard(model: model))
         .onAppear { AppDelegate.operationModel = model; model.start(physical: physicalMode) }
-        .onChange(of: physicalMode) { preparationAcknowledged = false; model.setMode($0) }
+        .onChange(of: physicalMode) { newMode in
+            preparationAcknowledged = false
+            queuedConnectAfterEnv = false
+            returnToMarketAfterConnect = false
+            installingSound = nil
+            model.slotsLoadedOperationID = nil
+            model.audioCatalog?.slots = nil
+            model.setMode(newMode)
+        }
+        .onChange(of: model.state?.checked == true && model.state?.environment.ready == true) { envReady in
+            guard queuedConnectAfterEnv else { return }
+            if envReady {
+                queuedConnectAfterEnv = false
+                if preparationAcknowledged && !busy {
+                    model.send("prepare_and_inspect", extra: ["acknowledged": true, "prepared": true])
+                }
+            }
+        }
+        .onChange(of: model.state?.checked == true && model.state?.environment.ready == false) { envFailed in
+            if envFailed { queuedConnectAfterEnv = false }
+        }
         .onChange(of: phase) { value in
             if value == "notice" { preparationAcknowledged = false }
+            if !["notice", "preparation"].contains(value) { queuedConnectAfterEnv = false }
             if value != "result" { uploadToast = nil }
         }
+        .onChange(of: cameraReady && !busy) { ready in
+            if ready && returnToMarketAfterConnect {
+                returnToMarketAfterConnect = false
+                viewingMarket = true
+            }
+        }
         .onChange(of: model.state?.revision) { _ in
+            if returnToMarketAfterConnect, phase == "result", model.state?.action == "inspect",
+               model.state?.result?.status == "cancelled" {
+                returnToMarket()
+            }
             // Hidden developer backup/restore commands retain their navigation.
             // Unlock/close keep their dedicated result until explicit reconnect.
             if model.state?.phase == "result", model.state?.compatible == true,
@@ -101,6 +138,12 @@ struct PreviewView: View {
         }) { FailureFeedbackView(model: model) }
         .onChange(of: model.showFailureFeedback) { showing in
             if showing { uploadToast = nil }
+        }
+        .sheet(item: $installingSound) { sound in
+            ShutterSoundInstallView(session: audioMarket, model: model, sound: sound, physical: physicalMode) {
+                installingSound = nil
+                model.resetAudioImportFlow()
+            }.interactiveDismissDisabled(model.isBusy || model.audioImportFlowActive)
         }
         .sheet(isPresented: $license) { LicenseView { license = false } }
         .sheet(isPresented: $usageSheet) {
@@ -135,20 +178,96 @@ struct PreviewView: View {
                 .sheet(isPresented: $noticeLicense) { LicenseView { noticeLicense = false } }
         }
     }
+
+    private var navigationBar: some View {
+        HStack(spacing: 8) {
+            Button {
+                returnToMarketAfterConnect = false
+                viewingMarket = false
+            } label: {
+                Label("相机", systemImage: "camera").padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(viewingMarket ? Color.clear : UI.accent.opacity(0.09)).cornerRadius(6)
+            }.buttonStyle(.plain)
+            Button(action: returnToMarket) {
+                Label("快门声市场", systemImage: "waveform").padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(viewingMarket ? UI.accent.opacity(0.09) : Color.clear).cornerRadius(6)
+            }.buttonStyle(.plain).disabled(model.cameraOperationActive)
+            Spacer()
+        }.font(.system(size: 13, weight: .medium)).foregroundColor(UI.accent)
+            .padding(.horizontal, 28).padding(.bottom, 10).background(.white)
+    }
+
+    private var cameraWorkspace: some View {
+        VStack(spacing: 0) {
+            if model.updateAvailable {
+                HStack(spacing: 10) {
+                    Image(systemName: "arrow.down.circle.fill").foregroundColor(.blue)
+                    Text("相机功能包已更新")
+                        .font(.system(size: 11)).foregroundColor(.blue)
+                    Spacer()
+                    Button("知道了") { model.updateAvailable = false }
+                        .buttonStyle(.plain).font(.system(size: 11, weight: .medium)).foregroundColor(.blue)
+                }.padding(.horizontal, 28).padding(.vertical, 6)
+                    .background(Color.blue.opacity(0.06))
+            }
+            stepper
+            if returnToMarketAfterConnect {
+                HStack {
+                    Label("相机连接并检查通过后将自动返回快门声市场", systemImage: "waveform")
+                        .font(.system(size: 12, weight: .semibold)).foregroundColor(UI.accent)
+                    Spacer()
+                    Button("返回市场", action: returnToMarket)
+                        .buttonStyle(.bordered).disabled(model.cameraOperationActive)
+                }.padding(.horizontal, 28).padding(.vertical, 10)
+            }
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    if !model.error.isEmpty { errorBanner }
+                    content
+                }.padding(.horizontal, 28).padding(.top, 20).padding(.bottom, 20)
+            }.id(phase) // Every new page starts at its title, including repeated results.
+            if phase == "notice" || phase == "preparation" { navigationFooter }
+            else if hasAftercare { resultFooter }
+            else if phase != "service-stopped" { sessionFooter }
+        }
+    }
+
+    private func beginMarketConnect() {
+        guard !model.cameraOperationActive else { return }
+        returnToMarketAfterConnect = true
+        viewingMarket = false
+        if phase == "result" && !busy {
+            model.send("restart_preparation")
+        }
+    }
+
+    private func returnToMarket() {
+        returnToMarketAfterConnect = false
+        queuedConnectAfterEnv = false
+        viewingMarket = true
+    }
     @ViewBuilder private var content: some View {
         switch phase {
         case "service-stopped": OperationServiceStoppedView(model: model, physical: physicalMode)
         case "notice", "preparation":
             PageTitle(title: "准备并连接相机", subtitle: model.state?.notice.sections.first(where: { $0.id == "scope" })?.title ?? "仅适配 A6700 · 固件 2.00")
+            if physicalMode && model.state?.camera_disconnect != nil {
+                CameraDisconnectControl(model: model)
+            }
             if model.state?.checked == true && model.state?.environment.ready != true {
                 StartupCheckView(state: model.state) { model.send("environment") }
             }
-            PreparationGuideView(steps: model.state?.steps ?? [])
+            PreparationGuideView(steps: model.state?.steps ?? PreparationRow.defaultSteps)
             if physicalMode {
                 Text("连接时 macOS 可能要求管理员授权。相机的 MSC 提示消失后，请保持 USB 连接。")
                     .font(.system(size: 11)).foregroundColor(UI.muted)
             }
-        case "home": WorkspaceView(model: model, physical: physicalMode)
+        case "home":
+            WorkspaceView(model: model, physical: physicalMode) {
+                returnToMarketAfterConnect = false
+                viewingMarket = true
+            }
         case "running": OperationProgressView(model: model, physical: physicalMode)
         case "result":
             if hasAftercare { OperationSuccessView(model: model, physical: physicalMode) }
@@ -285,7 +404,7 @@ struct PreviewView: View {
                             Button(usage.enabled ? "使用统计已开启 · 设置" : "使用统计已关闭 · 设置") { usageSheet = true }
                                 .buttonStyle(.plain).foregroundColor(UI.accent)
                         }
-                        if model.state?.checked != true {
+                        if queuedConnectAfterEnv && model.state?.checked != true {
                             Text("正在检查本机组件…").foregroundColor(UI.muted)
                         }
                     }.font(.system(size: 11))
@@ -294,9 +413,13 @@ struct PreviewView: View {
                 Toggle("我已阅读风险说明，并完成以上相机设置", isOn: $preparationAcknowledged)
                     .toggleStyle(.checkbox).font(.system(size: 12)).accessibilityLabel("阅读与相机准备确认")
                 Button(physicalMode ? "连接并检查相机" : "检查演示设备") {
-                    model.send("prepare_and_inspect", extra: ["acknowledged": true, "prepared": true])
+                    if model.state?.checked == true && model.state?.environment.ready == true {
+                        model.send("prepare_and_inspect", extra: ["acknowledged": true, "prepared": true])
+                    } else {
+                        queuedConnectAfterEnv = true
+                    }
                 }.buttonStyle(PrimaryStyle())
-                    .disabled(!preparationAcknowledged || model.state?.environment.ready != true || busy)
+                    .disabled(!preparationAcknowledged || busy || queuedConnectAfterEnv || (model.state?.checked == true && model.state?.environment.ready != true))
             }.padding(.horizontal, 28).padding(.vertical, 17)
         }.background(.white)
     }
@@ -311,6 +434,7 @@ struct PreviewView: View {
                     .font(.system(size: 10)).foregroundColor(UI.muted)
                 Spacer()
                 if phase == "home" {
+                    if physicalMode { CameraDisconnectControl(model: model) }
                     Button("重新连接") { model.send("restart_preparation") }
                         .buttonStyle(.plain).font(.system(size: 11)).foregroundColor(UI.accent).disabled(busy)
                 }
@@ -376,7 +500,10 @@ struct LicenseView: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static weak var operationModel: PreviewModel?
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
-    func applicationDidFinishLaunching(_ notification: Notification) { NSApp.activate(ignoringOtherApps: true) }
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.appearance = NSAppearance(named: .aqua)
+        NSApp.activate(ignoringOtherApps: true)
+    }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard Self.operationModel?.allowWindowExit() != false else { return .terminateCancel }
         Self.operationModel?.shutdown(); return .terminateNow

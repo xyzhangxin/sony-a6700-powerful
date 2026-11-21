@@ -71,6 +71,26 @@ class UsbTests(unittest.TestCase):
         self.addCleanup(observe_patch.stop)
         self.profile=load_device_profile(load_catalog())
 
+    def test_sequence_exhaustion_fails_before_any_usb_transfer(self):
+        device = Mock()
+        target = SimpleNamespace(device=device, endpoint_out=2, endpoint_in=0x81, product_id=0x0336)
+        channel = self.legacy.SenserChannel(target)
+        channel.sequence = 0x10000
+        with self.assertRaisesRegex(self.legacy.ProbeError, 'sequence exhausted'):
+            channel.send(0x40, b'probe')
+        device.write.assert_not_called()
+
+    def test_abandon_unconfirmed_execution_releases_host_without_stop(self):
+        backend = UsbBackend(self.profile, capture=False)
+        backend.target = SimpleNamespace(device=Mock())
+        target = backend.target
+        backend.legacy = Mock()
+        backend.abandon_transport()
+        backend.legacy.close_target.assert_called_once_with(target)
+        backend.legacy.vendor_request_out.assert_not_called()
+        self.assertIsNone(backend.target)
+        self.assertEqual(backend.cleanup_status, 'unconfirmed')
+
     def test_msc_discovery_does_not_open_endpoints_or_require_mounted_storage(self):
         device = SimpleNamespace(idVendor=0x054c, idProduct=0x0e76)
         with patch.object(self.legacy, 'candidates', return_value=[device]) as scan, \
@@ -130,6 +150,23 @@ class UsbTests(unittest.TestCase):
              patch.object(self.legacy, 'close_target'), contextlib.redirect_stdout(io.StringIO()):
             self.legacy.run_authentication(None, 0x0336, 1, False)
         self.assertEqual(len(contexts.call_args_list), 2)
+        self.assertTrue(all(c.kwargs == {'fresh': True} for c in contexts.call_args_list))
+
+    def test_mac_auth_retries_initial_discovery_with_fresh_context(self):
+        initial = SimpleNamespace(idProduct=0x0e76)
+        service = SimpleNamespace(idProduct=0x0336)
+        target = SimpleNamespace(interface=SimpleNamespace(bInterfaceClass=0xff))
+        with patch.object(self.legacy.sys, 'platform', 'darwin'), \
+             patch.object(self.legacy, 'get_libusb_backend') as contexts, \
+             patch.object(self.legacy, 'choose_initial_device',
+                          side_effect=[self.legacy.ProbeError('no Sony MSC device found'), initial]), \
+             patch.object(self.legacy, 'wait_for_service_device', return_value=service), \
+             patch.object(self.legacy, 'open_target', return_value=target), \
+             patch.object(self.legacy, 'authenticate_target'), \
+             patch.object(self.legacy, 'close_target'), \
+             patch.object(self.legacy.time, 'sleep'), contextlib.redirect_stdout(io.StringIO()):
+            self.legacy.run_authentication(None, 0x0336, 1, False)
+        self.assertEqual(len(contexts.call_args_list), 3)
         self.assertTrue(all(c.kwargs == {'fresh': True} for c in contexts.call_args_list))
 
     def test_fresh_backend_replaces_old_context_used_by_subsequent_scans(self):
@@ -259,6 +296,30 @@ class UsbTests(unittest.TestCase):
             UsbBackend(self.profile).__enter__()
         capture.assert_called_once()
         self.assertIsNone(auth.call_args.args[0])
+        self.assertEqual(auth.call_args.args[2], 45.0)
+
+    def test_audio_identity_requires_fresh_unique_msc_before_authentication(self):
+        import hashlib
+        backend = UsbBackend(self.profile)
+        backend.legacy = self.legacy
+        backend.access_prepared = True
+        camera = SimpleNamespace(idVendor=0x054c, idProduct=0x0e76)
+        identity = dict(product='ILCE-6700', serial_number='synthetic-body')
+        with patch.object(self.legacy, 'iter_usb_devices', return_value=[camera]) as scan, \
+             patch.object(self.legacy, 'device_identity', return_value=identity):
+            self.assertEqual(backend.read_custom_sound_identity(),
+                             hashlib.sha256(b'synthetic-body').hexdigest())
+            scan.assert_called_once_with(fresh=True)
+            for bad in ([], [camera, camera], [SimpleNamespace(idVendor=0x054c,idProduct=0x0336)]):
+                scan.return_value = bad
+                with self.assertRaises(DeviceError): backend.read_custom_sound_identity()
+            scan.return_value = [camera]
+            identity['serial_number'] = ''
+            with self.assertRaises(DeviceError): backend.read_custom_sound_identity()
+            backend.target = object()
+            scan.reset_mock()
+            with self.assertRaises(DeviceError): backend.read_custom_sound_identity()
+            scan.assert_not_called()
 
     def test_normal_mode_requires_unique_msc_and_waits_past_stale_service(self):
         with patch.object(self.legacy,'observed_sony_product_ids',side_effect=[[0x0336],[0x0e76]]), \

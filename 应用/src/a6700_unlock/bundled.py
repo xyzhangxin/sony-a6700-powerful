@@ -11,7 +11,7 @@ def resource_root():
     if sys.platform == 'win32' and getattr(sys, 'frozen', False):
         root = Path(sys._MEIPASS)
         try:
-            if json.loads((root/'runtime.json').read_text(encoding='utf-8')).get('kind') != 'bundled':
+            if json.loads((root / 'runtime.json').read_text(encoding='utf-8')).get('kind') != 'bundled':
                 raise ValueError('runtime kind')
         except (ValueError, OSError) as exc:
             raise DeviceError('Windows 应用运行配置损坏，请重新获取完整应用。') from exc

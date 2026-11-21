@@ -1,0 +1,82 @@
+{
+  "devices": [
+    "/dev/nflasha15",
+    "/dev/nflasha5",
+    "/dev/nflasha8"
+  ],
+  "entries": [
+    {
+      "index": 0,
+      "device": 0,
+      "device_offset": 195974656,
+      "absolute_sector": 2209579,
+      "role": "lookup-entry",
+      "mask_hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f0000000000",
+      "unmanaged_sha256": "d55a03694e444fe5d1269b466ecf5932a3fda259f904dcc9e14ac0007e9e60a1",
+      "before_sha256": "5fba4dabb46a44e60f43cf9c36354fa9b5572ce800ddf3a974191df1bf95cb5e",
+      "after_sha256": "c10cb426911b11d9f4a8e7fe5e04afb7669273c9fd79eca97728c871f02cc2b0",
+      "edits": [
+        {
+          "offset": 464,
+          "disabled": "635b01f0",
+          "enabled": "14a15214"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "device": 0,
+      "device_offset": 195975168,
+      "absolute_sector": 2209580,
+      "role": "lookup-entry",
+      "mask_hex": "0000000000000000000000000000000000f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "unmanaged_sha256": "1255f3ee471d07b98f78ceb916da137a0d6b07f6f559a39dd2635524f59bbb42",
+      "before_sha256": "4a7638e8c0fb5e2012a5b60031dce3432486bede9d5ba9340d57a1b56ab3bdb5",
+      "after_sha256": "9ce501c46e457469d42aaed1a65683c68105101d613016042aee347ff5d55698",
+      "edits": [
+        {
+          "offset": 140,
+          "disabled": "fd7bb4a9",
+          "enabled": "f0a05214"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "device": 0,
+      "device_offset": 195991040,
+      "absolute_sector": 2209611,
+      "role": "lookup-entry",
+      "mask_hex": "0000f0000000000000000000000000000000000f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "unmanaged_sha256": "39f9d1b0d20da9814de6fd2cf2a2000bde6b7379fe3b136ede0be3f16f6c3c1a",
+      "before_sha256": "dca1485ebe6c6a0db8b52b392aaea809e2db62064dcc2c90e4cf84f5cc16cfc9",
+      "after_sha256": "ffaf51e6c5193b0899fe65bf00870891f871ebddcb29a65700471dee7d8723ca",
+      "edits": [
+        {
+          "offset": 20,
+          "disabled": "fd7bbda9",
+          "enabled": "7b915214"
+        },
+        {
+          "offset": 152,
+          "disabled": "fd7bbca9",
+          "enabled": "75915214"
+        }
+      ]
+    }
+  ],
+  "sector_count": 3,
+  "before_sha256": "a9bd81b453d320b9faf335faf8713d774ca81122b7831dfcad5adf2ebfc0b05a",
+  "after_sha256": "b9438a51bd7215a0935bb1b36ad403479d12ca756fefc8292dd1d91a1fb95f9a",
+  "part": "part-05-lookup",
+  "row_address": "0x3781000",
+  "camera_access": false,
+  "installable": true,
+  "profile_sha256": "a2ca0d64550bcb4adaaa4ba750b1ccc5a3c1a01de6a354ee75211d3cebf244cc",
+  "files": {
+    "profile.h": "e80ada1bb4d394c408c94a677dd426602f247db38a0297376d6b627fd6521ed4",
+    "transaction.c": "53cd3393c07dfdb7a219cf73906862ac389df9d853a90d762deec777c0e37e82",
+    "reader.elf": "650f0636483f7eacfb55cd8c44df35c82046936986aad9d71f12a4d0ec5472da",
+    "writer.elf": "2517bc857a8f9597bf9c7ad20456b63109cb7b602ef416dbc4aee3116022a9ea"
+  }
+}

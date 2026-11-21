@@ -1,0 +1,84 @@
+{
+  "schema": "a6700-custom-sound-menu-ui-parts/1",
+  "status": "sparse-unified-ten-slot-ready",
+  "camera_access": false,
+  "installable": true,
+  "layout": "sparse-six-stage/1",
+  "recovery_scope": "all-target-sectors",
+  "sector_count": 23,
+  "before_sha256": "6a5d6165c5fe47bae3506bf134f14c1c92973e3c9ed912347ca43d97fd5d8448",
+  "after_sha256": "77d4b628b6225f909cd95522da13c02de838155b47a6d300cf700c5fe6142511",
+  "parts": [
+    {
+      "sector_count": 4,
+      "before_sha256": "ad2365c5313838988d493a54e2e96132ef80d954773e2a116429b379251bea71",
+      "after_sha256": "587dbc26f7f03b3d3300701f8fb593efdd060f46b8b062078433f156ed96c66e",
+      "profile_sha256": "1f391a2e068c39f548b5ce1d15caad5c1b301ff95ee113fed7966ab318ae8d87",
+      "name": "part-01-append"
+    },
+    {
+      "sector_count": 4,
+      "before_sha256": "5746871121919e36214aed62d067a2705abfa0c2d252f74b1d14c120ed83d02a",
+      "after_sha256": "7c2f69ac84340e01b869c569abc57617ad0fb3d7038f34437bac5ea54cdf0ff5",
+      "profile_sha256": "7e8fe32ad7ba703e4ec3b4df663edcc31590991640935d4f0627bd1f5a860579",
+      "name": "part-02-size"
+    },
+    {
+      "sector_count": 4,
+      "before_sha256": "f946092dd410ad06f695bb593beb114de36a8b43c7512030cc5370b3b84b3e6b",
+      "after_sha256": "7dad2f2adf49edc18373812a581c8484ea54fe0d5916cbcffed76602fba875d5",
+      "profile_sha256": "c50cd97a713312bc22f398cf764817024b6fcaad386c5ca381b9e9a6c5b26245",
+      "name": "part-03-index"
+    },
+    {
+      "sector_count": 6,
+      "before_sha256": "e80232b4d18d0bb7e794be263ba937626f383f9917d4b8a737ba893a8f752293",
+      "after_sha256": "e405623e158c63e942378b03f49f945b7c75480d42f779c8d4236eb6a5722541",
+      "profile_sha256": "d064ad4912bcc413d5feab1658815a16890ccc927305714508450aaf79664554",
+      "name": "part-04-prepare"
+    },
+    {
+      "sector_count": 3,
+      "before_sha256": "a9bd81b453d320b9faf335faf8713d774ca81122b7831dfcad5adf2ebfc0b05a",
+      "after_sha256": "b9438a51bd7215a0935bb1b36ad403479d12ca756fefc8292dd1d91a1fb95f9a",
+      "profile_sha256": "a2ca0d64550bcb4adaaa4ba750b1ccc5a3c1a01de6a354ee75211d3cebf244cc",
+      "name": "part-05-lookup"
+    },
+    {
+      "sector_count": 2,
+      "before_sha256": "a9a24e56a2b9d7a5b08e1ed350fa6b6e84c9f308dd5080bc08b0d260f9277995",
+      "after_sha256": "836c4e6f63d729921c18126cfc60bf96d5c98d4c44b260196b5be26ec47446d6",
+      "profile_sha256": "5497ca510fa5fb4365f4b6d05036b10732c5a138824c7fa08e8075faa458565b",
+      "name": "part-06-publish"
+    }
+  ],
+  "files": {
+    "part-01-append/manifest.json": "df9af291041f3793c24ab025305746bf8153f12e3cf47cf57f828d89a21ec637",
+    "part-02-size/manifest.json": "907fbfaef2749b277d436d92774f27b75012d8cc431c62e58384a81936cf45fe",
+    "part-03-index/manifest.json": "64e52212da27f362957c46dbbd123a7e3ed781e58d7ce062782a157b94d2aa85",
+    "part-04-prepare/manifest.json": "7cc770f33ea8c0654736e109bf29e92492cc018e527bb33cacb2dd01ff546370",
+    "part-05-lookup/manifest.json": "0243b8d88bad54340c90bdc7dbbb4b3a76bc88070b244c7a56c741bac8f471af",
+    "part-06-publish/manifest.json": "ccbce6bcf0d45e4a2d573cecdde7202bbc32f02fc7106ebacfee9a8dfd4c7921"
+  },
+  "ten_slot": true,
+  "default_label": "默认",
+  "slot_count": 10,
+  "implementation": "resident-appfw-lookup-hooks/1",
+  "row_address": "0x3781000",
+  "row_id": "0x23d7",
+  "leaf_ids": [
+    "0x23d8",
+    "0x23d9"
+  ],
+  "ap_only_demand_pages": [
+    "0x22da000",
+    "0x22de000",
+    "0x3781000",
+    "0x3783000"
+  ],
+  "runtime_bias": "0x7f74665000",
+  "lookup_source_sha256": "2ea1cc3702e6b4dc872ebc16a4726855f666f83c32276e328cbd984554bd553b",
+  "lookup_profile_sha256": "eb862d44ce678724bef815113707a31d7faccb9c8b68368cf3313169ee92a5f5",
+  "recovery_coverage_plan_id": "2db1e16a6dbb7af88a0120ca74860a93",
+  "profile_sha256": "5894cbf93cedf143c3242a201152941d1b70b66e3b49b0dc1cd7d517130d53f4"
+}

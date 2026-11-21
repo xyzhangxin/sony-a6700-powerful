@@ -144,17 +144,21 @@ def build(recipe_path,carrier_path,sha_header,*,destination=None,variants_path=N
     variants={1:carrier}
     if variants_path:
         vr=Path(variants_path)
-        for flags in (2,3):
-            variants[flags]=(vr/str(flags)/'carrier.bin').read_bytes()
-            if not 1024<=len(variants[flags])<=2098176:raise ValueError('Creative Look variant exceeds carrier bounds')
+        for flags in (2,3,4,5,6,7):
+            candidate=vr/str(flags)/'carrier.bin'
+            if candidate.exists() or flags in (2,3):
+                variants[flags]=candidate.read_bytes()
+                if not 1024<=len(variants[flags])<=2098176:raise ValueError('Creative Look variant exceeds carrier bounds')
     legacy={}
     if legacy_path is None and (destination/'legacy-carriers.json').is_file():
         legacy_path=destination/'legacy-carriers.json'
     if legacy_path:
         legacy=json.loads(Path(legacy_path).read_bytes())
-        if set(legacy)!={'5','7'} or len(variants)!=3:raise ValueError('Legacy carriers require the two exact FL23 combinations')
+        if not legacy or not {1,2,3}<=set(variants):raise ValueError('Legacy carriers require the FL23 combinations')
         for ident,row in legacy.items():
-            if (row.get('flags')!=int(ident)&3 or row.get('revision')!=1 or
+            key=int(ident)
+            if (key<256 or row.get('flags')!=key&7 or row.get('revision')!=key>>8 or
+                row.get('revision') not in (1,2,3,4) or row.get('flags') not in variants or
                     type(row.get('bytes')) is not int or not 1024<=row['bytes']<=2098176 or
                     not isinstance(row.get('sha256'),str) or len(row['sha256'])!=64 or
                     len(bytes.fromhex(row['sha256']))!=32 or row['sha256'] in {sha(v) for v in variants.values()}):
@@ -189,7 +193,7 @@ def build(recipe_path,carrier_path,sha_header,*,destination=None,variants_path=N
         manifest['variants']={str(f):dict(bytes=len(v),sha256=sha(v),
             runtime_sha256=sha((destination/'variants'/str(f)/'runtime/manifest.json').read_bytes())) for f,v in variants.items() if f!=1}
     if legacy:
-        manifest.update(carrier_revision=2,legacy_carriers=legacy)
+        manifest.update(carrier_revision=5,legacy_carriers=legacy)
         (destination/'legacy-carriers.json').write_text(json.dumps(legacy,indent=2)+'\n')
     (destination/'recipe.json').write_text(json.dumps(recipe,indent=2)+'\n')
     (destination/'carrier.bin').write_bytes(carrier)

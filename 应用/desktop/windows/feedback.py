@@ -693,6 +693,7 @@ class FailureFeedbackDialog(QDialog):
         self.window = window
         self.operation_id = ''
         self.payload = None
+        self.details = None
         self.uploading = False
         self.preferences = QSettings('Powerful6700', 'Feedback')
         self.setWindowTitle('上传本次异常日志')
@@ -703,7 +704,7 @@ class FailureFeedbackDialog(QDialog):
         outer.setContentsMargins(24, 24, 24, 24)
         outer.setSpacing(12)
         outer.addWidget(label('上传本次异常日志', 'heading'))
-        outer.addWidget(label('报告包含应用版本、环境检查、操作步骤、可用错误码和本次的脱敏预检及执行结果。保留 30 天。', 'muted'))
+        outer.addWidget(label('报告包含应用版本、操作步骤、错误码、校验项编号及可用的预检与执行结果。保留 30 天。', 'muted'))
         outer.addWidget(label('联系邮箱（选填）'))
         self.email = QLineEdit(self.preferences.value('lastEmail', '', str))
         self.email.setAccessibleName('联系邮箱')
@@ -737,6 +738,7 @@ class FailureFeedbackDialog(QDialog):
         if kind == 'failure-feedback-preview':
             self.operation_id = result.get('operation_id', '')
             self.payload = result.get('payload')
+            self.details = result.get('details')
             self.status.clear()
         elif kind == 'failure-feedback-result':
             self.uploading = False
@@ -744,7 +746,10 @@ class FailureFeedbackDialog(QDialog):
                 self.accept()
                 self.window.show_feedback_toast(result.get('feedback_id') or '')
                 return True
-            self.status.setText(result.get('error') or '上传未完成，可重试或导出报告。')
+            if result.get('status') == 'partial' and result.get('feedback_id'):
+                self.status.setText(f"已收到反馈 {result['feedback_id']}。诊断附件待接收，可重试或导出报告。")
+            else:
+                self.status.setText(result.get('error') or '上传未完成，可重试或导出报告。')
         elif kind == 'error':
             self.uploading = False
             self.status.setText(event.get('message', '日志操作未完成。'))
@@ -783,6 +788,8 @@ class FailureFeedbackDialog(QDialog):
             return
         try:
             payload = dict(self.payload)
+            if self.details is not None:
+                payload['diagnostic_details'] = self.details
             if description := self.description.toPlainText().strip():
                 payload['description'] = description
             Path(destination).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')

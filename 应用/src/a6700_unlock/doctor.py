@@ -17,7 +17,7 @@ def diagnose(profile):
         check('python', 'Python', sys.version_info >= (3, 10), platform.python_version(),
               '源码运行请使用 Python 3.10+；桌面版应重新安装匹配系统的应用。'),
         check('platform', '平台', sys.platform in ('darwin', 'linux', 'win32'), sys.platform,
-              '当前预览支持 macOS／Linux／Windows x64；Windows 需另行准备相机 WinUSB 驱动。'),
+              '当前支持 macOS／Linux 与 Windows x64（Windows 需准备 WinUSB 驱动）。'),
         check('pyusb', 'PyUSB', find_spec('usb') is not None, '设备操作需要 a6700-unlock[usb]',
               '源码运行安装 a6700-unlock[usb]；桌面版应包含此组件。'),
     ]

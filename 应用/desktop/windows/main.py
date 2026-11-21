@@ -2,14 +2,16 @@
 import argparse
 from pathlib import Path
 import sys
+from tempfile import TemporaryDirectory
 from uuid import uuid4
 if not getattr(sys,'frozen',False):
     sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'src'))
 from PySide6.QtCore import QSettings, QTimer, QUrl, Qt
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QFont
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QMainWindow, QMessageBox, QVBoxLayout
+from audio_market import AudioMarketSession
 from client import ServiceClient
-from design import STYLE, ACCENT, Symbol, label
+from design import STYLE, ACCENT, FEATURES, Symbol, label
 from feedback import FeedbackDialog, FailureFeedbackDialog
 from dialogs import OperationConfirmation
 from views import Views
@@ -31,13 +33,15 @@ https://zadig.akeo.ie/
 
 
 class Window(Views,QMainWindow):
-    def __init__(self,demo=False, *, enable_usage_session=True):
+    def __init__(self,demo=False, *, enable_usage_session=True, audio_library=None, audio_favorites=None):
         super().__init__()
         self.setWindowTitle('Powerful6700')
         self.resize(1060,770);self.setMinimumSize(980,720)
         self.client=ServiceClient(self)
         self.client.event.connect(self.on_event);self.client.exited.connect(self.on_exit)
         self.state={};self.pending_mode=None;self.closing=False;self.update_status=None;self.update_available=False;self._auto_update_check=False
+        self._catalog_update_inflight = False
+        self._pending_audio_catalog = False
         self.transitioning=False;self.inflight=None;self.operation_started=False;self.page_key=None
         self.update_preferences = QSettings('Powerful6700', 'ApplicationUpdates')
         self.checked_app_at_startup = False
@@ -52,6 +56,18 @@ class Window(Views,QMainWindow):
         self.feedback_toast_timer = QTimer(self)
         self.feedback_toast_timer.setSingleShot(True)
         self.feedback_toast_timer.timeout.connect(self.dismiss_feedback_toast)
+        self.audio_market = AudioMarketSession(library=audio_library, favorites_store=audio_favorites, parent=self)
+        self.audio_slots = None
+        self.audio_slots_busy = False
+        self.audio_slots_loaded_op = None
+        self.audio_import_flow_active = False
+        self.audio_import_flow_slot = None
+        self.audio_import_flow_message = ''
+        self.audio_plan = None
+        self.audio_confirmation = None
+        self.audio_execute = None
+        self.audio_error_text = ''
+        self._pending_preview_sound_id = None
         self.build_shell(demo)
         QTimer.singleShot(0,self.start)
 
@@ -63,6 +79,11 @@ class Window(Views,QMainWindow):
         try:
             self.transitioning = False; self.inflight = None; self.state = {}; self.page_key = None
             self.operation_started = False; self.preparation_acknowledged=False; self.scroll.setEnabled(True)
+            self._catalog_update_inflight = False; self._pending_audio_catalog = False
+            self.reset_audio_import_flow()
+            self.audio_slots = None
+            self.audio_slots_busy = False
+            self.audio_slots_loaded_op = None
             self.client.start(self.physical)
             self.app_update_request = None
             self.app_download_progress = None
@@ -76,16 +97,181 @@ class Window(Views,QMainWindow):
                 if not self.checked_app_at_startup and self.update_preferences.value('checkAtStartup', True, type=bool):
                     self.checked_app_at_startup = True
                     self.check_app_update(automatic=True)
+                self.refresh_audio_catalog()
                 self._auto_update_check=True
+                self._catalog_update_inflight = True
                 self.client.send('check_updates')
+            else:
+                self.audio_market.loading_catalog = False
         except Exception:
             self.render_interrupted('本机服务未能启动。请保留完整目录，重新解压应用。')
 
+    def camera_operation_active(self):
+        return bool(self.inflight or self.state.get('busy') or self.audio_import_flow_active)
+
+    def _current_phase(self):
+        return 'progress' if self.state.get('busy') else self.state.get('phase', 'notice')
+
+    def _is_camera_connected(self):
+        return self._current_phase() == 'home' and bool(self.state.get('compatible')) and bool(self.state.get('connected'))
+
+    def _feature_state(self, feature_id):
+        for item in self.state.get('features', []):
+            if item.get('id') == feature_id:
+                return item.get('state', 'unknown')
+        return 'unknown'
+
+    def _custom_sound_state(self):
+        for item in self.state.get('features', []):
+            if item.get('id') == 'custom_shutter_sound':
+                return item.get('state', 'unknown')
+        cs = self.state.get('custom_sound')
+        return cs.get('state', 'unknown') if isinstance(cs, dict) else 'unknown'
+
+    def _can_install_audio(self):
+        return (
+            self._is_camera_connected()
+            and self._feature_state('sound') == 'enabled'
+            and self._custom_sound_state() == 'enabled'
+            and self.state.get('camera_disconnect') is None
+        )
+
+    def _install_disabled_reason(self):
+        if self.state.get('camera_disconnect') is not None:
+            return '相机已断开维护模式，请重新连接后再安装声音。'
+        if not self._is_camera_connected():
+            return '请先连接并检查相机，再将声音安装到槽位'
+        if self._feature_state('sound') != 'enabled':
+            return '请先在「功能管理」解锁电子快门声音'
+        if self._custom_sound_state() != 'enabled':
+            return '当前相机未解锁自定义快门声'
+        return '选择相机槽位 1～10 写入当前声音'
+
+    def open_market(self):
+        if self.camera_operation_active():
+            return
+        self.return_to_market_after_connect = False
+        self.viewing_market = True
+        self.ensure_audio_slots_loaded()
+        self.refresh_chrome(self._current_phase())
+
+    def open_camera_workspace(self):
+        self.return_to_market_after_connect = False
+        self.viewing_market = False
+        self.render()
+
+    def _connect_from_market(self):
+        if self.camera_operation_active():
+            return
+        self.return_to_market_after_connect = True
+        self.viewing_market = False
+        self.render()
+
+    def refresh_audio_catalog(self):
+        if not (self.physical and self.client.alive()) or self.inflight or self.state.get('busy'):
+            return
+        if self._catalog_update_inflight:
+            self._pending_audio_catalog = True
+            self.audio_market.loading_catalog = True
+            self.audio_market.changed.emit()
+            return
+        self._pending_audio_catalog = False
+        self.audio_market.loading_catalog = True
+        self.audio_market.changed.emit()
+        self.client.send('list_audio', request_id=uuid4().hex)
+
+    def ensure_audio_slots_loaded(self):
+        if not (self.physical and self._is_camera_connected() and self._custom_sound_state() == 'enabled' and self.state.get('camera_disconnect') is None):
+            return
+        op_id = self.state.get('operation_id') or 'connected'
+        if self.audio_slots_loaded_op == op_id:
+            return
+        self.refresh_audio_slots()
+
+    def refresh_audio_slots(self):
+        if not self.physical or self.camera_operation_active() or self.state.get('camera_disconnect') is not None:
+            return
+        self.audio_slots_busy = True
+        self.audio_slots = None
+        self.reset_audio_import_flow()
+        self.client.send('refresh_audio_slots', request_id=uuid4().hex)
+
+    def reset_audio_import_flow(self):
+        self.audio_import_flow_active = False
+        self.audio_import_flow_slot = None
+        self.audio_import_flow_message = ''
+        self.audio_plan = None
+        self.audio_confirmation = None
+        self.audio_execute = None
+        self.audio_error_text = ''
+
+    def start_market_sound_import(self, sound, slot, target_name=None):
+        if self.state.get('busy') or self.inflight or not (1 <= slot <= 10):
+            return
+        self.reset_audio_import_flow()
+        self.audio_import_flow_active = True
+        self.audio_import_flow_slot = slot
+        self.audio_import_flow_message = f'正在校验音频并生成槽位 {slot} 导入计划…'
+        extra = {'slot': slot, 'request_id': uuid4().hex}
+        custom_name = (target_name or '').strip()
+        if custom_name:
+            extra['filename'] = custom_name
+        if sound.source_kind in ('sample', 'personal') and sound.file_path is not None:
+            extra.update(source='local', path=str(sound.file_path))
+        elif sound.source_kind == 'catalog':
+            extra.update(source='market', package_id=sound.package_id, sound_id=sound.sound_id)
+        else:
+            self.audio_import_flow_active = False
+            self.audio_import_flow_message = ''
+            self.audio_error_text = '音频来源无效。'
+            return
+        self.client.send('plan_audio_import', **extra)
+
+    def _preview_market_sound(self, sound):
+        def fetch_catalog(pkg_id, snd_id, full_id):
+            if not self.physical or self.camera_operation_active():
+                self.audio_market.preparing_id = None
+                self.audio_market.error = '当前模式下请直接导入或试听内置声音。'
+                self.audio_market.changed.emit()
+                return
+            self._pending_preview_sound_id = full_id
+            self.client.send('preview_audio', package_id=pkg_id, sound_id=snd_id, request_id=uuid4().hex)
+
+        self.audio_market.preview(sound, worker_preview_cb=fetch_catalog)
+
+    def _market_controller(self):
+        return {
+            'is_physical': lambda: self.physical,
+            'is_camera_connected': self._is_camera_connected,
+            'is_busy': self.camera_operation_active,
+            'electronic_sound_state': lambda: self._feature_state('sound'),
+            'custom_sound_state': self._custom_sound_state,
+            'custom_sound_reason': lambda: (self.state.get('custom_sound') or {}).get('reason', ''),
+            'can_install_audio': self._can_install_audio,
+            'install_disabled_reason': self._install_disabled_reason,
+            'get_camera_slots': lambda: self.audio_slots,
+            'audio_slots_busy': lambda: self.audio_slots_busy,
+            'audio_import_busy': lambda: self.audio_import_flow_active,
+            'get_flow_message': lambda: self.audio_import_flow_message,
+            'get_audio_execute': lambda: self.audio_execute,
+            'get_audio_error': lambda: self.audio_error_text,
+            'on_connect': self._connect_from_market,
+            'on_go_features': self.open_camera_workspace,
+            'disconnect': lambda: self.command('disconnect_camera'),
+            'refresh_catalog': self.refresh_audio_catalog,
+            'refresh_slots': self.refresh_audio_slots,
+            'ensure_slots_loaded': self.ensure_audio_slots_loaded,
+            'reset_import_flow': self.reset_audio_import_flow,
+            'start_import': self.start_market_sound_import,
+            'preview_sound': self._preview_market_sound,
+        }
+
     def command(self, name, **values):
-        if name in ('prepare_and_inspect', 'inspect', 'unlock', 'close', 'update_fl23', 'update_ftp', 'check_updates'):
+        if name in ('prepare_and_inspect', 'inspect', 'unlock', 'close', 'update_fl23', 'update_ftp', 'check_updates', 'disconnect_camera'):
             if self.inflight or self.state.get('busy'):
                 return
             if name == 'check_updates':
+                self._catalog_update_inflight = True
                 if self._auto_update_check:
                     self._auto_update_check=False
                     self.client.send('check_updates')
@@ -258,6 +444,8 @@ class Window(Views,QMainWindow):
             QTimer.singleShot(0, self.close); return
         if self.transitioning:
             self.pending_mode = None; self.start(); return
+        self._catalog_update_inflight = False
+        self._pending_audio_catalog = False
         if self.app_download_progress is not None:
             self.finish_app_download({'status': 'download-failed'})
         self.app_update_request = None
@@ -296,6 +484,7 @@ class Window(Views,QMainWindow):
             if self.app_update_request and event.get('request_id') == self.app_update_request:
                 self.finish_app_download(event.get('result', {}))
         elif event.get('type') == 'update-result':
+            self._catalog_update_inflight = False
             result = event.get('result', {})
             status = result.get('status', 'error')
             sequence = result.get('sequence')
@@ -315,6 +504,8 @@ class Window(Views,QMainWindow):
             self.inflight = None
             self.scroll.setEnabled(True)
             self.render()
+            if self._pending_audio_catalog:
+                self.refresh_audio_catalog()
         elif event.get('type') == 'progress':
             message=event.get('message', '正在等待结果…')
             self.progress.append(message)
@@ -322,7 +513,95 @@ class Window(Views,QMainWindow):
                 self.progress_log_label.setText('\n'.join(self.progress))
             if getattr(self, 'progress_label', None) and not self.cancel_requested:
                 self.progress_label.setText(message)
+        elif event.get('type') == 'audio-result':
+            result = event.get('result', {})
+            if 'slots' in result:
+                self.audio_slots = result['slots']
+            self.audio_market.set_catalog_from_worker(result.get('packages', []))
+            if hasattr(self, 'market_widget') and self.viewing_market:
+                self.market_widget.refresh()
+        elif event.get('type') == 'audio-slots-result':
+            result = event.get('result', {})
+            self.audio_slots_busy = False
+            if result.get('status') == 'ready':
+                self.audio_slots = result.get('slots')
+                self.audio_slots_loaded_op = self.state.get('operation_id') or 'connected'
+                self.audio_error_text = ''
+            else:
+                self.audio_error_text = result.get('error') or '相机槽位读取失败。'
+            if hasattr(self, 'market_widget'):
+                self.market_widget.notify_install_state()
+        elif event.get('type') == 'audio-preview-result':
+            result = event.get('result', {})
+            sid = self._pending_preview_sound_id
+            self._pending_preview_sound_id = None
+            if result.get('status') == 'ready' and result.get('path'):
+                try:
+                    raw = Path(result['path']).read_bytes()
+                    self.audio_market._play_wav_bytes(raw, sid or 'catalog', 350)
+                except OSError:
+                    self.audio_market.preparing_id = None
+                    self.audio_market.error = '音频试听文件读取失败。'
+                    self.audio_market.changed.emit()
+            else:
+                self.audio_market.preparing_id = None
+                self.audio_market.error = result.get('error') or '音频试听准备失败。'
+                self.audio_market.changed.emit()
+        elif event.get('type') == 'audio-import-plan-result':
+            result = event.get('result', {})
+            self.audio_plan = result
+            if self.audio_import_flow_active:
+                if result.get('status') == 'ready' and result.get('can_execute') and result.get('digest'):
+                    slot = (result.get('target') or {}).get('slot', self.audio_import_flow_slot)
+                    self.audio_import_flow_message = f'音频检查通过，正在确认导入槽位 {slot}…'
+                    self.client.send('confirm_audio_import', plan_digest=result['digest'], confirmed=True, request_id=uuid4().hex)
+                else:
+                    self.audio_import_flow_active = False
+                    self.audio_import_flow_message = ''
+                    reasons = result.get('reasons') or []
+                    self.audio_error_text = result.get('error') or (reasons[0].get('message') if reasons else '音频校验或导入计划生成未通过。')
+            if hasattr(self, 'market_widget'):
+                self.market_widget.notify_install_state()
+        elif event.get('type') == 'audio-import-confirmation-result':
+            result = event.get('result', {})
+            self.audio_confirmation = result
+            if self.audio_import_flow_active:
+                digest = result.get('plan_digest')
+                if result.get('user_confirmation') == 'confirmed' and digest and self.audio_plan and digest == self.audio_plan.get('digest'):
+                    slot = (self.audio_plan.get('target') or {}).get('slot', self.audio_import_flow_slot)
+                    self.audio_import_flow_message = f'正在写入相机槽位 {slot} 并执行独立回读…'
+                    self.client.send('execute_audio_import', plan_digest=digest, request_id=uuid4().hex)
+                else:
+                    self.audio_import_flow_active = False
+                    self.audio_import_flow_message = ''
+                    self.audio_error_text = result.get('error') or '未能确认导入计划。'
+            if hasattr(self, 'market_widget'):
+                self.market_widget.notify_install_state()
+        elif event.get('type') == 'audio-import-execute-progress':
+            if self.audio_import_flow_active:
+                self.audio_import_flow_message = event.get('message') or '正在写入相机槽位…'
+                if hasattr(self, 'market_widget'):
+                    self.market_widget.notify_install_state()
+        elif event.get('type') == 'audio-import-execute-result':
+            result = event.get('result', {})
+            self.audio_execute = result
+            self.audio_import_flow_active = False
+            self.audio_import_flow_message = ''
+            if result.get('status') == 'completed' and result.get('independent_readback') is True:
+                self.audio_error_text = ''
+                slot_num = result.get('target_slot', self.audio_import_flow_slot)
+                if self.audio_slots and slot_num is not None:
+                    fname = ((self.audio_plan or {}).get('candidate') or {}).get('filename') or result.get('filename') or '已写入'
+                    self.audio_slots = [
+                        (dict(item, status='occupied', name=fname) if int(item.get('slot', 0)) == int(slot_num) else item)
+                        for item in self.audio_slots
+                    ]
+            else:
+                self.audio_error_text = result.get('error') or '声音槽位写入未完成。'
+            if hasattr(self, 'market_widget'):
+                self.market_widget.notify_install_state()
         elif event.get('type') == 'error':
+            self._catalog_update_inflight = False
             self.inflight = None
             self.scroll.setEnabled(True)
             QMessageBox.information(self, '暂时无法继续', event.get('message', '请先完成前置步骤。'))
@@ -355,11 +634,12 @@ class Window(Views,QMainWindow):
             self.command(action)
 
     def closeEvent(self, event: QCloseEvent):
-        if self.state.get('busy') or self.inflight:
+        if self.state.get('busy') or self.inflight or self.audio_import_flow_active:
             QMessageBox.information(self, '请等待当前操作', '正在操作，暂不能关闭。可请求取消并等待明确结果。')
             event.ignore(); return
         if self.client.alive():
             self.closing = True; self.mode.setEnabled(False); self.command('shutdown'); event.ignore(); return
+        self.audio_market.cleanup()
         event.accept()
 
 
@@ -372,14 +652,24 @@ def main():
         parser.error('--offline-self-test requires --report')
     app = QApplication(sys.argv[:1]); app.setStyle('Fusion')
     font=QFont('Microsoft YaHei UI' if sys.platform=='win32' else 'PingFang SC');font.setPixelSize(12);app.setFont(font);app.setStyleSheet(STYLE)
-    window = Window(args.demo or args.offline_self_test, enable_usage_session=not args.offline_self_test)
-    if args.offline_self_test:
-        window.checked_app_at_startup = True
-    window.show()
-    if args.offline_self_test:
-        from smoke import run
-        return run(window, args.report)
-    return app.exec()
+    smoke_dir = TemporaryDirectory(prefix='powerful-win-smoke-') if args.offline_self_test else None
+    try:
+        window = Window(
+            args.demo or args.offline_self_test,
+            enable_usage_session=not args.offline_self_test,
+            audio_library=(Path(smoke_dir.name) / 'audio-library') if smoke_dir else None,
+            audio_favorites={} if args.offline_self_test else None,
+        )
+        if args.offline_self_test:
+            window.checked_app_at_startup = True
+        window.show()
+        if args.offline_self_test:
+            from smoke import run
+            return run(window, args.report)
+        return app.exec()
+    finally:
+        if smoke_dir is not None:
+            smoke_dir.cleanup()
 
 
 if __name__ == '__main__':

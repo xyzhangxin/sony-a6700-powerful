@@ -20,11 +20,13 @@ from .app_updates import check_app_update, download_app_update, download_install
 from .controller import DesktopController
 from .update_service import DesktopUpdateService
 from .protocol import decode_request, event
+from ..custom_sound_slots import valid_slot
 from ..device_protocol import DeviceBusyError
 from ..operations import default_state_dir
-from ..failure_feedback import FailureTrace, build_failure_archive
 from ..usage import UsageReporter
+from ..failure_feedback import FailureTrace, build_failure_archive, failure_details
 from .. import feedback as failure_feedback
+from ..feedback import build_feedback
 
 
 def main():
@@ -39,6 +41,7 @@ def main():
     feedback_state = args.state_dir or default_state_dir()
     failure_report = None
     failure_archive = None
+    failure_export = None
     failure_upload_lock = Lock()
     automatic_reports = Queue(maxsize=4)
     automatic_thread = None
@@ -53,8 +56,9 @@ def main():
         with failure_upload_lock:
             if automatic and not failure_feedback.auto_failure_enabled(feedback_state):
                 return None
-            return failure_feedback.upload_feedback(report, description, state_dir=feedback_state,
-                                                   email=email, failure_archive=archive)
+            return failure_feedback.upload_feedback(
+                report, description, state_dir=feedback_state,
+                include_artifact=False, email=email, failure_archive=archive)
 
     def upload_automatic_failures():
         while True:
@@ -64,8 +68,8 @@ def main():
             except (OSError, ValueError, TypeError, KeyError):
                 pass
 
-    def emit(kind, request_id=None, **values):
-        nonlocal failure_report, failure_archive, failure_preview_id
+    def emit(kind, request_id=None, *, failure_outcome=None, **values):
+        nonlocal failure_report, failure_archive, failure_export, failure_preview_id
         scheduled = None
         if kind == 'state':
             state = values['state']
@@ -77,21 +81,25 @@ def main():
             state['automatic_failure_feedback'] = failure_feedback.auto_failure_enabled(feedback_state)
             if state.get('busy') and failure_trace.identity != state.get('operation_id'):
                 failure_trace.begin(state['operation_id'], state)
-            candidate = failure_trace.report(state)
+            outcome = failure_outcome if failure_outcome is not None else controller.last_report
+            candidate = failure_trace.report(state, outcome)
             if candidate is not None:
                 if failure_report is None or candidate['operation_id'] != failure_report['operation_id']:
                     failure_report = candidate
                     failure_preview_id = None
                     try:
-                        edits = {edit.id for edit in controller.service.profile.catalog.edits}
-                        failure_archive = build_failure_archive(candidate, state, controller.last_report, edits)
+                        known_edits = {edit.id for edit in controller.service.profile.catalog.edits}
+                        failure_export = failure_details(candidate, outcome, state, known_edits)
+                        failure_archive = build_failure_archive(candidate, failure_export)
                     except (ValueError, TypeError, KeyError):
                         failure_archive = None
+                        failure_export = None
                     if automatic_thread is not None and state['automatic_failure_feedback']:
                         scheduled = candidate, failure_archive
             elif state.get('busy'):
                 failure_report = None
                 failure_archive = None
+                failure_export = None
                 failure_preview_id = None
         with output_lock:
             print(json.dumps(event(kind, request_id=request_id, **values), ensure_ascii=False), flush=True,
@@ -108,7 +116,9 @@ def main():
     update_thread = None
     app_update_thread = None
     app_update_offer = None
-    update_service = DesktopUpdateService(args.state_dir)
+    update_service = DesktopUpdateService(
+        args.state_dir, adapter_set=controller.service.adapter_set,
+        audio_import_ready=os.environ.get('A6700_AUDIO_IMPORT_PREVIEW') == '1')
     guided_thread = None
     guided_cancel = None
     guided_session = None
@@ -135,8 +145,10 @@ def main():
             failure_trace.progress(message)
             emit('progress', message=message, request_id=request_id)
         try:
-            emit('state', state=(controller.run_takeover(progress) if controller.action == 'takeover'
-                                  else controller.run_reserved(progress)), request_id=request_id)
+            takeover = controller.action == 'takeover'
+            state = controller.run_takeover(progress) if takeover else controller.run_reserved(progress)
+            emit('state', state=state, request_id=request_id,
+                 failure_outcome=None if takeover else controller.last_report)
         except (Exception, KeyboardInterrupt) as exc:
             with controller.lock:
                 controller.busy = False
@@ -180,7 +192,8 @@ def main():
         except Exception:
             result = dict(status='unavailable')
         app_update_offer = result if result['status'] == 'available' else None
-        emit('app-update-result', result={key: result[key] for key in ('status', 'version', 'installable') if key in result},
+        emit('app-update-result',
+             result={key: result[key] for key in ('status', 'version', 'installable') if key in result},
              request_id=request_id)
 
     def run_app_download(offer, request_id):
@@ -198,6 +211,137 @@ def main():
         else:
             result = dict(status='downloaded', path=str(path.resolve()))
         emit('app-update-download-result', result=result, request_id=request_id)
+
+    def run_audio_catalog(request_id):
+        try:
+            result = update_service.audio_catalog()
+        except Exception:
+            result = dict(status="error", packages=[])
+        try:
+            result["slots"] = update_service.audio_slots()
+        except Exception:
+            from ..custom_sound_slots import slot_inventory
+            result["slots"] = slot_inventory()
+        emit("audio-result", result=result, request_id=request_id,
+             operation_id=controller.operation_id)
+
+    def run_audio_slots(request_id):
+        was_connected = controller.service.connected
+        try:
+            result = controller.service.read_audio_slots()
+        except Exception as exc:
+            from ..custom_sound_slots import slot_inventory
+            result = dict(status='error', slots=slot_inventory(),
+                          error=str(exc).strip() or '相机槽位读取失败。')
+        if was_connected and not controller.service.connected and not controller.busy:
+            emit('state', state=controller.end_session(), request_id=request_id)
+        emit('audio-slots-result', result=result, request_id=request_id,
+             operation_id=controller.operation_id)
+
+    def run_audio_preview(request_id, package_id, sound_id):
+        try:
+            result = update_service.audio_preview(package_id, sound_id)
+        except Exception as exc:
+            result = dict(status="error", error=str(exc).strip() or "音频试听准备失败。")
+        emit("audio-preview-result", result=result, request_id=request_id,
+             operation_id=controller.operation_id)
+
+    def run_audio_export(request_id, request):
+        try:
+            result = update_service.export_audio_package(
+                request.get('path'), package_id=request.get('package_id'),
+                version=request.get('version'), title=request.get('title'),
+                description=request.get('description'), author=request.get('author'),
+                license=request.get('license'), sound_title=request.get('sound_title'))
+        except Exception as exc:
+            result = dict(status="error", error=str(exc).strip() or "音频包导出失败。")
+        emit("audio-export-result", result=result, request_id=request_id,
+             operation_id=controller.operation_id)
+
+    def run_audio_import_plan(request_id, request):
+        try:
+            result = update_service.plan_audio_import(
+                request.get('source'), path=request.get('path'),
+                target_slot=request.get('slot'),
+                package_id=request.get('package_id'),
+                sound_id=request.get('sound_id'),
+                filename=request.get('filename'))
+        except Exception as exc:
+            result = dict(status="error", error=str(exc).strip() or "音频导入计划生成失败。")
+        emit("audio-import-plan-result", result=result, request_id=request_id,
+             operation_id=controller.operation_id)
+
+    def run_audio_import_batch(request_id, package_id):
+        try:
+            result = update_service.plan_audio_import_batch(package_id)
+        except Exception as exc:
+            result = dict(status="error", error=str(exc).strip() or "音频批量导入计划生成失败。")
+        emit("audio-import-batch-result", result=result, request_id=request_id,
+             operation_id=controller.operation_id)
+
+    def run_audio_import_confirmation(request_id, request):
+        try:
+            result = update_service.confirm_audio_import(
+                request.get('plan_digest'), request.get('confirmed'))
+        except Exception as exc:
+            result = dict(status="error", error=str(exc).strip() or "音频导入确认失败。")
+        emit("audio-import-confirmation-result", result=result, request_id=request_id,
+             operation_id=controller.operation_id)
+
+    def run_audio_import_gate(request_id, plan_digest):
+        try:
+            result = update_service.gate_audio_import(plan_digest)
+        except Exception as exc:
+            result = dict(status="error", error=str(exc).strip() or "音频导入执行门禁检查失败。")
+        emit("audio-import-gate-result", result=result, request_id=request_id,
+             operation_id=controller.operation_id)
+
+    def run_audio_import_batch_confirmation(request_id, request):
+        try:
+            result = update_service.confirm_audio_import_batch(
+                request.get('batch_digest'), request.get('confirmed'))
+        except Exception as exc:
+            result = dict(status="error", error=str(exc).strip() or "音频批量导入确认失败。")
+        emit("audio-import-batch-confirmation-result", result=result,
+             request_id=request_id, operation_id=controller.operation_id)
+
+    def run_audio_import_batch_gate(request_id, batch_digest):
+        try:
+            result = update_service.gate_audio_import_batch(batch_digest)
+        except Exception as exc:
+            result = dict(status="error", error=str(exc).strip() or "音频批量导入执行门禁检查失败。")
+        emit("audio-import-batch-gate-result", result=result,
+             request_id=request_id, operation_id=controller.operation_id)
+
+    def run_audio_import_execution(request_id, plan_digest):
+        try:
+            plan, candidate = update_service.prepare_audio_import_execution(plan_digest)
+        except Exception as exc:
+            emit("audio-import-execute-result",
+                 result=dict(status="error",
+                             error=str(exc).strip() or "音频导入执行准备失败。"),
+                 request_id=request_id, operation_id=controller.operation_id)
+            return
+
+        def execute():
+            was_connected = controller.service.connected
+            try:
+                result = controller.service.execute_audio_import(
+                    plan, candidate,
+                    progress=lambda message: emit(
+                        "audio-import-execute-progress", message=message,
+                        request_id=request_id, operation_id=controller.operation_id))
+            except Exception as exc:
+                result = dict(status="error",
+                              error=str(exc).strip() or "音频导入执行失败。")
+            if was_connected and not controller.service.connected and not controller.busy:
+                emit("state", state=controller.end_session(), request_id=request_id)
+            emit("audio-import-execute-result", result=result,
+                 request_id=request_id, operation_id=controller.operation_id)
+
+        nonlocal update_thread
+        update_thread = Thread(target=execute, daemon=True)
+        update_thread.start()
 
     def run_diagnostic(camera, request_id):
         nonlocal last_diagnostic
@@ -600,11 +744,13 @@ def main():
                 if controller.busy or failure_report is None:
                     raise ValueError('请先完成当前操作。')
                 failure_preview_id = failure_report['operation_id']
-                preview = failure_feedback.build_feedback(failure_report)
+                preview = build_feedback(failure_report)
                 preview.pop('feedback_id')  # Assigned when confirming the final description.
                 emit('failure-feedback-preview', result=dict(
                     operation_id=failure_report['operation_id'],
                     payload=preview,
+                    details=failure_export,
+                    archive_bytes=len(failure_archive) if failure_archive else 0,
                     destination='https://powerful6700-api.susukele.com', retention_days=30),
                     request_id=request_id)
                 continue
@@ -621,7 +767,7 @@ def main():
                 if not isinstance(description, str) or len(description) > 2000:
                     raise ValueError('问题描述无效。')
                 try:
-                    failure_feedback.build_feedback(report, description, email=email)
+                    build_feedback(report, description, email=email)
                 except ValueError as exc:
                     emit('failure-feedback-result', result=dict(status='invalid', error=str(exc)), request_id=request_id)
                     continue
@@ -633,12 +779,6 @@ def main():
                     emit('failure-feedback-result', result=value, request_id=identity)
                 support_thread = Thread(target=upload_failure, daemon=True)
                 support_thread.start()
-                continue
-            if command == 'prepare_and_inspect':
-                controller.prepare_and_reserve(request.get('acknowledged'), request.get('prepared'))
-                emit('state', state=controller.snapshot(), request_id=request_id)
-                thread = Thread(target=run, args=(request_id,), daemon=True)
-                thread.start()
                 continue
             if command == 'download_app_update':
                 if app_update_offer is None or (app_update_thread is not None and app_update_thread.is_alive()):
@@ -654,11 +794,147 @@ def main():
                 app_update_thread = Thread(target=run_app_update, args=(request_id,), daemon=True)
                 app_update_thread.start()
                 continue
+            if command == 'prepare_and_inspect':
+                controller.prepare_and_reserve(request.get('acknowledged'), request.get('prepared'))
+                emit('state', state=controller.snapshot(), request_id=request_id)
+                thread = Thread(target=run, args=(request_id,), daemon=True)
+                thread.start()
+                continue
             if command == 'check_updates':
                 if controller.busy or (thread is not None and thread.is_alive()) or (guided_thread is not None and guided_thread.is_alive()) or (update_thread is not None and update_thread.is_alive()):
                     raise ValueError('请等待当前相机操作或更新检查结束。')
                 update_thread = Thread(target=run_update, args=(request_id,), daemon=True)
                 update_thread.start()
+                continue
+            if command == 'refresh_audio_slots':
+                if controller.camera_disconnect is not None:
+                    emit('audio-slots-result', result=dict(status='error', error='请先重新连接并检查相机。'),
+                         request_id=request_id, operation_id=controller.operation_id)
+                    continue
+                if (controller.busy or (thread is not None and thread.is_alive())
+                        or (guided_thread is not None and guided_thread.is_alive())
+                        or (update_thread is not None and update_thread.is_alive())):
+                    raise ValueError('请等待当前相机操作或更新检查结束。')
+                update_thread = Thread(target=run_audio_slots, args=(request_id,), daemon=True)
+                update_thread.start()
+                continue
+            if command == 'list_audio':
+                if (controller.busy or (thread is not None and thread.is_alive())
+                        or (guided_thread is not None and guided_thread.is_alive())
+                        or (update_thread is not None and update_thread.is_alive())):
+                    raise ValueError('请等待当前相机操作或更新检查结束。')
+                run_audio_catalog(request_id)
+                continue
+            if command == 'preview_audio':
+                if (controller.busy or (thread is not None and thread.is_alive())
+                        or (guided_thread is not None and guided_thread.is_alive())
+                        or (update_thread is not None and update_thread.is_alive())):
+                    raise ValueError('请等待当前相机操作或更新检查结束。')
+                package_id = request.get('package_id')
+                sound_id = request.get('sound_id')
+                if not isinstance(package_id, str) or not package_id:
+                    raise ValueError('音频包 ID 无效。')
+                if not isinstance(sound_id, str) or not sound_id:
+                    raise ValueError('音频 ID 无效。')
+                run_audio_preview(request_id, package_id, sound_id)
+                continue
+            if command == 'export_audio_package':
+                if (controller.busy or (thread is not None and thread.is_alive())
+                        or (guided_thread is not None and guided_thread.is_alive())
+                        or (update_thread is not None and update_thread.is_alive())):
+                    raise ValueError('请等待当前相机操作或更新检查结束。')
+                required = ('path', 'package_id', 'version', 'title',
+                            'description', 'author', 'license')
+                if any(not isinstance(request.get(key), str) or not request[key] for key in required):
+                    raise ValueError('音频包导出请求无效。')
+                run_audio_export(request_id, request)
+                continue
+            if command == 'plan_audio_import':
+                if (controller.busy or (thread is not None and thread.is_alive())
+                        or (guided_thread is not None and guided_thread.is_alive())
+                        or (update_thread is not None and update_thread.is_alive())):
+                    raise ValueError('请等待当前相机操作或更新检查结束。')
+                source = request.get('source')
+                if source not in ('local', 'market'):
+                    raise ValueError('音频来源无效。')
+                if not valid_slot(request.get('slot')):
+                    raise ValueError('音频导入槽位无效。')
+                if source == 'local' and (not isinstance(request.get('path'), str)
+                                          or not request['path']):
+                    raise ValueError('本地音频路径无效。')
+                if source == 'market':
+                    if (not isinstance(request.get('package_id'), str)
+                            or not request['package_id']
+                            or not isinstance(request.get('sound_id'), str)
+                            or not request['sound_id']):
+                        raise ValueError('市场音频选择无效。')
+                run_audio_import_plan(request_id, request)
+                continue
+            if command == 'plan_audio_import_batch':
+                if (controller.busy or (thread is not None and thread.is_alive())
+                        or (guided_thread is not None and guided_thread.is_alive())
+                        or (update_thread is not None and update_thread.is_alive())):
+                    raise ValueError('请等待当前相机操作或更新检查结束。')
+                package_id = request.get('package_id')
+                if not isinstance(package_id, str) or not package_id:
+                    raise ValueError('音频包 ID 无效。')
+                run_audio_import_batch(request_id, package_id)
+                continue
+            if command == 'confirm_audio_import':
+                if (controller.busy or (thread is not None and thread.is_alive())
+                        or (guided_thread is not None and guided_thread.is_alive())
+                        or (update_thread is not None and update_thread.is_alive())):
+                    raise ValueError('请等待当前相机操作或更新检查结束。')
+                if (not isinstance(request.get('plan_digest'), str)
+                        or not request['plan_digest']
+                        or type(request.get('confirmed')) is not bool):
+                    raise ValueError('音频导入确认请求无效。')
+                run_audio_import_confirmation(request_id, request)
+                continue
+            if command == 'gate_audio_import':
+                if (controller.busy or (thread is not None and thread.is_alive())
+                        or (guided_thread is not None and guided_thread.is_alive())
+                        or (update_thread is not None and update_thread.is_alive())):
+                    raise ValueError('请等待当前相机操作或更新检查结束。')
+                plan_digest = request.get('plan_digest')
+                if not isinstance(plan_digest, str) or not plan_digest:
+                    raise ValueError('音频导入计划摘要无效。')
+                run_audio_import_gate(request_id, plan_digest)
+                continue
+            if command == 'confirm_audio_import_batch':
+                if (controller.busy or (thread is not None and thread.is_alive())
+                        or (guided_thread is not None and guided_thread.is_alive())
+                        or (update_thread is not None and update_thread.is_alive())):
+                    raise ValueError('请等待当前相机操作或更新检查结束。')
+                if (not isinstance(request.get('batch_digest'), str)
+                        or not request['batch_digest']
+                        or type(request.get('confirmed')) is not bool):
+                    raise ValueError('音频批量导入确认请求无效。')
+                run_audio_import_batch_confirmation(request_id, request)
+                continue
+            if command == 'gate_audio_import_batch':
+                if (controller.busy or (thread is not None and thread.is_alive())
+                        or (guided_thread is not None and guided_thread.is_alive())
+                        or (update_thread is not None and update_thread.is_alive())):
+                    raise ValueError('请等待当前相机操作或更新检查结束。')
+                batch_digest = request.get('batch_digest')
+                if not isinstance(batch_digest, str) or not batch_digest:
+                    raise ValueError('音频批量导入计划摘要无效。')
+                run_audio_import_batch_gate(request_id, batch_digest)
+                continue
+            if command == 'execute_audio_import':
+                if controller.camera_disconnect is not None:
+                    emit('audio-import-execute-result', result=dict(status='error', error='请先重新连接并检查相机。'),
+                         request_id=request_id, operation_id=controller.operation_id)
+                    continue
+                if (controller.busy or (thread is not None and thread.is_alive())
+                        or (guided_thread is not None and guided_thread.is_alive())
+                        or (update_thread is not None and update_thread.is_alive())):
+                    raise ValueError('请等待当前相机操作或更新检查结束。')
+                plan_digest = request.get('plan_digest')
+                if not isinstance(plan_digest, str) or not plan_digest:
+                    raise ValueError('音频导入计划摘要无效。')
+                run_audio_import_execution(request_id, plan_digest)
                 continue
             if command == 'guided_diagnostic':
                 try:
@@ -727,6 +1003,11 @@ def main():
                 state = controller.select_features(request.get('mode'))
             elif command == 'acknowledge_check':
                 state = controller.acknowledge_check()
+            elif command == 'disconnect_camera':
+                if ((thread is not None and thread.is_alive()) or guided_job_alive()
+                        or (update_thread is not None and update_thread.is_alive())):
+                    raise ValueError('请等待当前相机操作结束。')
+                state = controller.disconnect_camera()
             elif command == 'shutdown':
                 if guided_job_alive():
                     guided_thread.join()

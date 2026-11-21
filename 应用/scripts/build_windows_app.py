@@ -113,7 +113,11 @@ def main():
                                '--exclude-module','PySide6',str(ROOT/'desktop/windows/service.py')],check=True)
         subprocess.run(common+['--name','Powerful6700','--windowed',
                                '--icon',str(icon),
+                               '--paths',str(ROOT/'desktop/windows'),
                                '--hidden-import','smoke',
+                               '--hidden-import','audio_market',
+                               '--hidden-import','market_views',
+                               '--add-data',str(ROOT/'desktop/macos/默认音频')+':默认音频',
                                '--add-data',str(ROOT/'desktop/品牌/Powerful6700.png')+':.',
                                str(ROOT/'desktop/windows/main.py')],check=True)
         bundle=work/'dist/Powerful6700'

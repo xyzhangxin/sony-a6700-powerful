@@ -1,0 +1,13 @@
+{
+  "camera_access": false,
+  "boot_native_cases": 8,
+  "boot_host_cases": 5,
+  "cp_native_cases": 11,
+  "cp_host_cases": 3,
+  "runtime_native_cases": 2,
+  "payloads": {
+    "boot_log": "447aff30b1797b48615af0dc7a0edf28ab0ab6e01db0b1847d5591fc78091363",
+    "cp_exception": "cb7f950504c088e3dbd11c24b5378e722bc117fa95b9ae675b9d1016fdc3197c",
+    "runtime": "6bf50254cfadb5b6fa3ea39e6da3c0398cacd33dc484a669b21b626dcfd22353"
+  }
+}

@@ -1,6 +1,37 @@
 import SwiftUI
 import AppKit
 
+struct CameraDisconnectControl: View {
+    @ObservedObject var model: PreviewModel
+    var showsAction = true
+
+    var body: some View {
+        let result = model.state?.camera_disconnect
+        let confirmed = result?.cleanup_status == "msc-observed" && result?.cleanup_warning == nil
+        VStack(alignment: .leading, spacing: 5) {
+            if confirmed {
+                Label("已断开相机 · MSC 已恢复", systemImage: "checkmark.circle")
+                    .foregroundColor(UI.muted)
+            } else {
+                let pending = model.pendingAction == "disconnect_camera"
+                if showsAction {
+                    Button(pending ? "正在断开…" : result == nil ? "断开相机" : "重新确认断开") {
+                        model.send("disconnect_camera")
+                    }
+                    .buttonStyle(.bordered).controlSize(.small)
+                    .disabled(model.isBusy || model.serviceExited)
+                }
+                if let warning = result?.cleanup_warning {
+                    Text(warning).textSelection(.enabled)
+                        .foregroundColor(UI.amber)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .font(.system(size: 12))
+    }
+}
+
 struct OperationServiceStoppedView: View {
     @ObservedObject var model: PreviewModel
     let physical: Bool
@@ -45,6 +76,7 @@ struct OperationSuccessView: View {
                 Image(systemName: "checkmark.circle.fill").font(.system(size: 30)).foregroundColor(UI.accent)
                 PageTitle(title: title, subtitle: subtitle)
                 Spacer()
+                if physical { CameraDisconnectControl(model: model) }
                 StatusPill(text: physical ? "待机身验收" : "仅演示结果")
             }
             if let preparation = result?.close_preparation {
@@ -378,7 +410,7 @@ struct FailureFeedbackView: View {
             PageTitle(title: "上传本次异常日志", subtitle: "把这次操作的诊断报告发送给项目维护者。")
             VStack(alignment: .leading, spacing: 7) {
                 Label("随报告发送", systemImage: "doc.text").font(.system(size: 12, weight: .semibold))
-                Text("应用与系统版本、所选功能、组件检查、连接和写入步骤及耗时，以及已有的错误码、回读和退出结果。随报告附上可用的脱敏预检计划和执行结果。")
+                Text("应用与系统版本、所选功能、连接和写入步骤及耗时、错误码和校验项编号。诊断附件包含已有的校验分类、回读和退出结果。")
                 Text("报告保留 30 天。请勿在说明中填写密码、序列号或其他私人信息。报告不包含固件、照片、备份或机内原始日志。")
                     .foregroundColor(UI.muted)
             }.font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)

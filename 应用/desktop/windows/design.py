@@ -46,6 +46,18 @@ QPushButton#segment:checked { background:#d5d8d6; font-weight:600; }
 QPushButton#segment:disabled { color:#aab1ae; }
 QPushButton#iconButton { padding:2px; background:transparent; border-radius:5px; }
 QPushButton#iconButton:hover { background:#edf3f1; }
+QPushButton#compactSecondary { background:#f0f2f1; border:1px solid #dde3e0; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:500; }
+QPushButton#compactSecondary:hover { background:#e4e9e7; }
+QPushButton#compactSecondary:disabled { color:#aab1ae; background:#f4f6f5; border-color:#e6e9e8; }
+QPushButton#compactPrimary { background:#145e4f; color:white; border:0; border-radius:6px; padding:5px 12px; font-size:11px; font-weight:600; }
+QPushButton#compactPrimary:hover { background:#1e6b5b; }
+QPushButton#compactPrimary:disabled { color:#f8faf9; background:#a9c2bb; }
+QPushButton#compactDanger { background:#ad3833; color:white; border:0; border-radius:6px; padding:5px 12px; font-size:11px; font-weight:600; }
+QPushButton#compactDanger:hover { background:#972e29; }
+QPushButton#navTab, QPushButton#marketNavTab { background:transparent; color:#145e4f; border:0; border-radius:6px; padding:6px 12px; font-size:13px; font-weight:500; }
+QPushButton#navTab:hover, QPushButton#marketNavTab:hover { background:#f2f6f4; }
+QPushButton#navTab:checked, QPushButton#marketNavTab:checked { background:#edf3f1; font-weight:600; }
+QPushButton#navTab:disabled, QPushButton#marketNavTab:disabled { color:#aab1ae; }
 QCheckBox { spacing:9px; font-size:12px; }
 QCheckBox:disabled { color:#a0a9a4; }
 QCheckBox::indicator { width:15px; height:15px; border:1px solid #cbd1cd; border-radius:4px; background:#edf0ee; }
@@ -68,8 +80,9 @@ FEATURES={
  'shutter':('关机快门帘','关机闭帘与静音模式联动','aperture'),
  'exposure':('灵活曝光','视频快门、光圈、ISO 独立控制','sliders'),
  'sound':('电子快门声音','解锁电子快门声音与音量选项','sound'),
- 'fl23':('FL2／FL3 创意外观','增加 FL2、FL3；关闭时完整卸载其专属依赖','layers'),
+ 'fl23':('FL2／FL3 创意外观','新增独立 FL2／FL3、图标及完整说明；可与其他功能一起选择，保留简称','layers'),
  'creative_look_names':('创意外观中文名称','主列表和编号 1～6 显示完整名称，可独立启用','layers'),
+ 'custom_shutter_sound':('自定义快门声','十槽固定编号自定义快门声（含“默认”与槽位 1～10）；解锁自动启用「电子快门声音」，可单独关闭','waveform'),
  'pixel_shift':('位移多帧合成','开发与验证尚未完成，暂不开放','layers'),
  'dynamic_active':('动态增强防抖','开发与验证尚未完成，暂不开放','viewfinder'),
 }
@@ -236,6 +249,30 @@ def draw_symbol(p,kind,color,stroke=1.65,fill=None):
         p.drawEllipse(QRectF(7.2,7.2,9.6,9.6))
     elif k=='clock':
         p.drawEllipse(QRectF(3,3,18,18));ln(12,7,12,12);ln(12,12,16,14)
+    elif k=='waveform':
+        for x,y0,y1 in [(4,9,15),(8,5,19),(12,3,21),(16,6,18),(20,10,14)]:
+            ln(x,y0,x,y1)
+    elif k=='play_fill':
+        p.setPen(Qt.PenStyle.NoPen);p.setBrush(QColor(color))
+        path([(7,5),(19,12),(7,19)],True)
+    elif k=='stop_fill':
+        p.setPen(Qt.PenStyle.NoPen);p.setBrush(QColor(color))
+        p.drawRoundedRect(QRectF(6,6,12,12),2,2)
+    elif k=='bookmark':
+        path([(6,3),(18,3),(18,21),(12,16.5),(6,21)],True)
+    elif k=='bookmark.fill':
+        p.setBrush(QColor(color))
+        path([(6,3),(18,3),(18,21),(12,16.5),(6,21)],True)
+    elif k=='pencil':
+        path([(4,20),(5,15),(16,4),(20,8),(9,19)],True);ln(13.5,6.5,17.5,10.5)
+    elif k=='trash':
+        ln(4,6,20,6);ln(9,6,9,3.5);ln(15,6,15,3.5);ln(9,3.5,15,3.5)
+        path([(6,6),(18,6),(17,20.5),(7,20.5)],True);ln(10,10,10,17);ln(14,10,14,17)
+    elif k=='search':
+        p.drawEllipse(QRectF(3.5,3.5,13,13));ln(14.5,14.5,20.5,20.5)
+    elif k=='download':
+        ln(12,3,12,15);path([(7.5,10.5),(12,15),(16.5,10.5)])
+        path([(4,15),(4,20),(20,20),(20,15)])
     else:
         p.drawRoundedRect(QRectF(3,3,18,18),3,3);ln(7,8,17,8);ln(7,12,17,12);ln(7,16,14,16)
 

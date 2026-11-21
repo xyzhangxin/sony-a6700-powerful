@@ -80,11 +80,12 @@ def preview_environment():
     return dict(ready=all(row['ok'] for row in checks), checks=checks, device_access=False)
 
 
-def physical_environment():
+def physical_environment(profile=None):
     """Run the real operation environment checks without enumerating USB."""
     from ..doctor import diagnose
 
-    environment = deepcopy(diagnose(load_device_profile(load_catalog())))
+    target_profile = profile if profile is not None else load_device_profile(load_catalog())
+    environment = deepcopy(diagnose(target_profile))
     for row in environment['checks']:
         if row['id'] == 'payload-integrity':
             row['detail'] = '清单、源码与载荷哈希一致' if row['ok'] else '核心资源校验失败'
@@ -101,8 +102,6 @@ class DesktopController:
             raise ValueError('未知桌面模式。')
         self.mode = mode
         self.directory = directory
-        self.environment_provider = environment_provider or (
-            preview_environment if mode == 'simulation' else physical_environment)
         self.lock = RLock()
         self.cancel = Event()
         self.busy = False
@@ -112,12 +111,15 @@ class DesktopController:
             self.scenario = 'enabled'
             self.scenarios = SCENARIOS
             self.result_labels = SIMULATION_RESULT_LABELS
+            default_env = preview_environment
         else:
             self.service = PhysicalService(physical_state_dir, physical_backend_factory,
                                            physical_backup_dir)
             self.scenario = ''
             self.scenarios = {}
             self.result_labels = PHYSICAL_RESULT_LABELS
+            default_env = lambda: physical_environment(self.service.profile)
+        self.environment_provider = environment_provider or default_env
         self.takeover_manager = TakeoverManager(physical_state_dir) if mode == 'physical' else None
         self._initialize_state()
 
@@ -130,6 +132,8 @@ class DesktopController:
         self.checked = self.compatible = False
         self.notice_acknowledged = False
         self.features = []
+        self.custom_sound = None
+        self.camera_disconnect = None
         self.result = None
         self.last_report = None
         self.phase = 'notice'
@@ -177,6 +181,7 @@ class DesktopController:
             self.confirmed.clear()
             self.compatible = False
             self.features = []
+            self.custom_sound = None
             self.selected_features = set(self._feature_ids())
             self.inspect_summary = None
             self.result = None
@@ -193,6 +198,7 @@ class DesktopController:
                 self.confirmed.clear()
                 self.compatible = False
                 self.features = []
+                self.custom_sound = None
                 self.selected_features = set(self._feature_ids())
                 self.inspect_summary = None
             self.revision += 1
@@ -254,6 +260,7 @@ class DesktopController:
             self.confirmed.clear()
             self.compatible = False
             self.features = []
+            self.custom_sound = None
             self.inspect_summary = None
             self.result = None
             self.phase = self._preparation_phase()
@@ -268,6 +275,7 @@ class DesktopController:
             self.confirmed.clear()
             self.compatible = False
             self.features = []
+            self.custom_sound = None
             self.selected_features = set(self._feature_ids())
             self.inspect_summary = None
             if self.busy:
@@ -288,6 +296,7 @@ class DesktopController:
             self.confirmed.clear()
             self.compatible = False
             self.features = []
+            self.custom_sound = None
             self.selected_features = set(self._feature_ids())
             self.inspect_summary = None
             self.result = None
@@ -303,6 +312,7 @@ class DesktopController:
                 self.confirmed.clear()
                 self.compatible = False
                 self.features = []
+                self.custom_sound = None
                 self.selected_features = set(self._feature_ids())
                 self.phase = 'notice'
             self.revision += 1
@@ -314,7 +324,8 @@ class DesktopController:
     def _feature_definitions(self):
         return feature_definitions(self.service.profile.catalog, simulation=self.mode == 'simulation',
                                    fl23_available=getattr(self.service,'fl23_available',False),
-                                   names_available=getattr(self.service,'names_available',False))
+                                   names_available=getattr(self.service,'names_available',False),
+                                   custom_sound_available=getattr(self.service,'custom_sound_available',False))
 
     def _feature_rows(self, rows):
         # Sparse physical inspection cannot observe external package state.
@@ -323,7 +334,8 @@ class DesktopController:
         if self.mode == 'physical':
             known = {row['id'] for row in rows}
             rows.extend(row for row in pending_rows(fl23_available=getattr(self.service,'fl23_available',False),
-                names_available=getattr(self.service,'names_available',False)) if row['id'] not in known)
+                names_available=getattr(self.service,'names_available',False),
+                custom_sound_available=getattr(self.service,'custom_sound_available',False)) if row['id'] not in known)
         return [dict(row, unlock_notice=MENU_CHECKS.get(row['id'], {}).get('unlock_notice'),
                      close_notice=CLOSE_RULES[row['id']].instruction if row['id'] in CLOSE_RULES else None)
                 for row in rows]
@@ -390,9 +402,31 @@ class DesktopController:
                 self.service.close_session()
             self.compatible = False
             self.features = []
+            self.custom_sound = None
             self.inspect_summary = None
             self.result = None
             self.phase = self._preparation_phase()
+            self.revision += 1
+        return self.snapshot()
+
+    def disconnect_camera(self):
+        with self.lock:
+            if self.mode != 'physical' or self.busy:
+                raise ValueError('请等待当前相机操作结束。')
+            try:
+                cleanup = self.service.close_session(verify_msc=True)
+            except Exception as exc:
+                cleanup = dict(cleanup_status='unconfirmed',
+                               cleanup_warning=str(exc) or '无法确认 USB 服务已退出。')
+            self.camera_disconnect = cleanup
+            self.confirmed.clear()
+            self.compatible = False
+            self.features = []
+            self.custom_sound = None
+            self.inspect_summary = None
+            if self.phase != 'result' or not (self.result or {}).get('success'):
+                self.phase = self._preparation_phase()
+                self.result = None
             self.revision += 1
         return self.snapshot()
 
@@ -472,6 +506,7 @@ class DesktopController:
             self.busy = self.compatible = self.device_access = self.write_attempted = False
             self.confirmed.clear()
             self.features = []
+            self.custom_sound = None
             self.inspect_summary = None
             self.phase = 'result'
             self.result = dict(status='connection-released', title='连接占用已释放',
@@ -518,7 +553,30 @@ class DesktopController:
             self.write_attempted = bool(result.get('write_attempted', False))
             if action == 'inspect' and status == 'inspected':
                 self.compatible = result['plan']['compatible']
+                if self.camera_disconnect is not None and self.compatible and self.service.connected:
+                    self.camera_disconnect = None
                 self.features = self._feature_rows(result['plan']['features'])
+                if self.mode == 'simulation':
+                    sim_enabled = self.scenario in ('enabled', 'close-active')
+                    cs_row = next((r for r in self.features if r.get('id') == 'custom_shutter_sound'), None)
+                    sim_state = cs_row.get('state', 'enabled' if sim_enabled else 'disabled') if cs_row else ('enabled' if sim_enabled else 'disabled')
+                    self.custom_sound = dict(
+                        id='custom_shutter_sound',
+                        name='自定义快门声',
+                        state=sim_state,
+                        requires=['sound'],
+                        available=False,
+                        installable=False,
+                        mode='simulation-enabled' if sim_state == 'enabled' else 'simulation-disabled',
+                        reason=('演示模式已模拟十槽自定义快门声已解锁，可体验完整市场导入流程。'
+                                if sim_state == 'enabled'
+                                else '模拟设备尚未开启十槽自定义快门声；切换至“已解锁可恢复”或“关闭确认演示”场景可体验市场导入。'),
+                    )
+                else:
+                    self.custom_sound = result.get('custom_sound') or dict(
+                        id='custom_shutter_sound', name='自定义快门声', state='unknown',
+                        requires=['sound'], available=False, installable=False, mode='unknown', reason='',
+                    )
                 self.selected_features = {row['id'] for row in self.features
                                           if row['id'] in self._feature_ids() and (row.get('state') != 'enabled' or row.get('update_available'))}
                 self.inspect_summary = dict(
@@ -563,6 +621,8 @@ class DesktopController:
                                                              self.mode == 'simulation'))
                 if checks:
                     self.result['compatibility_checks'] = checks
+                if not self.compatible or action in ('unlock', 'close'):
+                    self.custom_sound = None
                 if action in ('unlock', 'close'):
                     # The result remains visible, but its inspection cannot
                     # authorize another operation after a camera power cycle.
@@ -605,6 +665,8 @@ class DesktopController:
                                requires=next((f.get('requires', []) for f in
                                    self._feature_definitions() if f['id'] == row['id']), []))
                           for row in self.features],
+                custom_sound=self.custom_sound,
+                camera_disconnect=self.camera_disconnect,
                 inspect_summary=self.inspect_summary,
                 backups=backups, backup_dir=str(self.service.backup_dir),
                 busy=self.busy, action=self.action, result=self.result,

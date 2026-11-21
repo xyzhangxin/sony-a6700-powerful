@@ -1,0 +1,27 @@
+{
+  "verification_date": "2026-11-07",
+  "model": "ILCE-6700",
+  "firmware": "2.00",
+  "application_version": "0.4.1",
+  "tool_source_sha256": "0ff12cdd42694caf288591556813015f78c15f9ab9b77c4995f8df9e57e33286",
+  "payloads": {
+    "boot_log": "447aff30b1797b48615af0dc7a0edf28ab0ab6e01db0b1847d5591fc78091363",
+    "cp_exception": "cb7f950504c088e3dbd11c24b5378e722bc117fa95b9ae675b9d1016fdc3197c",
+    "runtime": "6bf50254cfadb5b6fa3ea39e6da3c0398cacd33dc484a669b21b626dcfd22353"
+  },
+  "fixed_log_sources": 14,
+  "cp_native_status": 0,
+  "cp_exception_record": "empty",
+  "repair_code_bytes": 1400,
+  "repair_double_read_stable": true,
+  "service_restore_verified": true,
+  "normal_msc_observed": true,
+  "firmware_writes": false,
+  "parameter_writes": false,
+  "process_memory_writes": false,
+  "limits": [
+    "Only maintainer body has been tested; affected-body evidence remains outstanding.",
+    "No FL23 switching, shooting or restart was requested by the collector.",
+    "Missing CP/core logs or an empty exception pointer do not rule out a reported crash."
+  ]
+}

@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import Foundation
+import AVFoundation
 
 struct CheckRow: Decodable, Identifiable {
     let id: String
@@ -75,17 +76,34 @@ struct Aftercare: Decodable {
     let startup_notice: String?
     let steps: [RestartStep]; let features: [FeatureCheck]
 }
+struct UsageState: Decodable { let enabled: Bool; let queued: Int }
 
-struct UsageState: Decodable { let enabled: Bool }
+struct CustomSoundRow: Decodable {
+    let id: String
+    let name: String
+    let state: String
+    let requires: [String]?
+    let available: Bool?
+    let installable: Bool?
+    let mode: String?
+    let reason: String?
+}
+
+struct CameraDisconnectResult: Decodable {
+    let cleanup_status: String?
+    let cleanup_warning: String?
+}
 
 struct Snapshot: Decodable {
     let usage: UsageState?
     let automatic_failure_feedback: Bool?
+    let operation_id: String?
     let revision: Int; let phase: String; let scenario: String; let scenarios: [ScenarioRow]
     let environment: EnvironmentState; let checked: Bool; let steps: [PreparationRow]
     let notice: NoticeContent; let notice_acknowledged: Bool
     let ready: Bool; let compatible: Bool; let connected: Bool; let busy: Bool
-    let features: [FeatureRow]; let inspect_summary: InspectSummary?
+    let features: [FeatureRow]; let custom_sound: CustomSoundRow?; let inspect_summary: InspectSummary?
+    let camera_disconnect: CameraDisconnectResult?
     let backups: [BackupRow]; let backup_dir: String
     let action: String; let result: OperationResult?
     let simulation: Bool; let device_access: Bool; let write_attempted: Bool
@@ -131,6 +149,160 @@ struct DiagnosticResult: Decodable {
     let events: [DiagnosticEvent]?
 }
 
+struct AudioSoundRow: Decodable, Identifiable {
+    let sound_id: String
+    let title: String
+    let description: String
+    let duration_ms: Int
+    let sample_rate: Int
+    let channels: Int
+    let bit_depth: Int
+    let bytes: Int
+    let tags: [String]
+    var id: String { sound_id }
+}
+
+struct AudioPackageRow: Decodable, Identifiable {
+    let package_id: String
+    let version: String
+    let title: String
+    let description: String
+    let author: String
+    let license: String
+    let digest: String
+    let sounds: [AudioSoundRow]
+    var id: String { package_id }
+}
+
+struct AudioSlotRow: Decodable, Identifiable {
+    let slot: Int
+    let name: String
+    let label: String
+    let status: String
+    var id: Int { slot }
+}
+
+struct AudioCatalogResult: Decodable {
+    let status: String
+    let sequence: Int?
+    let packages: [AudioPackageRow]
+    var slots: [AudioSlotRow]? = nil
+}
+
+struct AudioPreviewResult: Decodable {
+    let status: String
+    let path: String?
+    let title: String?
+    let duration_ms: Int?
+    let error: String?
+}
+
+struct AudioPlanCandidate: Decodable {
+    let title: String
+    let description: String?
+    let filename: String
+    let bytes: Int
+    let sha256: String
+    let duration_ms: Int
+    let sample_rate: Int
+    let channels: Int
+    let bit_depth: Int
+    let peak_amplitude: Double
+    let rms_amplitude: Double
+}
+
+struct AudioPlanSource: Decodable {
+    let type: String
+    let package_id: String?
+    let package_version: String?
+    let sound_id: String?
+    let author: String?
+    let license: String?
+}
+
+struct AudioPlanReason: Decodable, Identifiable {
+    let id: String
+    let message: String
+}
+
+struct AudioPlanRequirement: Decodable, Identifiable {
+    let id: String
+    let status: String
+    let evidence: String
+}
+
+struct AudioPlanStep: Decodable, Identifiable {
+    let id: String
+    let title: String
+    let detail: String
+    let status: String
+}
+
+struct AudioPlanAcceptance: Decodable, Identifiable {
+    let id: String
+    let path: String
+    let expected: String
+}
+
+struct AudioPlanEvidence: Decodable {
+    let local_validation: String
+    let camera_access: String
+    let write_attempted: Bool
+    let user_confirmation: String
+}
+
+struct AudioImportPlan: Decodable {
+    let status: String
+    let can_execute: Bool
+    let digest: String
+    let candidate: AudioPlanCandidate
+    let source: AudioPlanSource
+    let target: AudioPlanTarget
+    let reasons: [AudioPlanReason]
+    let requirements: [AudioPlanRequirement]
+    let steps: [AudioPlanStep]
+    let acceptance: [AudioPlanAcceptance]
+    let evidence: AudioPlanEvidence
+}
+
+struct AudioPlanTarget: Decodable {
+    let slot_count: Int
+    let slot: Int
+    let label: String
+    let factory_fallback: String
+}
+
+struct AudioImportConfirmation: Decodable {
+    let status: String
+    let plan_digest: String?
+    let user_confirmation: String?
+    let camera_access: String?
+    let write_attempted: Bool?
+    let error: String?
+}
+
+struct AudioImportGateResult: Decodable {
+    let status: String
+    let plan_digest: String?
+    let candidate_sha256: String?
+    let target_slot: Int?
+    let stages: [String: String]?
+    let reasons: [AudioPlanReason]?
+    let camera_access: String?
+    let write_attempted: Bool?
+    let error: String?
+}
+
+struct AudioImportExecuteResult: Decodable {
+    let status: String
+    let target_slot: Int?
+    let generation: Int?
+    let independent_readback: Bool?
+    let backup_cleanup_failed: Bool?
+    let cleanup_warning: String?
+    let error: String?
+}
+
 /// The native view owns presentation only. The Python service owns preparation,
 /// state transitions, planning and the in-memory transaction backend.
 final class PreviewModel: ObservableObject {
@@ -145,6 +317,7 @@ final class PreviewModel: ObservableObject {
     @Published private(set) var serviceExitAction: String?
     @Published var showFailureFeedback = false
     @Published var failureFeedbackJSON = ""
+    private var failureDetails: [String: Any]?
     @Published var failureOperationID = ""
     @Published var failureUploadBusy = false
     @Published var failureUploadStatus = ""
@@ -189,7 +362,45 @@ final class PreviewModel: ObservableObject {
     private var manualAppUpdate = false
     private var checkedAppAtStartup = false
     private var autoUpdateCheck = false
-    var isBusy: Bool { !serviceExited && (pendingAction != nil || state?.busy == true || diagnosticBusy || uploadBusy || updateBusy) }
+    // Development capability enabled for 0.4.3 custom shutter sound workflow; honors explicit "0" opt-out.
+    let audioImportPreviewEnabled = ProcessInfo.processInfo.environment["A6700_AUDIO_IMPORT_PREVIEW"] != "0"
+    @Published var slotsLoadedOperationID: String?
+    @Published var audioBusy = false
+    @Published var audioCatalog: AudioCatalogResult?
+    @Published var audioSlotsError = ""
+    @Published var audioPreviewBusy = false
+    @Published var audioPreviewError = ""
+    @Published var audioPlanBusy = false
+    @Published var audioPlan: AudioImportPlan?
+    @Published var audioPlanError = ""
+    @Published var audioImportSlot = 1
+    func audioSlotLabel(_ slot: Int) -> String {
+        audioCatalog?.slots?.first(where: { $0.slot == slot })?.label
+            ?? "\(slot) [未读取]"
+    }
+    @Published var audioConfirmationBusy = false
+    @Published var audioConfirmation: AudioImportConfirmation?
+    @Published var audioConfirmationError = ""
+    @Published var audioGateBusy = false
+    @Published var audioGate: AudioImportGateResult?
+    @Published var audioGateError = ""
+    @Published var audioExecuteBusy = false
+    @Published var audioExecute: AudioImportExecuteResult?
+    @Published var audioExecuteError = ""
+    @Published var audioImportFlowActive = false
+    @Published var audioImportFlowSlot: Int?
+    @Published var audioImportFlowMessage = ""
+    private var audioPlayer: AVAudioPlayer?
+    var isCameraConnected: Bool { state?.phase == "home" && state?.compatible == true && state?.connected == true }
+    var electronicSoundState: String { state?.features.first(where: { $0.id == "sound" })?.state ?? "unknown" }
+    var customSoundState: String { state?.custom_sound?.state ?? "unknown" }
+    var electronicSoundUnlocked: Bool { electronicSoundState == "enabled" }
+    var customSoundUnlocked: Bool { customSoundState == "enabled" }
+    var canReadSlotsOnCamera: Bool { isCameraConnected && customSoundUnlocked }
+    var canInstallAudioOnCamera: Bool { isCameraConnected && electronicSoundUnlocked && customSoundUnlocked }
+    var cameraOperationActive: Bool { !serviceExited && (pendingAction != nil || state?.busy == true) }
+    private var workerBusy: Bool { !serviceExited && (cameraOperationActive || diagnosticBusy || uploadBusy || updateBusy || audioBusy || audioPreviewBusy || audioPlanBusy || audioConfirmationBusy || audioGateBusy || audioExecuteBusy) }
+    var isBusy: Bool { workerBusy || audioImportFlowActive }
     var serviceWriteUncertain: Bool { physicalMode && ["unlock", "close", "restore"].contains(serviceExitAction ?? "") }
     private var process: Process?
     private var input: FileHandle?
@@ -232,27 +443,36 @@ final class PreviewModel: ObservableObject {
             uploadBusy = false
             feedbackUploadPending = false
             uploadResult = nil
-            guard let resources = Bundle.main.resourceURL else { throw bridgeError("预览资源缺失。") }
-            let config = try JSONSerialization.jsonObject(with: Data(contentsOf: resources.appendingPathComponent("runtime.json"))) as? [String: String]
-            guard let configuredPython = config?["python"] else {
-                throw bridgeError("应用运行配置缺失。")
-            }
-            let bundled = config?["kind"] == "bundled"
-            let python = bundled ? resources.appendingPathComponent(configuredPython).standardizedFileURL.path : configuredPython
-            guard (!bundled || python.hasPrefix(resources.standardizedFileURL.path + "/")),
-                  FileManager.default.isExecutableFile(atPath: python) else {
-                throw bridgeError("本机开发运行环境已移动。请重新构建桌面预览。")
-            }
-            let worker = Process()
-            worker.executableURL = URL(fileURLWithPath: python)
-            worker.arguments = bundled
-                ? ["-I", "-S", "-B", "-u", resources.appendingPathComponent("worker.py").path] + (physical ? ["--physical"] : [])
-                : ["-u", "-m", physical ? "a6700_unlock.desktop.physical_bridge" : "a6700_unlock.desktop.bridge"]
-            var environment = ProcessInfo.processInfo.environment
-            environment["PYTHONPATH"] = resources.appendingPathComponent("python").path
-            environment["PYTHONDONTWRITEBYTECODE"] = "1"
-            if updateStartupToken != nil { environment["POWERFUL6700_POST_UPDATE_START"] = "1" }
-            worker.environment = environment
+            slotsLoadedOperationID = nil
+            audioBusy = false
+            audioCatalog = nil
+            audioSlotsError = ""
+            audioPreviewBusy = false
+            audioPreviewError = ""
+            audioPlanBusy = false
+            audioPlanError = ""
+            audioPlan = nil
+            audioImportSlot = 1
+            audioConfirmationBusy = false
+            audioConfirmation = nil
+            audioConfirmationError = ""
+            audioGateBusy = false
+            audioGate = nil
+            audioGateError = ""
+            audioExecuteBusy = false
+            audioExecute = nil
+            audioExecuteError = ""
+            audioImportFlowActive = false
+            audioImportFlowSlot = nil
+            audioImportFlowMessage = ""
+            audioGateError = ""
+            audioExecuteBusy = false
+            audioExecute = nil
+            audioExecuteError = ""
+            audioPlayer?.stop()
+            audioPlayer = nil
+            let worker = try (physical ? DesktopWorkerMode.camera : .simulation).makeProcess(
+                postUpdateStart: updateStartupToken != nil)
             let source = Pipe(), output = Pipe(), diagnostics = Pipe()
             worker.standardInput = source; worker.standardOutput = output; worker.standardError = diagnostics
             input = source.fileHandleForWriting
@@ -301,6 +521,19 @@ final class PreviewModel: ObservableObject {
                     }
                     self.appUpdateRequestID = nil
                     self.failureUploadBusy = false
+                    self.audioBusy = false
+                    self.audioPreviewBusy = false
+                    self.audioPlanBusy = false
+                    self.audioConfirmationBusy = false
+                    self.audioGateBusy = false
+                    self.audioExecuteBusy = false
+                    if self.audioImportFlowActive {
+                        self.audioImportFlowActive = false
+                        self.audioImportFlowMessage = ""
+                        if self.audioExecuteError.isEmpty {
+                            self.audioExecuteError = "本地设备服务已退出，请关闭弹窗后重试。"
+                        }
+                    }
                     if self.showFailureFeedback { self.failureUploadStatus = "本地服务已退出，上传结果未确认。可先导出报告。" }
                     self.pendingAction = nil
                     self.error = ""
@@ -353,6 +586,7 @@ final class PreviewModel: ObservableObject {
                     guard self?.generation == session else { return }
                     self?.failureFeedbackJSON = String(data: encoded, encoding: .utf8) ?? ""
                     self?.failureOperationID = result["operation_id"] as? String ?? ""
+                    self?.failureDetails = result["details"] as? [String: Any]
                 }
             } else if kind == "failure-feedback-result", let result = message["result"] as? [String: Any] {
                 DispatchQueue.main.async { [weak self] in
@@ -361,6 +595,8 @@ final class PreviewModel: ObservableObject {
                     if result["status"] as? String == "received" {
                         self.failureUploadReceipt = result["feedback_id"] as? String ?? ""
                         self.showFailureFeedback = false
+                    } else if result["status"] as? String == "partial", let id = result["feedback_id"] as? String {
+                        self.failureUploadStatus = "已收到反馈 \(id)。诊断附件待接收，可再次确认上传或导出报告。"
                     } else {
                         self.failureUploadStatus = result["error"] as? String ?? "上传未完成，可稍后使用相同报告重试。"
                     }
@@ -395,10 +631,17 @@ final class PreviewModel: ObservableObject {
                         self.installShutdownAcknowledged = true
                         self.commitAppInstallWhenReady()
                     }
+                    if (!snapshot.connected || (snapshot.phase != "home" && snapshot.phase != "running")) {
+                        if self.slotsLoadedOperationID != nil || self.audioCatalog?.slots != nil {
+                            self.slotsLoadedOperationID = nil
+                            self.audioCatalog?.slots = nil
+                            self.audioSlotsError = ""
+                        }
+                    }
                     if !snapshot.busy && self.error == Self.operationInProgressMessage {
                         self.error = ""
                     }
-                    if snapshot.busy && snapshot.action == self.pendingAction {
+                    if !snapshot.busy || snapshot.action == self.pendingAction {
                         self.pendingAction = nil
                     }
                 }
@@ -509,16 +752,220 @@ final class PreviewModel: ObservableObject {
                         self.updateStatus = nil
                     }
                 }
+            } else if kind == "audio-slots-result", let raw = message["result"] as? [String: Any] {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self, self.generation == session else { return }
+                    self.audioBusy = false
+                    self.audioSlotsError = raw["error"] as? String ?? ""
+                    if self.audioCatalog == nil {
+                        self.audioCatalog = AudioCatalogResult(status: "unavailable", sequence: nil, packages: [])
+                    }
+                    self.audioCatalog?.slots = nil
+                    if let rows = raw["slots"],
+                       let data = try? JSONSerialization.data(withJSONObject: rows),
+                       let decoded = try? JSONDecoder().decode([AudioSlotRow].self, from: data) {
+                        self.audioCatalog?.slots = decoded
+                        if self.audioSlotsError.isEmpty {
+                            self.slotsLoadedOperationID = self.state?.operation_id ?? "connected"
+                        }
+                    }
+                }
+            } else if kind == "audio-result", let raw = message["result"] as? [String: Any] {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self, self.generation == session else { return }
+                    self.audioBusy = false
+                    let existingSlots = self.audioCatalog?.slots
+                    if let encoded = try? JSONSerialization.data(withJSONObject: raw) {
+                        self.audioCatalog = try? JSONDecoder().decode(AudioCatalogResult.self, from: encoded)
+                    } else {
+                        self.audioCatalog = AudioCatalogResult(status: "error", sequence: nil, packages: [])
+                    }
+                    if let existingSlots = existingSlots,
+                       existingSlots.contains(where: { $0.status != "unknown" }) {
+                        self.audioCatalog?.slots = existingSlots
+                    }
+                }
+            } else if kind == "audio-preview-result", let raw = message["result"] as? [String: Any] {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self, self.generation == session else { return }
+                    self.audioPreviewBusy = false
+                    if let encoded = try? JSONSerialization.data(withJSONObject: raw),
+                       let preview = try? JSONDecoder().decode(AudioPreviewResult.self, from: encoded),
+                       preview.status == "ready", let path = preview.path {
+                        do {
+                            self.audioPlayer = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: path))
+                            self.audioPlayer?.prepareToPlay()
+                            self.audioPlayer?.play()
+                            self.audioPreviewError = ""
+                        } catch {
+                            self.audioPreviewError = "本机试听播放失败：\(error.localizedDescription)"
+                        }
+                    } else if let encoded = try? JSONSerialization.data(withJSONObject: raw),
+                              let preview = try? JSONDecoder().decode(AudioPreviewResult.self, from: encoded),
+                              let detail = preview.error, !detail.isEmpty {
+                        self.audioPreviewError = detail
+                    } else {
+                        self.audioPreviewError = "音频试听准备失败。"
+                    }
+                }
+            } else if kind == "audio-import-plan-result", let raw = message["result"] as? [String: Any] {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self, self.generation == session else { return }
+                    self.audioPlanBusy = false
+                    if let encoded = try? JSONSerialization.data(withJSONObject: raw) {
+                        self.audioPlan = try? JSONDecoder().decode(AudioImportPlan.self, from: encoded)
+                    }
+                    if self.audioPlan == nil {
+                        if let detail = raw["error"] as? String, !detail.isEmpty {
+                            self.audioPlanError = detail
+                        } else {
+                            self.audioPlanError = "音频导入计划格式不兼容。"
+                        }
+                    } else {
+                        self.audioPlanError = ""
+                    }
+                    if self.audioImportFlowActive {
+                        if let plan = self.audioPlan, plan.status == "ready" && plan.can_execute {
+                            self.audioImportFlowMessage = "音频检查通过，正在确认导入槽位 \(plan.target.slot)…"
+                            self.send("confirm_audio_import", extra: [
+                                "plan_digest": plan.digest,
+                                "confirmed": true,
+                            ])
+                        } else {
+                            self.audioImportFlowActive = false
+                            self.audioImportFlowMessage = ""
+                            if self.audioExecuteError.isEmpty {
+                                let fallback = self.audioPlan?.reasons.first?.message ?? "音频校验或导入计划生成未通过。"
+                                self.audioExecuteError = self.audioPlanError.isEmpty ? fallback : self.audioPlanError
+                            }
+                        }
+                    }
+                }
+            } else if kind == "audio-import-confirmation-result", let raw = message["result"] as? [String: Any] {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self, self.generation == session else { return }
+                    self.audioConfirmationBusy = false
+                    if let encoded = try? JSONSerialization.data(withJSONObject: raw) {
+                        self.audioConfirmation = try? JSONDecoder().decode(AudioImportConfirmation.self, from: encoded)
+                    }
+                    if self.audioConfirmation == nil {
+                        if let detail = raw["error"] as? String, !detail.isEmpty {
+                            self.audioConfirmationError = detail
+                        } else {
+                            self.audioConfirmationError = "音频导入确认结果格式不兼容。"
+                        }
+                    } else {
+                        self.audioConfirmationError = ""
+                    }
+                    if self.audioImportFlowActive {
+                        if let confirmation = self.audioConfirmation,
+                           confirmation.user_confirmation == "confirmed",
+                           let digest = confirmation.plan_digest,
+                           digest == self.audioPlan?.digest {
+                            let targetSlot = self.audioPlan?.target.slot ?? (self.audioImportFlowSlot ?? self.audioImportSlot)
+                            self.audioImportFlowMessage = "正在写入相机槽位 \(targetSlot) 并执行独立回读…"
+                            self.send("execute_audio_import", extra: ["plan_digest": digest])
+                        } else {
+                            self.audioImportFlowActive = false
+                            self.audioImportFlowMessage = ""
+                            if self.audioExecuteError.isEmpty {
+                                let fallback = self.audioConfirmation?.error ?? "未能确认导入计划。"
+                                self.audioExecuteError = self.audioConfirmationError.isEmpty ? fallback : self.audioConfirmationError
+                            }
+                        }
+                    }
+                }
+            } else if kind == "audio-import-gate-result", let raw = message["result"] as? [String: Any] {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self, self.generation == session else { return }
+                    self.audioGateBusy = false
+                    if let encoded = try? JSONSerialization.data(withJSONObject: raw) {
+                        self.audioGate = try? JSONDecoder().decode(AudioImportGateResult.self, from: encoded)
+                    }
+                    if self.audioGate == nil {
+                        if let detail = raw["error"] as? String, !detail.isEmpty {
+                            self.audioGateError = detail
+                        } else {
+                            self.audioGateError = "音频导入执行门禁结果格式不兼容。"
+                        }
+                    } else {
+                        self.audioGateError = ""
+                    }
+                }
+            } else if kind == "audio-import-execute-result", let raw = message["result"] as? [String: Any] {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self, self.generation == session else { return }
+                    self.audioExecuteBusy = false
+                    self.audioImportFlowActive = false
+                    self.audioImportFlowMessage = ""
+                    if let encoded = try? JSONSerialization.data(withJSONObject: raw) {
+                        self.audioExecute = try? JSONDecoder().decode(AudioImportExecuteResult.self, from: encoded)
+                    }
+                    if self.audioExecute == nil {
+                        self.audioCatalog?.slots = nil
+                        self.slotsLoadedOperationID = nil
+                        if let detail = raw["error"] as? String, !detail.isEmpty {
+                            self.audioExecuteError = detail
+                        } else {
+                            self.audioExecuteError = "音频导入执行结果格式不兼容。"
+                        }
+                    } else {
+                        if let detail = self.audioExecute?.error, !detail.isEmpty,
+                           self.audioExecute?.status != "completed" {
+                            self.audioExecuteError = detail
+                        } else {
+                            self.audioExecuteError = ""
+                        }
+                        if self.audioExecute?.status == "completed",
+                           self.audioExecute?.independent_readback == true,
+                           let plan = self.audioPlan {
+                            let targetSlot = plan.target.slot
+                            let filename = plan.candidate.filename
+                            var updated = self.audioCatalog?.slots ?? (1...10).map {
+                                AudioSlotRow(slot: $0, name: "[未读取]", label: "\($0) [未读取]", status: "unknown")
+                            }
+                            if let idx = updated.firstIndex(where: { $0.slot == targetSlot }) {
+                                updated[idx] = AudioSlotRow(
+                                    slot: targetSlot,
+                                    name: filename,
+                                    label: "\(targetSlot) \(filename)",
+                                    status: "imported"
+                                )
+                            }
+                            if self.audioCatalog == nil {
+                                self.audioCatalog = AudioCatalogResult(status: "unavailable", sequence: nil, packages: [])
+                            }
+                            self.audioCatalog?.slots = updated
+                        } else {
+                            self.audioCatalog?.slots = nil
+                            self.slotsLoadedOperationID = nil
+                        }
+                    }
+                }
             } else if kind == "error" {
                 DispatchQueue.main.async { [weak self] in
                     guard self?.generation == session else { return }
-                    self?.error = message["message"] as? String ?? "预览操作失败。"
+                    let messageText = message["message"] as? String ?? "预览操作失败。"
+                    self?.error = messageText
                     if self?.showFailureFeedback == true { self?.failureUploadStatus = message["message"] as? String ?? "日志操作未完成。" }
                     self?.pendingAction = nil
                     self?.failureUploadBusy = false
                     self?.diagnosticBusy = false
                     self?.uploadBusy = false
                     self?.updateBusy = false
+                    self?.audioBusy = false
+                    self?.audioPreviewBusy = false
+                    self?.audioPlanBusy = false
+                    self?.audioConfirmationBusy = false
+                    self?.audioGateBusy = false
+                    self?.audioExecuteBusy = false
+                    if self?.audioImportFlowActive == true {
+                        self?.audioImportFlowActive = false
+                        self?.audioImportFlowMessage = ""
+                        if self?.audioExecuteError.isEmpty == true {
+                            self?.audioExecuteError = messageText
+                        }
+                    }
                 }
             }
         }
@@ -526,6 +973,7 @@ final class PreviewModel: ObservableObject {
     func previewFailureFeedback() {
         guard !isBusy else { return }
         failureFeedbackJSON = ""
+        failureDetails = nil
         failureOperationID = ""
         failureUploadStatus = ""
         failureUploadReceipt = nil
@@ -564,6 +1012,7 @@ final class PreviewModel: ObservableObject {
               var payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
         let description = failureDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         if !description.isEmpty { payload["description"] = description }
+        if let failureDetails { payload["diagnostic_details"] = failureDetails }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "Powerful6700-异常报告.json"
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -791,6 +1240,10 @@ final class PreviewModel: ObservableObject {
             guard !isBusy else { return }
             pendingAction = command == "prepare_and_inspect" ? "inspect" : command
         }
+        if command == "disconnect_camera" {
+            guard physicalMode, !isBusy else { return }
+            pendingAction = command
+        }
         if command == "check_updates" {
             if autoUpdateCheck {
                 autoUpdateCheck = false
@@ -801,6 +1254,64 @@ final class PreviewModel: ObservableObject {
                 updateAvailable = false
             }
         }
+        if command == "list_audio" || command == "refresh_audio_slots" {
+            guard !isBusy else { return }
+            audioBusy = true
+            audioSlotsError = ""
+            if command == "refresh_audio_slots" {
+                audioCatalog?.slots = nil
+                invalidateAudioImportPlan()
+            }
+        }
+        if command == "preview_audio" {
+            guard !isBusy else { return }
+            audioPreviewBusy = true
+            audioPreviewError = ""
+        }
+        if command == "plan_audio_import" {
+            let blocked = audioImportFlowActive ? workerBusy : isBusy
+            guard !blocked else {
+                if audioImportFlowActive {
+                    audioImportFlowActive = false
+                    audioImportFlowMessage = ""
+                    if audioExecuteError.isEmpty { audioExecuteError = "请等待当前相机或音频操作完成后再试。" }
+                }
+                return
+            }
+            audioPlanBusy = true
+            audioPlanError = ""
+        }
+        if command == "confirm_audio_import" {
+            let blocked = audioImportFlowActive ? workerBusy : isBusy
+            guard !blocked else {
+                if audioImportFlowActive {
+                    audioImportFlowActive = false
+                    audioImportFlowMessage = ""
+                    if audioExecuteError.isEmpty { audioExecuteError = "请等待当前相机或音频操作完成后再试。" }
+                }
+                return
+            }
+            audioConfirmationBusy = true
+            audioConfirmationError = ""
+        }
+        if command == "gate_audio_import" {
+            guard !isBusy else { return }
+            audioGateBusy = true
+            audioGateError = ""
+        }
+        if command == "execute_audio_import" {
+            let blocked = audioImportFlowActive ? workerBusy : isBusy
+            guard !blocked else {
+                if audioImportFlowActive {
+                    audioImportFlowActive = false
+                    audioImportFlowMessage = ""
+                    if audioExecuteError.isEmpty { audioExecuteError = "请等待当前相机或音频操作完成后再试。" }
+                }
+                return
+            }
+            audioExecuteBusy = true
+            audioExecuteError = ""
+        }
         error = ""
         if ["inspect", "unlock", "close", "backup", "restore", "takeover", "reset", "environment"].contains(command) { progress = [] }
         var request = extra; request["command"] = command
@@ -808,12 +1319,28 @@ final class PreviewModel: ObservableObject {
         request["request_id"] = UUID().uuidString
         guard let bytes = try? JSONSerialization.data(withJSONObject: request), let input = input else {
             pendingAction = nil
+            audioBusy = false
+            audioPreviewBusy = false
+            audioPlanBusy = false
+            audioConfirmationBusy = false
+            audioGateBusy = false
+            audioExecuteBusy = false
+            audioImportFlowActive = false
+            audioImportFlowMessage = ""
             error = "本地服务尚未就绪，请重新打开应用。"
             return
         }
         do { try input.write(contentsOf: bytes + Data([10])) }
         catch {
             pendingAction = nil
+            audioBusy = false
+            audioPreviewBusy = false
+            audioPlanBusy = false
+            audioConfirmationBusy = false
+            audioGateBusy = false
+            audioExecuteBusy = false
+            audioImportFlowActive = false
+            audioImportFlowMessage = ""
             self.error = "无法连接本地服务。请重新打开应用；如操作已开始，先核实相机状态。"
         }
     }
@@ -928,6 +1455,65 @@ final class PreviewModel: ObservableObject {
     func removeFeedbackImage(_ id: UUID) {
         feedbackImages.removeAll { $0.id == id }
     }
+
+    func ensureAudioSlotsLoaded() {
+        guard physicalMode, canReadSlotsOnCamera, !isBusy else { return }
+        let currentOp = state?.operation_id ?? "connected"
+        guard slotsLoadedOperationID != currentOp else { return }
+        send("refresh_audio_slots")
+    }
+
+    func resetAudioImportFlow() {
+        audioImportFlowActive = false
+        audioImportFlowSlot = nil
+        audioImportFlowMessage = ""
+        invalidateAudioImportPlan()
+    }
+
+    func startMarketSoundImport(_ sound: MarketSound, slot: Int, targetName: String? = nil) {
+        guard !isBusy, (1...10).contains(slot) else { return }
+        invalidateAudioImportPlan()
+        audioImportSlot = slot
+        audioImportFlowSlot = slot
+        audioImportFlowActive = true
+        audioImportFlowMessage = "正在校验音频并生成槽位 \(slot) 导入计划…"
+        let customName = targetName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch sound.source {
+        case .sample(let url), .personal(let url):
+            var extra: [String: Any] = [
+                "source": "local",
+                "slot": slot,
+                "path": url.path,
+            ]
+            if let customName, !customName.isEmpty {
+                extra["filename"] = customName
+            }
+            send("plan_audio_import", extra: extra)
+        case .catalog(let packageID, let soundID):
+            var extra: [String: Any] = [
+                "source": "market",
+                "slot": slot,
+                "package_id": packageID,
+                "sound_id": soundID,
+            ]
+            if let customName, !customName.isEmpty {
+                extra["filename"] = customName
+            }
+            send("plan_audio_import", extra: extra)
+        }
+    }
+
+    func invalidateAudioImportPlan() {
+        audioPlan = nil
+        audioPlanError = ""
+        audioConfirmation = nil
+        audioConfirmationError = ""
+        audioGate = nil
+        audioGateError = ""
+        audioExecute = nil
+        audioExecuteError = ""
+    }
+
 
     func shutdown() {
         generation = UUID()

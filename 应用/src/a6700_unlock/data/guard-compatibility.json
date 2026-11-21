@@ -1,0 +1,226 @@
+{
+  "schema": 1,
+  "kind": "guard-compatibility-overlay",
+  "profile_sha256": "c2860f5a1687d0190ac74d9500b971fa8301ff12784c7c567cee0d5c20a056fb",
+  "source": {
+    "name": "SonyCameraTool 1.0.0 FTP playback filter",
+    "url": "https://github.com/mingwucn/SonyCameraTool_Download",
+    "archive_sha256": "6c02eb670a95f6fcf7377b3ae863ef3466a6289ffd4df28f336108368addf127",
+    "targets_pyc_sha256": "f7b2dc14570e6c7dc9e027a925ac04e83035c1734db2c074d6846fbb74d3f7e8"
+  },
+  "patches": [
+    {
+      "index": 67,
+      "file_offset": 79471456,
+      "original": "0000",
+      "patched": "0100",
+      "id": "playback-filter-container"
+    },
+    {
+      "index": 90,
+      "file_offset": 79738130,
+      "original": "0000",
+      "patched": "0100",
+      "id": "ftp-transfer-status-row"
+    },
+    {
+      "index": 133,
+      "file_offset": 79915626,
+      "original": "0000",
+      "patched": "0100",
+      "id": "non-transferred-leaf"
+    },
+    {
+      "index": 133,
+      "file_offset": 79915786,
+      "original": "0000",
+      "patched": "0100",
+      "id": "failed-transfer-leaf"
+    },
+    {
+      "index": 133,
+      "file_offset": 79915946,
+      "original": "0000",
+      "patched": "0100",
+      "id": "transferred-leaf"
+    },
+    {
+      "index": 133,
+      "file_offset": 79915916,
+      "original": "ce800002",
+      "patched": "77600002",
+      "id": "transferred-leaf-title"
+    }
+  ],
+  "records": {
+    "9": {
+      "device": 0,
+      "device_offset": 42221568,
+      "original_sha256": "e98d494fe687517fe538668598813bd3151081aec968f05c4cca44b4aed56421",
+      "variants": [
+        {
+          "sha256": "f0f7ecf9bffd3e172d765cfd9e3f19f249c77b70c480ae775d85a47efa5020db",
+          "patches": [
+            "custom-sound-menu-inode-size"
+          ]
+        }
+      ]
+    },
+    "12": {
+      "device": 0,
+      "device_offset": 47477248,
+      "original_sha256": "6b7ffeac04b793cae62be2f0cd64659a4a52c2cb0f8fc1112d20ea643c68f7f8",
+      "variants": [
+        {
+          "sha256": "1eab3c8d96b11f3fab309cfee74df26e33cab4244a20d441171814655ed9a104",
+          "patches": [
+            "custom-sound-ten-slot-descriptors"
+          ]
+        }
+      ]
+    },
+    "67": {
+      "device": 0,
+      "device_offset": 262585856,
+      "original_sha256": "1f06a5c8b6c868eae6c217accf0f650f0d48d9aa45413a56add37761369dbb4f",
+      "file_offset": 79471104,
+      "variants": [
+        {
+          "sha256": "3bd01f7228e0c2bda17f7a84173a3f9555da6b8c44d98dc25a74863d54ad7b01",
+          "patches": [
+            "playback-filter-container"
+          ]
+        }
+      ]
+    },
+    "90": {
+      "device": 0,
+      "device_offset": 262853632,
+      "original_sha256": "c50c2e0e3534c6f0fa8eba12a3e5dca7bd8c5010303de26b037b95e18d37e428",
+      "file_offset": 79737856,
+      "variants": [
+        {
+          "sha256": "3fb4e6dad9eb072a2fb661db45cf7852927bd2060732c202afa11780dfccf6a5",
+          "patches": [
+            "ftp-transfer-status-row"
+          ]
+        }
+      ]
+    },
+    "133": {
+      "device": 0,
+      "device_offset": 263031296,
+      "original_sha256": "57377f7a9950972c9e59359dfba1b6ea5fc8a4d10d99fd8e6cec747b220c4383",
+      "file_offset": 79915520,
+      "variants": [
+        {
+          "sha256": "7dfde91b72453b28a2cbde90ac4a11cfdb1f366ae589e5a183f8ae7b04d896b8",
+          "patches": [
+            "transferred-leaf-title"
+          ]
+        },
+        {
+          "sha256": "98e4fdddb3d843fb00bce1a83e463d3e2757d79ca81d61d08f0a1669b76a40fb",
+          "patches": [
+            "transferred-leaf"
+          ]
+        },
+        {
+          "sha256": "069a237692aa86a3166efc04faf434ee28000e2483e0ab4b849bf1b252e1f0b9",
+          "patches": [
+            "transferred-leaf",
+            "transferred-leaf-title"
+          ]
+        },
+        {
+          "sha256": "3c66017bf7ebd7c386d248c9a0a96794b5a0c7e50a9c04895d118330490524c5",
+          "patches": [
+            "failed-transfer-leaf"
+          ]
+        },
+        {
+          "sha256": "5fe37118c73c17dafadf664758c14d1e70920fc907872bd0f35732eca17d57e1",
+          "patches": [
+            "failed-transfer-leaf",
+            "transferred-leaf-title"
+          ]
+        },
+        {
+          "sha256": "ac9240c5d26b9c626b96ba9a7147e937093316f11e3cb973f65aaa7a54433fa5",
+          "patches": [
+            "failed-transfer-leaf",
+            "transferred-leaf"
+          ]
+        },
+        {
+          "sha256": "db88daabde67214f9c6af20245fd98617f9c82e4a7bff8b05f23b261211718c5",
+          "patches": [
+            "failed-transfer-leaf",
+            "transferred-leaf",
+            "transferred-leaf-title"
+          ]
+        },
+        {
+          "sha256": "babbd0b6fce0b2bc0f3397441a9e49ce9334031588d9ac74ff345f1f5c332b3d",
+          "patches": [
+            "non-transferred-leaf"
+          ]
+        },
+        {
+          "sha256": "a4c30d40f1dce5b6997188bec1e1929253dff745b275e4553e143c6dceed22d1",
+          "patches": [
+            "non-transferred-leaf",
+            "transferred-leaf-title"
+          ]
+        },
+        {
+          "sha256": "0c578b7a7a96c74c7dc724e8c8e92f4f44a3f1f288274ad24b9d6e0de85b4171",
+          "patches": [
+            "non-transferred-leaf",
+            "transferred-leaf"
+          ]
+        },
+        {
+          "sha256": "c05686b4b3f3b8dc9ba22d9698e815fb3307488da9eff0fe22bfc5101107ffc5",
+          "patches": [
+            "non-transferred-leaf",
+            "transferred-leaf",
+            "transferred-leaf-title"
+          ]
+        },
+        {
+          "sha256": "7a3df9dadddf5648ace4f6187464e6c6fa44b73f2127eb44c61195da8849c911",
+          "patches": [
+            "non-transferred-leaf",
+            "failed-transfer-leaf"
+          ]
+        },
+        {
+          "sha256": "0d2c8c016ef9bf0052399aa460f47c842c539524c0ded167a9f62e0bc09919d9",
+          "patches": [
+            "non-transferred-leaf",
+            "failed-transfer-leaf",
+            "transferred-leaf-title"
+          ]
+        },
+        {
+          "sha256": "23a668df96d2da91d27c7a079afad8a69dd30d957b47ba67bfb832bae22f88c0",
+          "patches": [
+            "non-transferred-leaf",
+            "failed-transfer-leaf",
+            "transferred-leaf"
+          ]
+        },
+        {
+          "sha256": "1b84d047754f96e81421470785d5d012cbf866d299174267f1f0c7404bc22f36",
+          "patches": [
+            "non-transferred-leaf",
+            "failed-transfer-leaf",
+            "transferred-leaf",
+            "transferred-leaf-title"
+          ]
+        }
+      ]
+    }
+  }
+}

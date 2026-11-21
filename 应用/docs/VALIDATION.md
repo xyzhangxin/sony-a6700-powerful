@@ -1,50 +1,375 @@
 # 验证记录
 
-## Windows 0.4.1 x64 发布候选（2026-11-08）
+## 0.5.0 双平台对齐与 Cloud Worker 发布候选（2026-11-20）
 
-用户已确认普通Windows首次驱动安装与连接验收通过。发布候选将dev5的SetupAPI与驱动库独立复核、initial_ready／service_ready兼容、UTF-16 INF读取及安装超时真实绑定复核固化为0.4.1，不再带开发版后缀；功能范围与dev5一致。
+- **统一构建来源与包组**：归档早期未合并的功能版 `dist/v0.5.0/` 至 `dist/历史版本/v0.5.0-早期功能候选/`；冻结统一源码包 `Powerful6700-0.5.0-source.zip` 后，从该同一份解压源码分别构建并验证 macOS arm64（`Powerful6700-0.5.0-macOS-arm64.zip` + `.ed25519`）与 Windows x64（`Powerful6700-0.5.0-Windows-x64.zip`）正式发行包，成组汇总于 `dist/v0.5.0/` 与主工程 `output/运行/应用/050双平台发布/`。
+- **双端与云端验证口径**：最终树与冻结源码包同时在 Mac、`.77` Windows 11 x64（含顶部「相机／快门声市场」导航对齐与卡片禁用逻辑核对后的复验）及 `services/cloud` 上通过全量离线检查、SwiftUI 渲染、成品自检及本地 `0.4.3 -> 0.5.0` 更新源回放；详细校验日志、GitHub 差异清单与 Cloudflare Worker 线上部署前审核清单留存在 `output/运行/应用/050双平台发布/`。
+- **已知实测边界**：维护者已验收通过当前可测功能并同意按现有实测范围准备双端发布及 Worker 上线审核；真实 `rev=1..4` 旧版从最终统一包直接原位升级、最终统一包「关闭→冷启动→重开」实机闭环及 Windows 真实机身 USB 直连写入尚未另行补测，不超出现有实测口径对外宣称。
 
-本机326项核心／ARM64严格检查通过。普通Windows主机317项核心／ARM64严格检查、20项成品界面和7项交付检查通过，均无跳过。发行包重新按0.4.1版本构建并核对对应源码、libwdi、许可与SHA-256。该用户验收范围为首次驱动安装与连接，不扩写为未单独执行的功能写入或冷启动全部通过。GitHub更新先由用户审核。
+## Windows 0.5.0 本地同步与离线验收（2026-11-20，`.77` 测试机）
 
-## Windows 0.4.1.dev5 驱动状态独立复核（2026-11-08，本地候选）
+- **同步范围与构建来源**：同步共用核心（含 `doctor.py` `win32` 平台允许标记与 `fl23_package.save_bytes` 经 `host_io.open_exclusive`/`sync_directory` 的 Windows 独占写入修复）及 Windows PySide6 桌面端（`desktop/windows/audio_market.py`、`market_views.py`、7 项功能行对齐与「去快门声市场」按钮、4 份默认 WAV 收录、`MFCreateSourceReaderFromURL` 多格式音频解码、`list_audio`/`check_updates` 启动串行化防竞态、市场卡片 `#soundCard` 与布局及时 detach 防重影修复）。成品、`a6700-unlock-0.5.0-source.zip`、截图、日志与校验清单归档于主工程 `output/运行/应用/050Windows实机测试/`。
+- **全量核心与原生仿真（`.77` Win11 x64 + LLVM clang/ld.lld + Unicorn）**：基于独立打包的 `a6700-unlock-0.5.0-source.zip` 解压目录运行 `scripts/check.py --native --strict`，**643 项全部通过（0 失败、0 跳过）**；测试过程中实际发现并修复了 `fl23_package.save_bytes` 目录 `PermissionError`、`backend.py` 无 `os.getuid()` 报错、`test_fl23_state.py` 工具链硬编码、Windows `venvlauncher` 子进程锁释放延迟（`test_connection_takeover.py` 使用 `sys._base_executable`）以及 `signal.raise_signal(SIGTERM)` 兼容。
+- **冻结应用构建与离线 UI 自检**：通过 `scripts/build_windows_app.py` 生成独立目录 `Powerful6700-0.5.0-Windows-x64` 并确认 `_internal/默认音频/{coin,slap,duck,beep}.wav` 完整收录；运行 `Powerful6700.exe --offline-self-test` 通过全部 **26 项**离线集成验收（含 `feature-status-right-aligned-and-market-button-left` 右对齐坐标断言、`custom-shutter-sound-market-seven-defaults-trim-dedup-and-demo-install`、`physical-environment-only-no-usb`、`device_access: false`、`write_attempted: false`），并经人工目检 `Windows-features.png` 与 `Windows-market.png` 确认布局、对齐及无重影；已在 `.77` RDP 交互桌面（Session `2`）部署并启动 `Powerful6700.exe` 与 `Powerful6700.Service.exe --physical`。
+- **尚未覆盖项目**：Windows 实机连接、应用内更新下载、异常日志上传、真实相机的功能解锁／更新／关闭及自定义声音槽位写入／回读，仍待维护者在 `.77` 接相机实机测试后记录结果。
 
-纯净首装中，助手状态文件已经写入`service_ready`，主界面仍出现驱动准备超时。dev5在等待助手状态的同时，通过SetupAPI和驱动库独立复核0336是否真正就绪，避免单一状态源延迟、不可读或遗漏造成误判；保留dev4的两种就绪状态和dev3的UTF-16 INF兼容、超时绑定复核。
+## Mac 0.5.0 RC1 统一合并候选（2026-11-20）
 
-本机326项核心／ARM64严格检查通过；普通Windows主机317项核心／ARM64严格检查、20项成品界面和7项交付检查通过，均无跳过。新增状态文件不可用时由实际驱动状态放行的回归。构建未访问相机，首次安装与连接结果继续由用户实测。
+- **合并基线与功能范围**：以 `0.4.3／050 反馈诊断` 源码（应用内更新、`usage.py` 默认开启统计、默认开启自动故障上传、503 附件同编号重试、`guard 0`／第三方 FTP 指纹与 Windows 可移植基线）为起点，合入 `rev=5` 统一启动底座（缺失 `/setting/csnd` 首启自建目录）、FL2／FL3 与创意外观中文名称、十槽自定义快门声、四份默认 WAV 音频（新用户 7 项声音＋市场按 ID 去重）与结构化 `close-preparation-required` 阻断；本地交付件位于主工程 `output/运行/应用/050合并测试候选/`。
+- **全量核心与原生仿真**：`check.py --native --strict` 653 项全部通过、无跳过（覆盖原有功能与原生 ARM64 仿真，以及 `test_app_updates`、`test_usage`、`test_portability`、`test_windows_driver`、`test_windows_host`、`test_update_packaging` 对 `libwdi` 双哈希校验的回归）。
+- **独立应用与界面回归**：离屏 SwiftUI + Vision OCR 16/16 页通过；Apple Silicon 独立 `Powerful6700.app` 构建与 `codesign --verify --deep --strict`、`.ed25519` 签名验签、`check_macos_app.py`（含 `usage.enabled=true` 与 `automatic_failure_feedback=true` 校验）、四份默认 WAV 收录与干净／预填充音频库去重验收、本地测试更新源 `0.4.3 -> 0.5.0` 升级回读与本地测试反馈接收端端到端验证详见 `output/运行/应用/050合并测试候选/验收摘要.md`。
+- **实机与未覆盖项**：此前测试机已完成 `flags=7 rev=4 -> rev=5` 原位升级、3 秒断电冷启动、`csnd_open_errno: 2 -> 0`、10 槽全空绑定校验及用户现场确认 FL23／自定义快门声可用；本次离线验收期间 `a6700-validator` 未见相机 MSC 连接（`msc: false`），故面向本 RC1 最终包的受支持旧版 `FL2／FL3`（`legacy-carriers.json` `rev=1..4 -> rev=5`）应用内原位升级、最终包关闭→冷启动→重开循环、Windows 同步与 GitHub 发布／云端 Worker 部署待维护者实机验收及审核后推进。
 
-## Windows 0.4.1.dev4 驱动就绪状态修复（2026-11-08，本地候选）
+## FTP 一次性迁移修复（2026-11-13）
 
-用户纯净首装反馈：首次显示驱动准备超时，手动重试立即连接。日志和代码复核确认，驱动助手可从`initial_ready`快速进入`service_ready`，旧主循环只接受前者，导致已就绪仍等待并报超时；重试复用既有绑定后成功。dev4同时接受两种就绪状态，并新增回归，避免将其误写成用户驱动安装失败。
+- 以历史实机读前窗口构造六处第三方修改的 64 种组合。FTP 基础已完成时，迁移改动为 134～141 字节；全部目标通过原通用适配检查。包含全部第三方差异的样本另用未修改的公开 0.4.2 源码复验，`compatible=true`、`issues=[]`。
+- 测试覆盖 FTP 基础补齐、部分矩阵补齐、已迁移无需写入、保留非 FTP 功能、未知字段和未管理字节拒绝、写入失联不重发、原生写前漂移拒绝及回滚。共用核心 526 项严格检查、最终迁移专项 8 项、Windows 326 项含原生仿真的严格检查通过。冻结 Windows 程序资源验证及 libusb 加载成功，未访问相机。
+- [使用说明](FTP-MIGRATION.md)；主工程运行目录 `output/运行/应用/第三方FTP迁移修复/` 保留对应 Windows ZIP、源码、校验值和验收记录。反馈机身重启后实际连接、菜单两项和 FTP 传输仍待验收。无 GitHub 提交或发布。
 
-本机325项核心／ARM64严格检查通过；普通Windows主机316项核心／ARM64严格检查、20项成品界面和7项交付检查通过，均无跳过。预览入口已更新。该修复针对状态判断，不改变USB认证、固件字段或功能范围；构建未访问相机，连接与冷启动继续实测。
+## 有界 USB 脚本会话（2026-11-12，本地开发）
 
-## Windows 0.4.1.dev3 驱动状态与UTF-16 INF修复（2026-11-08，本地候选）
+复用固定 profile／原生载荷和唯一事务核心，通过调试台任务 `20261112T153331.587Z-9ee760b9` 在同一次约2.10秒认证后连续读取10次完整263扇区；10个 nonce 不同、快照哈希一致，含IPC与审计落盘的中位延迟81.27ms、P95 119.68ms，底层读取中位72.39ms。STOP回复在重枚举期间未确认，独立实际MSC观察通过，bench退出码0，未执行固件／参数写入。该证据不证明小于50ms、长时常驻、断电回滚或Windows实机。
 
-用户实机日志定位两类独立问题：首次`wdi-simple`超过180秒，以及后续驱动助手按UTF-8读取UTF-16 INF导致`0xff`解码错误。dev3统一INF编码识别，安装超时先核对实际WinUSB绑定，并为慢机使用有限等待和明确错误；普通Windows直连不需要PVE双槽。
+全量含原生仿真的严格检查529项通过；最终会话／USB／生命周期／事务相关回归见研究工程[核验摘要](../../output/运行/USB会话/标准会话实现/核验摘要.md)。会话合成测试覆盖新鲜计划拒写、前置审计失败、独立回读、回滚、丢回复不重发、信号排空、期限、序号保护、受配对IPC和端点恢复。接口与限制见[MSC会话](MSC-SESSION.md)。未提交／发布GitHub。
 
-本机324项核心／ARM64严格检查通过，新增UTF-16LE INF预注册与驱动库扫描回归。普通Windows主机315项核心／ARM64严格检查、20项成品界面和7项交付检查通过，均无跳过。在实际`C:\Windows\INF\oem41.inf`上读取并确认`VID_054C&PID_0336`通过，证明原解码问题已消除。构建、源码、libwdi及许可核对通过，未访问相机。新版连接与冷启动仍需重新验收，旧版关闭成功不能替代dev3验证。
+## 第三方 FTP 回放筛选兼容定制测试（2026-11-12）
 
-## Windows 0.4.1.dev2 自动驱动准备与PVE双槽（2026-11-07，本地候选）
+- 静态核对 SonyCameraTool 1.0.0 发布包的六处回放筛选修改定义，使用原始 App 推导三个固定守卫的 17 个额外完整扇区哈希。
+- 六处修改全部 64 个组合分别通过 inspect／unlock／close 规划，共 192 份计划；再注入 192 个额外单字节差异均阻断。真实打包 ARM64 writer 与独立 reader 仿真通过，写前守卫漂移会在写入前拒绝。
+- 共用核心全量 497 项严格检查通过；加入兼容规则适配集摘要后，52 项相关严格回归通过。独立 0.4.2.dev1 回移源码全量 335 项严格检查通过，包含桌面从连接检查进入功能管理及事务保留第三方字节的回归。
+- Windows .77 原机构建完成，326 项含原生仿真的严格检查和冻结 GUI 22 项自检均通过。冻结 physical worker 仅执行环境检查，适配集摘要与源码一致，主程序与 service 两份兼容资源逐字节一致；`device_access=false`、`write_attempted=false`。测试使用进程内 LLVM PATH，公钥登录已按 TOPO 信息修复。
+- 全部为离线、合成数据和历史采集对照，反馈机身的实际连接与功能验收待完成。运行证据位于主工程 `output/运行/应用/第三方FTP兼容排查/`。
 
-首次连接由同一提权驱动助手处理0E76，并把精确的0336 WinUSB INF预注册到驱动库；主应用及固件事务不提权。0336未出现时`service_staged=True`已独立确认。后续启动检测已有绑定和预注册则不再启动助手，Zadig仅作备用。
+## 中文菜单与选项功能验证（2026-11-11）
 
-PVE单槽在模式切换后曾保留旧0E76描述符，0336在主机出现但Windows不可见；改为`usb0: host=1-1`与`usb2: host=054c:0336`双槽后，完成MSC第一次认证、0336第二次认证及260个固定扇区读取。结果为`status=inspected`、`read_bytes=133120`、`changed_bytes=0`、`write_attempted=false`、`settings_write_attempted=false`，没有解锁、关闭或设置写入。STOP阶段记录一次Pipe error，随后主机和QEMU均确认真实MSC恢复，usb2处于attached=false。
+- 无设备严格检查 469 项通过；含 ARM64 原生仿真的严格检查 487 项通过，均无跳过。
+- 独立 App 构建后完成模拟备份恢复和物理环境检查，两者 `device_access=false`、`write_attempted=false`。
+- 自动化覆盖全部 8 个功能选项和 37 个桌面协议命令；`select`、`select_feature`、`update_fl23` 等通过对应控制器方法测试覆盖。
+- 本轮未访问相机或执行真实 USB 写入。屏幕录制权限不可用，因此新增 `release/scripts/render_macos_ui.py`：用 `NSHostingView` 离屏渲染真实 SwiftUI 视图，再用 Vision OCR 校验中文文案，13 个页面全部通过。
+- 逐项覆盖矩阵见主工程 [ui-option-coverage.json](../output/运行/应用/中文菜单与选项功能验证/ui-option-coverage.json)，摘要见[验证摘要](../output/运行/应用/中文菜单与选项功能验证/验证摘要.md)，离屏渲染证据见[README](../output/运行/应用/中文菜单与选项功能验证/离屏渲染/README.md)。人工验收清单仍保留为实机窗口抽查入口，不再阻塞自动化视觉回归。
 
-本机305项无设备严格检查及20项Qt界面／worker检查通过；323项含ARM64仿真的严格检查在此前的同功能核心通过，最终Windows构建与交付结果见主工程`output/运行/应用/Windows驱动简化/`。早期USBSTOR、0336安装窗口和QEMU描述符失败记录均保留，不能写成首次尝试即成功。
+## FTP 0.0839 正确修订与工作区源码（2026-11-10）
 
-## Windows 0.4.1.dev1 对齐 Mac 0.4.1（2026-11-06，本地候选）
+- 在全部功能关闭基线上，通过共享调试台执行完整 FTP 解锁：241 字节／83 个扇区，相机内执行成功并独立回读为 enabled／revision 2／current。
+- 按已授权 ON／off 3 秒／ON 循环重启后，同机身 MSC 与 Wi-Fi 均恢复。该轮菜单截图中的 `发送` 与 `发送（这个影像)` 属于手机 App 传输项，不是 FTP 选项；此误读已在 2026-11-10 由 134 字节自定义键矩阵研究修正。截图与 OCR 保留于 `output/运行/FTP/正确解锁候选/实机验收/`，仅作为基础解锁过程证据。
+- FTP 专项回归通过，包含完整解锁 241 字节、旧版用户单字节更新、已更新零写入、旧两字节不写入和原生 payload 身份检查；完整 release 全量测试尚未结束。
+- 尚未验收实际 FTP 服务器上传；需要绑定回放自定义键后用卡内样片测试。Mac／Windows 成组发行包尚未构建，不称发布候选。
 
-以已发布Mac 0.4.1成组源码为基线，156份原生载荷、冻结源码及固定数据逐字节相同。同步FL23切换修复、旧版识别与单独更新、四项关闭前设置恢复及两阶段结果页；Windows设备锁、独占记录、UTF-8、libusb与USB后端适配保留，未纳入FTP增量候选。
+## Mac 0.4.2 自动化验收（2026-11-09）
 
-本机313项核心／ARM64仿真严格检查及19项Qt界面／worker检查通过；Windows 11 x64的304项核心／ARM64仿真严格检查、19项成品界面检查及6项交付检查通过，均无跳过。新增旧版FL23更新按钮、四项活动设置恢复与关闭结果、三组FL23文件事务原生仿真；测试材料扩展绑定新版revision测试，Windows仍执行实际ELF，不替换正式载荷。成品另通过中文空格路径搬移、损坏DLL阻断及包内运行源码匹配。
+- 独立 App 烟测：模拟备份恢复和物理环境检查均通过，未访问相机。
+- 真实相机只读检查经共享调试台完成：读取 263 个固定扇区，`compatible=true`、`changed_bytes=0`、`write_attempted=false`；FTP 已是修订 2 当前版，快门帘／灵活曝光／Pixel Shift／动态增强防抖为关闭，电子快门声音为开启。服务退出确认 MSC 恢复。
+- 在线更新检查通过：生产 stable 索引验签并激活，`sequence=1 / cache_status=active`。该结果验证更新链路；sequence=2 候选仍未部署。
 
-所有检查device_access/write_attempted均为false，未枚举、认证、读写或重启相机。Mac实机验收不能替代Windows驱动、MSC到服务身份切换、真实写入与独立回读、冷启动菜单及拍摄验收；Windows实机与用户审核仍待完成，GitHub未更新。
+## Windows 0.4.2 真实主机构建与验收（2026-11-09）
 
-## 0.4.1（2026-11-06，已发布）
+- 在 `.77` Windows x64 主机完成独立应用构建；`Powerful6700-0.4.2-Windows-x64.zip` SHA-256 `d81c8123266ac705db83e908e90f471148bb8c589894cba223e14ff25270a9e7`，对应源码包 SHA-256 `09d823a960a989cc32010bbbae6d6c934ec5dea337ac0dd8b11f5844ec1e3fe6`。
+- Windows `check.py --native --strict`：318 项通过、无跳过；包含 ARM64 原生仿真、FTP 修订 2、PySide6、WinUSB 驱动边界和签名依赖。
+- Mac 主工程 `check.py --native --strict`：421 项通过、无跳过；共享核心修改未破坏 Mac 回归。
+- 冻结 `Powerful6700.Service.exe` 生产更新检查通过：`activated / sequence=1 / cache_status=active`，协议 v1 和 0.4.2 内置适配集均正常。
+- 修复 Windows 平台差异：备份目录同步、UTF-8 读取、完整链接器路径、共享锁并发语义，并补 PyInstaller `plistlib` 收集。
+- 未访问相机；驱动准备、真实 USB 只读和功能写入仍待实机验收。构建与验收摘要见 `output/运行/应用/Windows0.4.2核心归一/验收摘要.md`。
+
+## Windows 0.4.2 共用核心首切片（2026-11-08）
+
+- 版本定位 0.4.2。`release/` 作为唯一核心来源，`scripts/sync_windows_core.py` 同步 38 个共享模块和适配资源并生成 `shared-core-manifest.json`；Windows 仅保留 PySide6、WinUSB 驱动、权限助手和打包差异。
+- Windows 核心 `scripts/check.py --strict`：308 项通过、无跳过；PySide6 offscreen UI 烟测通过，包含 FTP 独立更新按钮和现有 Mac 对齐布局。
+- `build_windows_app.py` 与 `desktop/windows/requirements.txt` 已加入 cryptography／cffi／pycparser 收集和许可证版本记录；`update-result` 事件接入 Windows UI。
+- Windows x64 原机构建主机 `192.168.0.66` 当前 SSH 连接超时；备用 `192.168.0.77` 与 PVE 候选主机均未接受现有 SSH 凭据，尚未完成原生安装包构建或实机验收；Mac 测试不能替代 Windows 结果。已生成 321 文件源码候选包 `output/运行/应用/Windows0.4.2核心归一/a6700-unlock-0.4.2-source.zip`，SHA-256 `dcd9d69ee00145742b8294ce70ba77b89912554b783397cdf12938e0f8d07c03`。
+
+## 最新意见反馈与 FTP 修订整合版（2026-11-08）
+
+- 当前源码已包含顶部“意见反馈”入口、多行问题描述、图片附件、错误日志采集、重新录制、报告恢复及有界同身份重试；与 FTP 修订 2 共用同一独立 App，无额外平台分支。
+- 全量 `--native --strict`：421 项通过、无跳过；独立 App 构建、模拟备份恢复和物理仅环境检查通过。
+- 包内 Python 验签并激活 FTP 修订 2 的 sequence=2 候选成功；线上 stable sequence=1 不变，未上传或部署。
+- 测试应用 `/tmp/a6700-feedback-app.m7x1nS/Powerful6700-latest.app` 已启动，未访问相机。
+
+## FTP 修订 2 独立更新与候选（2026-11-08）
+
+- 采用既有 FT-101 两字节候选，FTP 修订 2 只包含 Playback 自定义键修复字段及 263 扇区适配集；旧版缺字段显示“更新 FTP”，未安装走普通解锁，字段齐全不重复写。
+- 全量 `--native --strict`：421 项通过、无跳过，包含 FTP 修订识别、两字节更新计划和原生仿真。
+- 独立 App 构建、模拟备份恢复和物理仅环境检查通过；Worker 离线签名后，包内 Python 验签并激活 sequence=2 成功。
+- 候选位于 `output/运行/应用/FTP修订2更新候选/`，未上传或部署；线上 stable sequence=1 不变。Windows 在线更新客户端尚未接入。
+
+## FL2／FL3多字段状态日志（2026-11-08）
+
+- 用户指出仅记录 `0x02cf036f` 可能漏掉FL2／FL3。核查确认该键是Backup保存值；当前FL2／FL3保存策略会把17／18回退为ST(0)，因此仅看该键无法证明用户实际选择。
+- 记录器新增四字段状态快照：`REC`（appFw requested record）、`LIVE`（appFw live selection）、`SEL`（Backup保存的普通主选择）、`MR`（13字节MR聚合）。每次任一字段变化都追加一行并fsync，保留完整中间态。
+- 历史解析新增多字段状态行，同时兼容旧 `SEL` 行；报告中保留 `ready_state` 和每条记录的 `record/live/saved/mr`。原生5项、诊断18项、反馈35项通过，完整 `--native --strict` 416项通过。
+- 新 `operation_control.elf` SHA-256 `12a15767491b26271a3efcc3abe6a6736595422ad1e510760cdc3a4f6702bf5d`，release 源码与包内载荷一致。新版 App `/tmp/a6700-multistate-log.NxTnmt/Powerful6700.app` 已构建并烟测通过。
+- 新载荷同时读取 appFw 的 `record_get/live_get` 与 Backup 的普通/MR键；均为只读。真实FL2／FL3链待下一轮实机验收。
+
+## stable 上传部署与生产激活（2026-11-08）
+
+- 用户明确授权“可以部署上传”。GitHub v0.4.1 新增 `adapter-set-a6700-2.00.json`，回读 SHA-256 `b64fd4bb8df7b77ba06143b2c83825b808f42f1e834110667e11ec4b488547e2`，与候选一致；既有附件未修改。
+- Worker `powerful6700-cloud` 部署版本 `4889388c-4323-42ab-ac76-c382fd8ae80f`，stable sequence=1，testing 未配置。
+- 生产 stable 索引验签通过；独立测试 App 真实在线下载和缓存激活通过，桌面 `update-result` 为 `activated / sequence=1 / cache_status=active`。
+- 候选与内置适配集 digest 完全一致，不影响其他用户下载或功能行为；未执行相机写入。本次在线更新入口仅 Mac，Windows 尚未接入。
+
+## 断电重开后的STOP前自动重连（2026-11-08）
+
+- 用户完整执行开始录制→操作→关机断电→通电开机→接USB→停止录制。前两次取回失败均未写 `operation-stop.request`，第三次成功；说明相机重枚举需要多次连接窗口，但失败发生在STOP前，自动重试安全。
+- 取回流程改为一次点击最多三轮：等待稳定MSC→建立服务→认证；若失败且STOP尚未发起，释放会话并继续等待重枚举。每轮显示“第 N/3 次连接”。一旦STOP已发起或第三轮仍失败，立即停止，不重复停止。
+- 新增两处回归：前两轮pre-STOP incomplete、第三轮collected；以及STOP已发起时只尝试一次。反馈35项及完整 `--native --strict` 415项通过。真实断电重开的一次点击闭环待新版验收。
+
+## 上传传输错误的有界同身份重试（2026-11-08）
+
+## 上传传输错误的有界同身份重试（2026-11-08）
+
+- 最新失败仍为TLS handshake timeout，待发送报告本地为verified，不是云端拒绝内容。实测同IP连续4次有1次超时，旧实现单次失败即返回unknown。
+- JSON和ZIP请求改为网络错误最多3次、每次15秒，HTTP错误不重试；重试始终使用同一feedback_id、删除密钥和原始请求字节，幂等覆盖“服务端已接收但响应丢失”的场景，不重复建单。
+- 新增前两次超时第三次成功、连续失败保留pending及429不重试回归；反馈33项和完整 `--native --strict` 413项通过。未自动上传真实报告。
+
+## 上传重试只保留底部主按钮（2026-11-08）
+
+- 移除错误结果中的“重试上传”小按钮，避免与底部“上传意见反馈”重复。底部按钮继续复用原pending记录、feedback_id和删除密钥，重试ZIP／图片而不新建反馈。当前待重试ID为 `4af3fa5c-db8a-4c30-8ff9-d7360f368e96`。
+- DNS为Cloudflare公网地址；`172.67.219.128` TLS握手超时，另一地址 `104.21.43.48` 验证通过。未修改客户端TLS或DNS，未自动重发上传。
+
+## 报告状态重置与重新录制入口（2026-11-08）
+
+- “诊断报告已生成”卡片新增“重新录制”按钮；连接正常时直接开始新录制，旧ZIP不受影响。
+- 按用户要求，将活动 `feedback-sent／feedback-pending` 和Downloads中的FL23报告移动到可恢复归档 `archive/feedback-reset-20261108-191930`，未删除原始run、固件备份或恢复材料。活动 `load_unfinished_recorder()` 与 `recover_diagnostic()` 均返回 `None`，应用恢复为无日志状态。
+
+## 过期共享历史不再误报待取回（2026-11-08）
+
+- 用户在最近CLEANUP成功后仍看到“相机内有未取回日志”，且重新录制无法开始。实际触发的是13:24的 `dd951c09…` 过期启动元数据；最近多轮启动和CLEANUP已替换或删除共享history，旧START已不存在。
+- 旧恢复逻辑在最新会话已尝试STOP后仍会回退到更早的未停止会话，导致反复取回不存在的START并阻止新录制。由于 `/tmp/jiritsu/history.txt` 是单一共享文件，任何更新的启动都会使旧会话失效。
+- 恢复规则改为只检查最新启动；最新已有STOP尝试时直接返回无待恢复记录，不再回退到更老会话。新增“最新已停止时旧共享历史不得复活”回归，诊断17项及完整 `--native --strict` 411项通过。本机恢复检查已由误报变为 `None`。
+
+## 意见反馈唯一入口（2026-11-08）
+
+- 移除功能管理页的FL23诊断横条和右上角菜单中的重复诊断入口，仅保留顶部“意见反馈”按钮。弹窗标题及底部上传按钮统一为“意见反馈”，恢复提示同步更名。
+- Swift编译通过（仅既有图片API弃用警告）；独立App构建、开发签名和模拟／物理仅环境烟测通过。新App `/tmp/a6700-feedback-entry.XqrK5k/Powerful6700.app` 已启动，采集、取回和上传后端未改变。
+
+## 关机重开后的MSC发现与取回修复（2026-11-08）
+
+- 用户在录制中关机再开机，operation `9149d152-3dd1-44a1-b9af-f2c17677696e` 多次取回失败。各失败run均在首次认证前结束，未生成 `operation-stop.request`，因此STOP未发起，不涉及重复停止或历史清除。
+- 现场表现为helper capture／surrender后短暂重枚举，旧认证路径仅等待12秒；超时后外部新进程又能看到MSC。等待期间worker内枚举也可能为空，因此不能只依赖一次性fresh context或让用户反复拔插。
+- 认证初始MSC发现等待改为45秒，每次未命中后等待1秒并创建新的libusb上下文再扫描。该变化只延长设备发现等待，不重复认证、STOP或任何载荷写入；服务模式身份转换继续单独fresh。
+- 新增“首次未发现→刷新上下文→发现MSC”回归，USB专项29项及完整 `--native --strict` 409项通过。未访问相机；真实关机重开取回仍待新版验收。
+- 首次45秒版本取回虽然显示collected，但进一步发现恢复会话缺少嵌套recorder，导致绕过STOP并生成无operation-history的空报告。该结果不视为有效取回；当时STOP／CLEANUP仍未执行，原历史仍可恢复。
+- 已将恢复的nonce／mapping／boot_id／operation_id完整放入 `guided_session.recorder`，并增加身份缺失时拒绝空成功报告的守卫。新增真实恢复结构回归，反馈31项及完整 `--native --strict` 410项通过。
+- 修复版实机取回已成功：run `fl23-diagnostic-d05eb3094d334554966a73816e795bf3` 的operation `9149d152-3dd1-44a1-b9af-f2c17677696e` 含真实operation-history、STOP和CLEANUP请求／回复；`recovered_after_reboot=true`、`native_status=0`、`history_cleanup_verified=true`，服务恢复通过。旧空报告未上传。
+
+## 用户上传 8b6c93cd：真实SEL路径已取得（2026-11-08）
+
+- 云端JSON和ZIP均完整，ZIP 4073字节，SHA-256 `e50dd3774aa4609f53f65cc57de61ecae59b64b9e6c79488bc3de21deea26e67`，与本机一致。operation `211392f2-b8f4-4e4e-922c-b5330d1791f6`，结构化状态verified，服务恢复通过。
+- 首次取得真实操作路径：`T3607 READY SEL=0`、`T3622 SEL=5`、`T3625 SEL=4`，无采样ERR。按官方编号映射为 ST→FL→VV2；FL2／FL3应为17／18，本包没有出现。初始FL记录与后续两次变化满足通用日志服务预期，但FL／FL2／FL3全链路不完整。
+- `stop_observed=false`、`recovered_after_reboot=true` 是重启前未终止现场；最后成功保存的选择是VV2。若用户随后选择FL2／FL3，可能未跨过100ms采样与fsync窗口，不能把未出现17／18断言为未操作。取回时 `main_selection=4` 与最后记录一致。
+- boot log有WARMBOOT及305／307秒附近无线HANG／chip crash行，CP exception为空。SEL的T3607等相对时间与内核日志当前不能证明共用同一时间基准，且日志可能早于故障，不能据此断言VV2或无线错误是重启原因。
+- STOP为 `recovered／stop_rc=-22`，旧RAM映射不存在；CLEANUP为 `cleaned／native_status=0／cleanup_status=0`，历史删除和服务恢复均确认。**日志服务达到预期，FL23完整选择链及根因归因仍需下一次保留17／18的样本。**
+
+## 发布前源码包与 Worker dry-run（2026-11-08）
+
+- `build_source.py`：335 个文件，源码包 SHA-256 `36f5c6bb3b63bb5059dfe3d169ba6ca015ef94a92185bfb6b341e0ba98c482f1`。
+- `build_wheel.py --offline`：wheel SHA-256 `9981b540bbe50919a2ba936dbace1a2300839c2a7eefa05e9177fecda85ed6c9`；在临时目录安装后，能力包、更新模块及真实公钥资源导入通过。
+- Worker `npm run check` 和 `npm run build` dry-run 通过；未执行 deploy，未上传任何文件。
+- 本机最初缺少 `setuptools.build_meta`，已使用临时 `setuptools>=77` 环境完成 wheel 构建，未修改系统 Python 环境。临时构建物和依赖已清理。
+
+## 日志服务与可选探针解耦（2026-11-08）
+
+- 最新真实上传只有START／STOP而无SEL，不能用于FL23根因分析。按用户要求，日志服务不再以创意外观探针作为启动门槛：首次读取成功记录READY，失败记录带符号返回码 `ERR=...`，初始化中、READY和降级均允许用户继续操作。未来其他操作路径／错误探针复用同一生命周期。
+- 主选择 `0x02cf036f` 实际宽度为1字节，`Backup_nread` 返回实际字节数；读取严格使用1／1，不再误用4／4。可选探针错误不设置致命线程错误，降级线程持续等待用户停止；只有日志写盘、线程创建或生命周期失败才阻止启动。正常结束仍join后unmap并清理。
+- 两次真实启动失败均为 `ERR=1`，与上述4／4误用一致；`mapping_released=true`、服务恢复 `msc-observed`，没有遗留启动映射或USB故障。
+- 控制载荷在启动回复中返回探针状态，ABI按 `reserved[0]=库基址、reserved[1]=状态、reserved[2]=返回码` 解析，支持pending／ready／degraded。后续采样错误与READY、初始及后续SEL一起进入ZIP。
+- 解析保留无READY的旧历史兼容，新增 `ready_observed／ready_selection／sampling_errors`。READY计为初始选择记录；重复或乱序READY、非法SEL／ERR拒绝。新载荷 `operation_control.elf` SHA-256 `e84ca5309f13dd830bef08ee1e0079ff83c9250bfc174f5415a5ea1a4b94f5d9`，release与规范源逐字节一致。
+- 原生5项通过：READY＋SEL＋STOP、探针ERR降级仍持续服务、start-retain-stop-download、断电恢复、cleanup及停止后unmap。客户端诊断16项、反馈30项通过；完整 `--native --strict` 408项通过。均为原生仿真／合成数据，未访问相机，真实首个SEL和FL23操作链待新版实机验收。
+- 独立App构建、开发签名和两项无设备烟测通过，包内 `operation_control.elf` 与上述SHA-256一致。新版 `/tmp/a6700-general-logging.6ST9q9/Powerful6700.app` 已启动，共享锁空闲，相机保持 `0x0e76` MSC连接；等待用户验证启动及真实操作路径。
+
+## 用户上传 21c65e92 的分析充分性（2026-11-08）
+
+- 云端JSON和ZIP均已接收；ZIP 3703字节，SHA-256 `9adfbf3a4e1607e9d7e92e4fff571c7a124d8c2a8e016d6331c84fba98a34f31`，与本机报告一致。operation为 `e5ba336d-8503-4466-a867-2ce1a295d9fc`，结构化结果 `verified／none`。
+- 操作历史仍只有START／STOP，`records=[]`，没有任何SEL选择值。STOP回执为 `recovered`、`recovered_after_reboot=true`、`stop_rc=-22`：取回时旧RAM映射已不存在，不是在线join／unmap成功。CLEANUP为 `cleaned／native_status=0／cleanup_status=0`，持久历史删除已确认，服务恢复通过。
+- boot log有WARMBOOT，CP exception指针为空、无异常记录；取回时 `main_selection=0` 仅是重启后的当前值。上述证据不能关联FL／FL2／FL3选择与重启，**不满足FL23根因分析需求**。
+- START后没有一条初始SEL，说明至少没有成功的选择值采样被保存；不能据此断言用户未操作，也不能区分采样函数失败、线程提前停止或实际操作未被观测。重启后线程report已丢失，本包没有错误码可进一步判别。
+- 下一次复现前需先补持久化可观测性：首次读取成功写READY和初始SEL，失败写ERR及返回码，客户端READY后才允许用户开始操作。保留原始SEL时间序列，避免继续让用户重复得到只有START／STOP的包。本轮只读核查，未改代码或访问相机。
+
+## 反馈动线分离、附件幂等重试与报告恢复（2026-11-08）
+
+- 用户新版取回已成功：run `fl23-diagnostic-b000699ec46d4f43999a1d2def2e4135` 为 `collected`，服务恢复确认，STOP／CLEANUP请求和回复齐全，`native_status=0`、`history_cleanup_verified=true`。本次为重启后恢复，旧RAM映射不存在；持久历史已删除。历史只有START／STOP，没有SEL变化，不能据此验证FL→FL2→FL3操作链。
+- 上传未完成发生在云端TLS握手，不是日志取回失败。首次JSON已使用 `a5cfef48-9029-4f8a-a448-fded9231277c` 接收，后续重试却另建pending `c45143cd-3f47-4850-81f9-b230beb4eb0a`，确认客户端身份分叉。修复为相同表单内容优先复用sent记录，只重试ZIP／图片，即使同时存在旧pending也不另发JSON。
+- 反馈页改为日志卡片只负责开始录制／结束录制／取回日志；底部固定大尺寸“上传问题反馈”。无日志时直接提交文字和图片，JSON使用 `not_started／none／not_requested`；有collected报告时附ZIP。录制或待取回期间先提示完成日志，不再把结束录制和上传合并为一个按钮。
+- 新增有界启动恢复：优先未完成机内记录；否则从最近8条verified反馈元数据和最多20份FL23 ZIP中匹配operation，恢复已采集报告的待上传状态。当前operation `c7f4e63e-67e9-4e17-ae71-801726df2889` 已实际匹配到本机collected ZIP。
+- 反馈专项最终29项通过，覆盖无日志上传、sent+pending分叉下原ID附件重试、启动报告恢复；完整 `--native --strict` 403项通过。Swift编译仅既有图片API弃用警告；未访问相机。
+- 独立App构建、开发签名和两项无烟测相机访问烟测通过。旧实例已结束，新版 `/tmp/a6700-feedback-flow.r6K6jR/Powerful6700.app` 已启动；原collected ZIP恢复成功，等待用户通过底部统一按钮重试上传。云端TLS可达性与附件接收结果需以本次重试为准。
+
+## STOP前USB失败的MSC取回修复（2026-11-08）
+
+- 用户连续两次“取回并上传”均只得到partial，定位为 `diagnostics.export()` 将USB异常作为 `incomplete` 返回，旧桥接只在抛异常时关闭会话，导致后续点击反复复用失效backend，永不进入MSC兜底。
+- 本地结果新增 `recorder_stop_attempted`，并在 `operation-stop.request` 持久化后、USB invoke前同步标记调用方recorder。该标记仅用于本机安全判断，不进入反馈白名单。 incomplete或后续异常都按同一标记区分：STOP前失败关闭旧会话并等待稳定MSC后取回；STOP已发起但结果未确认时不自动重连、不重发，提示保留现场。
+- 统一“取回并上传”只在 `status=collected` 且ZIP存在时自动上传；不完整结果或MSC等待结束不再自动生成partial上传，也不会留下永久pending状态。手动明确选择上传既有报告的能力保留。
+- 新增3项桥接回归：STOP前incomplete切换MSC并完成上传、STOP已发起incomplete不重连、持久标记后的异常不重发；另覆盖原生交换标记及无STOP元数据。反馈24项、诊断14项通过；完整 `--native --strict` 400项通过。
+- Swift编译通过（仅既有图片API弃用警告），目录与diff检查通过。以上均为合成数据／离线验证，未访问相机；真实MSC恢复、FL历史、join／unmap／cleanup需用户在新App中取回验收。
+- 独立App构建、开发签名、模拟backup→restore及物理仅环境检查通过，16个原生资源完成打包。旧实例已结束且共享锁释放；新App `/tmp/a6700-msc-retrieval.EUViAK/Powerful6700.app` 已启动，恢复检查仍指向原operation，未重新录制或清理历史。
+
+## 用户上传诊断 5677e927 的内容与清理核查（2026-11-08）
+
+- 从维护者接口读取 `5677e927-95d0-4b3f-be03-a6329d8ebea0` 的 JSON 和 ZIP；ZIP 为1438字节，SHA-256 `acc25b4aff339d1e11fcc0b0bd766b8f9d10386b329c3313b34ad66aa07dee94`，与本机 `FL23-故障报告-20261108-135913-a7894bc0.zip` 完全一致。
+- ZIP 只有 `report.json` 和说明文件，没有 `operation-history.txt`，因此没有任何本次 `START／SEL／STOP` 行，不能验证 FL→FL2→FL3 的选择顺序或故障节点。结构化结果为 `partial / service_exit_unconfirmed`，机内结果为 `incomplete / USBTimeoutError`。
+- 启动 run `fl23-diagnostic-5c010fa4047d4d318e318997b7637a2c` 的独立离线解析为 `native_status=0`、加载和线程创建返回0、映射 `0x7faa381000`／204800字节、服务恢复已确认。这只证明 RAM 加载及线程创建成功；启动协议不等待首条START落盘，不能据此证明后续持续记录正常。
+- 结束 run `fl23-diagnostic-cf34c39335b44c1a996f3bee84f8133a` 只有超时结果，没有 `operation-stop.request/reply` 或 `operation-cleanup.request/reply`。停止请求尚未发出，故START落盘、选择历史、线程join、worker完成、RAM unmap及历史文件删除均未验收；不能报告为已正常清空。若中途重启，旧映射可能已随进程消失，但本次没有实机映射回读，不能据此宣称清理成功。
+- 本次仅读取本机记录和云端维护者接口，未操作相机。恢复检查仍返回 operation `1c08cd9a-2702-484c-808c-a13f20939635` 待取回；下一步应保持现场，MSC稳定后直接取回上传，不通过“重新录制”清除可能仍存在的历史。
+
+## 诊断重新采集的进度与取消（2026-11-08）
+
+- 用户点击“重新采集”后长期显示“采集中”且无法取消，定位到两个独立原因：旧桥接在主 JSON 线程同步执行重连 `inspect`，无法处理后续取消；录制已经成功并进入 `waiting_user` 后，SwiftUI 又把该用户操作阶段视为 busy，永久隐藏“结束录制”和取回操作。
+- 重连、旧日志取回及新记录启动改在后台执行，逐步发送连接、停止旧记录、清理和启动进度。取消只设置协作标志：等待当前 USB 请求安全返回，阻止后续步骤；已经启动的新记录通过正常 stop／取回／清理路径收尾，不强制 reset、杀线程或自动重发载荷。旧日志未完整取回时不开始新录制。
+- SwiftUI 只在 `starting／restarting／collecting／cancelling` 显示忙碌，持续录制期间恢复“结束录制并上传”；重新采集和启动阶段提供取消入口，取消后保留原日志及取回／重录选择。
+- 21 项反馈专项测试通过，包括人为阻塞重连时主循环仍处理取消、取消后不清旧日志且不启动新记录，以及旧日志 incomplete 不启动新记录。完整 `--native --strict` 最终复跑 397 项通过；首轮有 1 项既有模拟器取消测试在并行构建负载下超时，单独复跑及完整复跑均通过。
+- Swift 编译通过（仅既有 `allowedFileTypes` 弃用警告）；独立 App 构建、开发签名、模拟 backup→restore 和物理仅环境检查通过。上述检查均未访问相机；旧实例的现场保留及新界面实机操作验收另行记录。
+- 经用户明确授权，已结束拒绝退出的旧 App／worker／helper 并确认共享锁释放。新版 App 已启动；离线恢复检查仍识别原 `dd951c09-b87c-4e57-9a8e-5d860b3dd187` 为未取回记录，没有自动开始新录制或清理机内历史。新进度／取消按钮的真实相机操作仍待用户验收。
+
+## 独立 App 签名依赖与成品验收（2026-11-08）
+
+- `desktop/runtime-dependencies.json` 固定 cryptography 46.0.3、cffi 2.1.1（cp313 arm64）和 pycparser 3.12，URL／SHA-256 与 PyPI 一致；通用 stager 保留许可证并包含顶层 `_cffi_backend`，universal2 原生库裁剪为 arm64。
+- 应用全量 `--native --strict`：394 项通过、无跳过，包含 4 项更新打包测试。
+- 真正独立 `Powerful6700.app` 构建成功，16 个原生资源通过 arm64 与开发签名检查；`check_macos_app.py` 的模拟 backup→restore 和物理仅环境检查均通过，未访问相机。
+- 使用包内隔离 Python（`-I -S -B`）完成真实公钥验签和 stable 候选激活，证明不依赖外部 site-packages。未上传 App、索引或 GitHub 发布内容。
+
+## 正式签名密钥与首份 stable 候选（2026-11-08）
+
+- 生成 `a6700-update-2026-01` Ed25519 信任根，公钥指纹 `060c9e7657f0b34b44d685d5125dda6ab5b5da79702d4eb4ed016cf8ea0dc083`；私钥仅在仓库外受限目录，未入库或输出。
+- 应用全量 `--native --strict`：390 项通过、无跳过；Worker `npm test`：35 项通过。
+- Worker 离线签名→真实应用公钥验签→附件 SHA-256 校验→缓存激活通过；预览包内资源重复同一信任链通过。
+- 候选及公开摘要位于 `output/运行/应用/更新发布候选/`，私钥路径、备份责任、发布顺序和撤回边界见[更新签名与发布运维](UPDATE-RELEASE.md)。未上传 GitHub、未部署索引、未执行相机写入。
+
+## 桌面主动更新入口（2026-11-08）
+
+- 新增 `desktop/update_service.py`、`data/update-trust.json` 和 `check_updates` 命令；默认空公钥时返回 `unconfigured`，不会调用网络传输。`update-result` 独立于相机事务结果，检查与相机操作互斥。
+- SwiftUI“帮助与版本”加入主动检查按钮和状态文案；不后台轮询，不自动激活相机修订，不把适配集下载成功写成相机更新成功。
+- 新增 3 项桌面测试；桌面入口、在线检查和签名缓存组合的 19 项测试通过。预览包内信任配置检查及 `check_updates` 返回 unconfigured 通过，未联网或访问相机。
+- 全量 `--native --strict` 共 389 项，其中并行反馈用例 `test_manual_guided_collection_then_structured_upload` 一项失败（期望 `end_session` 3 次、当前会话策略实际 2 次），其余通过。另对并行任务未闭合的 `try` 做了仅删除无效标记的编译修复，未改其会话执行路径；不将本轮全量回归称为全部通过。
+
+## 只读在线更新检查（2026-11-08）
+
+- 新增 `online_updates.py` 与 `test_online_updates.py`：索引和适配附件使用 HTTPS、有界响应、15／20 秒超时、ETag 和审查重定向；不自动重试，不发送实例 ID 或相机数据。
+- 200 验签下载激活；304 必须匹配已验证缓存；404／503 为 unavailable，不声称当前最新；断网保留缓存；附件失败不激活索引。
+- 新增 7 项合成 HTTP 测试通过；能力包、签名缓存和在线更新组合的 23 项测试全部通过。未请求生产 API 或 GitHub，未配置正式公钥，未执行相机写入或发布。
+- 全量 `--native --strict` 共 386 项，其中并行任务的 `test_cancel_uses_joined_collection_instead_of_leaving_camera_worker` 一项失败（`export.call_args=None`）；该用例单独运行约 126 秒复现相同失败，其余测试通过。未修改该无关模块，不能将本轮全量回归称为全部通过。
+
+## 签名索引与本地更新缓存（2026-11-08）
+
+- 新增 `package_updates.py` 与 `test_package_updates.py`，与 Worker 使用同一 `payload/signature/key_id` 封装和 payload v1；客户端独立 Ed25519 验签，激活时再次验证精确 envelope。
+- 序号回放、同序号不同内容、未知签名、重复字段、非有限数值、深度 JSON、未审查 URL、附件篡改、缓存符号链接均在写入前拒绝。过期缓存可离线使用，撤回阻止新写入但保留诊断。
+- `scripts/check.py --native --strict`：378 项通过、无跳过；新增 9 项临时密钥端到端测试。
+- 额外完成跨运行时检查：Worker `scripts/sign-index.mjs` 离线签出的真实 envelope 经 Python 验签、附件校验和缓存激活通过。未配置正式公钥、未联网下载、未部署或执行相机写入。
+
+## 内置能力包与精确适配集（2026-11-08）
+
+- 新增 `capability_packages.py` 与 `test_capability_packages.py`，现有普通功能、FL23／中文名称统一编译为版本化能力包和 `a6700.adapter-set/v1`；操作快照固定适配摘要和包版本，执行结果保存选择解析。
+- 依赖、核心 API、可用性、共享 startup-loader 保留策略及同字节目标冲突均有合成测试；未知／循环依赖、篡改摘要和未开放功能在执行前拒绝。
+- 最终当前代码 `scripts/check.py --native --strict`：369 项通过、无跳过，包含混合功能物理服务、USB 事务及 ARM64 原生仿真。
+- Mac 预览完成 Swift 编译和签名；包内适配集快照、模拟 inspect→unlock→独立回读和物理仅环境检查通过。未实现网络包、缓存、签名索引或自动激活，未执行相机写入或发布。
+
+## 真实断电流程修复（2026-11-08）
+
+用户完整执行“开始→拔线操作→关机断电→通电开机→重接→结束录制”。启动成功且历史已落盘；自动重接触发结束采集时在后台线程调用`signal`，Python主线程限制导致`signal only works in the main thread`，停止请求未发出。已改为非主线程不设置SIGALRM，沿用USB协议自身超时。实机复盘还发现该机身`boot_id`跨多次断电保持不变，不能作为重启判据；停止载荷改为先检查当前进程maps中是否存在启动时的精确RX映射，存在才调用旧线程，不存在则直接取回持久历史。App重启时识别最新未尝试停止的录制会话并进入等待取回状态，防止误开始新录制清掉旧历史。362项完整严格检查全部通过；真实断电后取回待用户在新App中完成。
+
+续报：用户重试时再次在重新接线后遇到`no Sony MSC device found`。核查当前IORegistry随后已恢复`054c:0e76`，判定为枚举竞态。已取消“重接后立即自动采集”：watch需连续4次观察到唯一MSC才提示用户；点击结束后再连续4次确认MSC并等待2秒才认证。采集顺序改为先取机内历史再做其它探针；partial结果不再丢弃recorder，点上传会先重试取回。369项完整严格检查、Swift编译、App构建和烟测通过。
+
+续报：用户反馈partial后不知道下一步。UI在`awaiting_retrieval`状态显示“重试取回日志”和“取回并上传”两个明确按钮；开始录制按钮改为“先取回未完成日志”并禁用，提示新录制会清理旧记录。录制遮罩在该状态自动关闭，避免用户被困在弹窗中。新增桥接测试覆盖partial后保留recorder、手动重试复用同一身份并成功上传。379项完整严格检查、Swift编译、App构建和烟测通过。
+
+续报：用户指出当前服务连接已建立且屏幕可操作时不应再次要求MSC。Start不再主动关闭已认证inspection会话；录制期间保留该服务连接，用户可直接操作相机。End优先通过`PhysicalService.collect_operation_log`复用同一backend和锁，直接停止记录、取回历史并清理；仅当该连接因拔线/重启失效时才退回持久日志的MSC路径。Partial时保留当前服务连接供直接重试。当前全量390项严格检查、Swift编译、App构建和烟测通过。
+
+续报：用户仍从功能页进入诊断后点“相机已有日志”导致失败。该入口会绕过guided recorder并新建诊断后端，正是重复卡片/重复入口造成的误操作。反馈页已收敛为单个“相机日志”卡片：无日志只有“开始录制”；有未取回日志只有“取回并上传”与“重新录制（清空旧日志）”；已生成报告只有“上传问题反馈”。移除访达/邮件和直接采集入口。重新录制会先在同一服务连接上停止并清理旧日志，成功后才开始新录制。395项完整严格检查、Swift编译、App构建和烟测通过。
+
+## 新架构设备访问接口（2026-11-08）
+
+- 新增 `device_access.py` 与 `test_device_access.py`，桌面真实会话统一为 `prepare_access → open_transport → release_access`；CLI 继续通过 `UsbBackend.__enter__` 复用同一实现。
+- `scripts/check.py --native --strict`：362 项通过、无跳过，覆盖 USB 认证、桌面事务、原生仿真及新增生命周期顺序／失败释放测试。
+- Mac 预览完成 Swift 编译和签名；包内模拟 inspect→unlock→独立回读、物理 worker 仅环境检查通过。最终回归使用合成后端，不发送相机写入、不生成发行包、未更新 GitHub。
+- Windows 设备访问实现和真实 Mac 接管仍需各自实机验收；本轮只完成核心接口归一。
+
+## 新架构 A 阶段首个 Mac 切片（2026-11-08）
+
+- 最终代码 `scripts/check.py --native --strict`：355 项通过、无跳过，包含全部无设备检查及 ARM64 原生仿真。
+- 新增 host_io／协议／流程证据测试覆盖：独占记录和锁释放、固定命令字段与重复字段拒绝、协议关联 ID、按模式声明能力、FL23 实际更新与 no-op／关闭的不同等待语义、服务退出与人工验收独立；FL23 菜单与拍摄／回放分别记录。
+- macOS 预览完成 Swift 编译和 ad-hoc 签名；使用包内 Python 资源完成模拟 inspect→unlock→独立回读、协议关联与 workflow/evidence 检查，以及物理 worker 仅环境检查。未发送相机命令，未请求 USB 授权。
+- 未做 Windows 实机验证、签名能力包、通用计划合成、在线激活或统一界面；未生成发行包、更新 GitHub 或访问真实相机。
+
+## 云端附件部署与上传修复（2026-11-08）
+
+用户DNS恢复后上传仍失败。定位为两层问题：Cloudflare 1010拦截Python默认User-Agent；客户端`operation_recorder`事件使用契约外`phase:start`导致400 invalid_schema。已改为应用User-Agent并把该事件映射为`connect`，旧pending自动修复后复用同一feedback_id重试。生产D1应用0002／0003迁移并部署Worker`837e2e83-472e-496a-8ad6-d5192455e8af`；35项云端测试通过。真实JSON与1431字节ZIP上传成功，ZIP SHA-256为`c6cf8cd25f28a090fefa90342b0379d47d6eadc3351cf0e0d7db7b5f0f3efcc1`。客户端339项严格检查和App烟测通过。
+
+## 相机内日志清理（2026-11-08）
+
+用户不希望操作记录长期留在相机内。核对官方`mount.conf`：`/tmp/jiritsu`由`/dev/nflasha6`挂载，分区总大小25MiB，不是RAM。操作记录协议新增cleanup动作：开始新录制前删除旧`history.txt`并同步目录；停止／重启恢复取回当前记录后立即再次删除并同步目录。记录器新增120KiB上限，避免单次录制无限增长。典型一条选择记录仅十几字节，120KiB远小于25MiB分区；清理失败会阻止报告称成功。
+
+SD卡暂不作为日志位置：SD可能被拔出、写保护、满盘或被相机／主机占用，且写用户可见存储有污染照片区与文件系统一致性风险。保留既有Jiritsu系统分区并在取回后删除是当前更稳的有界方案。338项完整严格检查全部通过；原生记录器、启动/停止/重启恢复/清理链和诊断测试均通过。
+
+## 结束录制进度与失败详情（2026-11-08）
+
+用户开始后立即结束，结果为“诊断报告已保留，但部分信息未取回”。核对run记录：启动会话成功，RAM映射、boot ID和服务恢复均正常；结束run为 `incomplete / DeviceError / device_access=false`，且没有operation-stop请求，失败发生在重新建立USB采集会话之前。旧版未保存具体错误文本，不能进一步区分接口接管或USB认证阶段。现已把可操作错误文本保存在本地run和界面结果中，但不导出到report.json；MSC恢复后增加1秒稳定等待和阶段进度。
+
+UI同步修复：采集期间即使guidedState存在也显示进度面板；结束录制显示ProgressView动画、“正在停止机内记录、读取日志…”及最近进度行，不再出现按钮变灰但无提示。等待取回/超时状态也显示明确状态卡。337项完整严格检查、Swift编译、独立App构建签名和两项烟测通过。真实失败原因需用新版复测确认。
+
+## 录制连接与授权复用（2026-11-08）
+
+用户复现 `PermissionError [Errno 13]`。根因是root helper bind后socket属主为root且模式0600，调用者连接被拒绝。已改为socket0666，但目录仍为调用者0700，helper继续用getpeereid校验UID。持共享设备锁做只读实测：`HANDSHAKE_OK`、`CAPTURE_OK`、`CLOSED`，未上传相机载荷或修改固件。336项完整严格检查、原生helper编译、App构建签名和两项烟测通过。Touch ID未启用：macOS 27 SIP拒绝写入PAM文件；系统提供sudo_local.template但不能创建sudo_local，项目不绕过SIP。
+
+用户输入密码后助手仍未留下进程／socket，定位为 shell 后台 `&` 启动方式被退出清理。现改为helper自行 `fork + setsid` 并关闭继承的标准IO，移除shell后台符号，继续由worker socket生命周期控制退出。诊断启动失败现记录error_type。原生helper编译、335项完整严格检查、App构建签名和烟测通过；真实授权握手待用户验收。本机 `/etc/pam.d/sudo` 未启用 `pam_tid.so`，当前不能承诺指纹；不把管理员密码保存到钥匙串。
+
+用户实测开始录制会再次断开MSC并反复输入密码。定位为旧流程先关闭已认证会话再新建后端，同时每次macOS接口接管都单独授权。现开始录制直接复用连接检查的已认证后端和设备锁，完成新鲜预检与启动后才为拔线操作关闭会话。macOS接管改为每次App worker一个受限broker，首次管理员授权后，后续重连通过同一Unix socket执行固定capture，不重复弹窗；不写sudoers、不永久驻留，worker退出关闭。
+
+新增实际socket协议、两次接管一次授权、现有后端复用、启动失败释放锁并允许下次重连等回归。335项 `--native --strict` 全部通过，原生helper编译、AppleScript语法、独立App构建签名和两项烟测通过。物理拔插仍需要重新枚举与相机认证，不宣称USB会话跨拔插保持；真实授权次数和录制仍待用户实机验收。
+
+## 机内连续操作记录（2026-11-07）
+
+2026-11-08用户实测纠正：服务文件恢复和MSC在线不等于LCD可操作，插线仍显示USB模式。录制动线已改为“启动RAM记录器→明确提示拔下USB→检测拔线后允许机身操作→重新接线自动停止并下载”，不再宣称插线自动恢复可操作页面。状态机覆盖正常拔线、启动前已拔线、重新连接和手动结束；331项完整严格检查、App构建签名及烟测通过。RAM载荷、固定地址读取和落盘机制不变，真机拔线后的持续记录仍待验收。
+
+反馈弹窗布局修正：标题栏与上传底栏固定，中间问题描述、图片、采集和结果区域使用ScrollView，避免图片或结果增多后底部按钮被挤出。关闭不再因采集忙碌禁用；录制中关闭与“结束并关闭”均调用同一安全停止／取回路径，结果保留在共享model中。Swift编译、独立App构建签名和两项烟测通过。已结束3个历史实例，仅保留 `/tmp/a6700-feedback-layout.9MPMSM/Powerful6700.app` 一个进程。
+
+错误日志采集已从“结束后才读已有日志”改为机内后台持续记录：启动前重新检查2.00固件兼容，读取创意外观当前选择，变化时追加 `/tmp/jiritsu/history.txt` 并逐条 `fsync`，直到用户停止或相机关机。每次录制有独立nonce；正常停止使用受守卫的阻塞 `pthread_join`，确认线程退出后才卸载映射。停止请求携带启动映射和boot ID；若boot ID变化，不调用旧地址，只读取重启前已落盘且可能没有STOP的现场。ZIP增加本次 `operation-history.txt`，已有系统／CP日志直接采集仍保留。
+
+- ARM64原生仿真通过记录器START／SEL变化／STOP，以及正常start-retain-stop-join-download和重启后恢复未终止历史两条完整控制链；记录器不再20秒自动退出，也不会二次加载新实例冒充停止旧实例。
+- `scripts/check.py --native --strict`：330项全部通过、无跳过；新增启动服务恢复、后续探针失败仍保留机内日志、关机后等待取回、取消也安全停止等测试。
+- 独立App构建、签名、模拟与物理环境烟测通过；包内16个诊断资源及本机ZIP导出通过。源码包和wheel包含新增固定ELF与对应源码／解析器。
+- 真机命令行和App运行组件两次启动尝试均在macOS USB授权阶段结束：一次需要sudo密码，一次图形授权120秒超时。均未上传采集载荷、未启动记录器、未修改固件或参数；真实启动／切换／停止／下载仍待用户在App中授权验收。
+- 云端ZIP／图片附件接口仍未部署，GitHub未提交或发布。
+
+## 录制式反馈交互（2026-11-07）
+
+界面改为紧凑窗口，图片附件使用虚线添加框、缩略图和悬浮删除按钮；错误日志采集采用录音式开始／结束交互，录制前必须已经通过相机连接检查，开始录制时不切回 USB 服务；结束录制后若关机，先提示重新开机并等待 MSC 恢复，再读取。页面未连接时也提示先连接检查。统一“上传问题反馈”按钮提交描述、ZIP 和所选图片，不再在录制完成后自动上传。新增未连接时拒绝录制的桥接测试；应用构建和烟测通过。真实相机录制和上传仍待验收。
+
+## 多图流式附件（2026-11-07）
+
+新增可选图片入口及云端图片附件接口。支持多张 JPEG／ARW 等格式，单张最大200MiB；客户端分块计算SHA-256并流式发送，云端直接写R2，避免大文件进入内存。云端图片类型、大小和凭据校验、重复上传、维护者列表／下载及删除清理测试通过；OpenAPI／TypeScript和dry-run通过。客户端大文件分块内容与源文件一致，不支持格式在联网前拒绝。未部署生产或上传真实照片。
+
+## ZIP 附件与通用反馈简化（2026-11-07）
+
+云端新增 `POST /v1/feedback/{id}/artifact` 私有 ZIP 附件：与 JSON 使用同一 feedback_id 和删除密钥，最大 5MiB，检查 ZIP 结构和 report.json，记录 SHA-256、独立附件表及每日字节预算；维护者认证下载，删除时与 JSON 一起清理。`services/cloud` 33 项测试通过，覆盖附件上传、幂等、冲突、错误令牌、非法内容、下载和删除。OpenAPI／类型检查通过，未部署生产。
+
+客户端按 JSON→ZIP 顺序上传，附件接口 404 时返回 partial，保留本地 ZIP 而不影响 JSON 成功。界面改为通用“问题反馈”：多行自定义描述、单个引导复现开关、完成后默认上传；直接采集折叠到次级入口。客户端附件与降级测试通过，未向正式云端写入测试数据。
+
+## 引导复现与结构化云端反馈（2026-11-07）
+
+在既有直接采集之上新增引导复现：只读观察 USB 断开及 MSC 恢复，随后调用同一诊断采集；用户也可手动结束监测并采集。本地 ZIP 继续保留。云端按 `services/cloud/docs/客户端接入.md` 接入 `POST /v1/feedback`，只发送 `diagnose` 操作、状态、错误码和阶段事件，不上传 ZIP、原始日志、路径或密钥。每份反馈有独立 ID 和删除密钥，失败保留同 ID／同密钥／同字节待发送记录，不自动重试。
+
+- `scripts/check.py --native --strict`：320 项全部通过，含 ARM64 原生仿真，无跳过。
+- 新增反馈与引导测试：结构化白名单、失败重试字节一致、429 保留待发送、断开／MSC 恢复、用户取消、手动引导采集后上传。
+- 独立 App 构建及模拟／物理环境烟测通过；未向正式云端写入测试反馈，未做真实相机引导复现和真实上传验收。
+- 生产 API 仅按已部署文档接入，不修改云端服务、数据库或 R2；GitHub 未提交或发布。
+
+## 本地 FL23 诊断导出（2026-11-07）
+
+Mac 客户端新增“导出 FL23 诊断”面板：本机安装记录可独立导出；相机采集前结束当前认证会话，再复用设备锁和固定只读载荷。导出 ZIP 仅含允许字段与筛选异常行，支持访达定位和系统邮件附件，收件人预填 `xyzhangxin@live.com`，不自动上传。
+
+- 新增 `test_diagnostics.py` 6 项通过：资源哈希、脱敏导出、日志筛选、非法资源在 API／相机访问前阻断、相机采集先关闭会话、本机导出不触碰会话。
+- 项目临时 venv 安装 PyUSB 1.2.1、Unicorn 2.1.4、pyelftools 0.33、setuptools 84.2.1、wheel 0.48.0；`scripts/check.py --native --strict`：314 项全部通过，含 ARM64 原生仿真，无跳过。
+- `scripts/build_macos_preview.py`：Swift 原生界面编译通过。
+- `scripts/build_macos_app.py`：独立 Apple Silicon App 构建、签名及 14 项内置原生资源检查通过。
+- `scripts/check_macos_app.py`：模拟备份恢复和真实模式仅环境检查均 `ready=true`、`device_access=false`、`write_attempted=false`。
+- 成品包内使用捆绑 Python 校验 12 个诊断资源并完成一次本机 ZIP 导出，报告为 `fl23-error-report`，不含相机字段。
+- `scripts/build_source.py`：源码 ZIP 309 个文件，含 16 个诊断源码／资源／测试条目，无 AppleDouble 元数据；仅将三个已校验诊断 ELF 加入许可列表，其他二进制规则不变。
+- `scripts/build_wheel.py --offline`：wheel 构建通过，包含诊断 manifest 及三个固定 ELF。
+- 修正过一次清单问题：macOS `._*` 附属文件不能进入诊断 manifest；最终清单只跟踪 12 个实际资源，包内校验通过。
+- 本轮未连接真实相机执行采集，未实测系统邮件弹窗及附件发送；这两项需用户最终验收。未提交或发布 GitHub。
+
+## 0.4.1 发布候选（2026-11-06）
 
 沿用DEV6已验收代码及修复载荷，正式版本号为0.4.1。用户通过DEV6从公开0.4.0的FL23＋中文旧包直接升级，独立解析实际请求确认仅临时停用／恢复AP及WBI两处启动指令，完整外部包回读匹配修复版，未写CP参数或发送SAVE，中文保持。用户确认更新后完全断电重启，再次只读确认revision2/current、不再提示更新，修复挂钩与1400B代码双读一致，服务恢复及MSC通过。精确同包此前的预览、连续切换、拍摄保存及回放验收复用，未为应用升级重复拍照。
 
-四项关闭流程的原生复位、固件关闭与冷启动独立核对见下方dev4／dev5记录；无在途FTP上传的边界保持。发布准备不操作相机，Mac GitHub 0.4.1已发布；第三方反馈机仍需复验。
+四项关闭流程的原生复位、固件关闭与冷启动独立核对见下方dev4／dev5记录；无在途FTP上传的边界保持。发布准备不操作相机，GitHub更新待维护者审核，第三方反馈机仍需复验。
 
 ## 0.4.0.dev6 FL23选择通知修复及原包更新（2026-11-06）
 
@@ -98,27 +423,6 @@ FTP本次没有在途文件上传，但网络退出等待没有及时清除。�
 - 为排查 FL3 重启反馈，另经共享调试台任务将同一 App／WBI 字段 `01→00` 回退；写前新鲜双读、守卫、原生事务、写后独立双读、服务恢复和 MSC 退出通过。回退后只读复核为 FTP enabled／revision1／available、更新计划 2 字节，263 个固定读取扇区与旧版重启基线逐字节完全一致。该操作只撤回增量，不关闭旧版 FTP 基线，也不修改 FL23。
 - 发行清单、内置 reader/writer、FL23 载荷均未替换，更新按钮未开放。本机回放自定义键绑定／真实传输、服务器配置的功能回归及最终应用端到端更新尚待实机验收。
 
-## Windows 0.4.0.dev1 对齐 Mac 0.4.0（2026-11-06）
-
-固定载荷、组合源码、中文选项及加载提示从公开Mac0.4.0成组源码同步；Windows平台IO和独占锁保留。本机222项核心／ARM64仿真及17项Qt界面／worker检查通过，包括中文与FL23组合往返、未选项保持、提示范围及错误阻断。Windows构建和成品检查结果以同组交付说明为准；USB驱动、真实读取／写入／冷启动尚待Windows实机验收。未包含开发版关闭前自动停用或FTP增量更新。
-
-## Windows PR #7：inode 时间戳守卫修复（2026-11-05）
-
-已合入 [PR #7](https://github.com/xyzhangxin/sony-a6700-powerful/pull/7)并同步本工作分支。公开仓库合并版本160项、本Windows工作分支165项 `scripts/check.py --native --strict` 通过，无跳过；均为macOS上的离线／原生仿真，不是Windows主机或相机实测。九处守卫仅在哈希比较副本上归一化时间字段，原始扇区和写入目标不变；原生profile与载荷无需重建。未更新既有安装包。
-
-## Windows 0.3.0.dev3 进度与确认界面
-
-2026-10-27：新增圆形动画、已用时间与实时处理详情；统一的功能确认弹窗保留明确确认及取消，不接受取消或 Esc 为写入许可。相机和原生载荷未改变，仍待 Windows 实机验收；对应离线检查见本版交付说明。
-
-## Windows 0.3.0.dev2 界面对齐
-
-2026-10-27：Windows 界面按 Mac 的设计系统重排，启动、准备、双栏功能管理、六步结果与固定底栏均用合成数据验收；保留重复点击、取消、关窗保护、不兼容阻断及服务重启检查。USB／字段清单／原生载荷和守卫未变，未操作相机。成品构建和 Windows 版验证结果以本版本交付说明为准，实机验收仍待完成。
-
-## Windows 0.3.0.dev1 开发预览
-
-2026-10-27：Windows 11 x64、Python 3.14 上 159 项严格检查（含 ARM64 载荷仿真）通过；源码与打包界面的演示解锁／关闭、结果与六步重启提示、后台中断恢复通过。新增重复点击／关窗保护、写前取消及不兼容阻断界面检查。打包后台真实模式的环境检查通过，未枚举 USB、未认证或写入相机。驱动安装、MSC→服务身份切换、实机读取／功能写入与独立回读仍待本版 Windows 验收。仅四项公开功能，沿用 v0.2 的 profile、原生载荷及守卫。
-
-更新：2026-10-23。下文按版本保留历史记录；未执行的测试不标记为通过。旧本机路径是证据索引，不是运行、构建或普通测试的依赖。
 ## 0.3.1完整卸载（2026-11-06）
 
 按用户要求，后续GitHub内容先审核；0.3.0草稿未继续发布。本地候选将关闭改为恢复FL23专属CP代码／参数、AP／WBI入口，并删除已校验的live／new／off文件。原有其他功能保持。随后用户通过应用同时完整卸载FL23和电子快门声音，并重启连接；独立只读核对通过。

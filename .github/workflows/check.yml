@@ -85,7 +85,7 @@ jobs:
         shell: pwsh
         run: '"C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append'
       - name: 安装开发依赖
-        run: python -m pip install 'setuptools>=77' wheel '.[usb,test]'
+        run: python -m pip install 'setuptools>=77' wheel '.[usb,test,updates]'
       - name: 合成测试及原生 ELF 仿真，不访问相机
         if: env.NATIVE_TOOLS != '0'
         run: python scripts/check.py --native --strict

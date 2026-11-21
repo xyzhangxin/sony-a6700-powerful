@@ -38,6 +38,7 @@ struct Panel<Content: View>: View {
     @ViewBuilder let content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: 0) { content }
+            .foregroundColor(UI.ink)
             .padding(20).frame(maxWidth: .infinity, alignment: .leading)
             .background(.white).clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(UI.line))
@@ -88,6 +89,7 @@ extension FeatureRow {
         case "dynamic_active": return "新增录像防抖「动态增强」，保留原有拍摄条件限制"
         case "fl23": return "新增独立 FL2／FL3、图标及完整说明；可与其他功能一起选择，保留简称"
         case "creative_look_names": return "主列表和编号 1～6 显示完整名称，可独立启用"
+        case "custom_shutter_sound": return "十槽固定编号自定义快门声（含“默认”与槽位 1～10）；解锁自动启用「电子快门声音」，可单独关闭"
         default: return "按当前适配管理此功能"
         }
     }
@@ -100,6 +102,7 @@ extension FeatureRow {
         case "dynamic_active": return "viewfinder"
         case "fl23": return "camera.filters"
         case "creative_look_names": return "character.bubble"
+        case "custom_shutter_sound": return "waveform.path.ecg"
         default: return "square.3.layers.3d"
         }
     }

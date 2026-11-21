@@ -6,12 +6,13 @@ from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QPixmap, QIcon, QDesktopServices
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (QWidget, QFrame, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QScrollArea, QComboBox, QMenu, QDialog, QPlainTextEdit, QSizePolicy)
+    QScrollArea, QComboBox, QMenu, QDialog, QPlainTextEdit, QSizePolicy, QPushButton)
 from a6700_unlock import __version__
 from a6700_unlock.notice import operation_notice
 from importlib.resources import files
 from design import (label,button,panel,line,row,column,pill,Segments,Symbol,CheckBox,
                     ACCENT,INK,MUTED,AMBER,FEATURES,ActivityIndicator,symbol_icon)
+from market_views import ShutterSoundMarketWidget
 
 
 def title(layout,text,subtitle=''):
@@ -63,9 +64,36 @@ class Views:
         self.update_dot.move(18,2);self.update_dot.hide();self.update_dot.setToolTip('相机功能包已更新')
         i=QHBoxLayout(help_button);i.setContentsMargins(5,5,5,5);sym=Symbol('more',18,MUTED);sym.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents);i.addWidget(sym)
         self.help_button=help_button;self.outer.addWidget(self.header)
+        self.viewing_market = False
+        self.return_to_market_after_connect = False
+        self.subnav_frame = QFrame(); self.subnav_frame.setObjectName('header')
+        nav = QHBoxLayout(self.subnav_frame); nav.setContentsMargins(28, 0, 28, 10); nav.setSpacing(10)
+        self.camera_tab = button(nav, '相机', self.open_camera_workspace, 'navTab')
+        self.camera_tab.setCheckable(True); self.camera_tab.setChecked(True)
+        self.camera_tab.setFixedHeight(32)
+        self.camera_tab.setIcon(symbol_icon('camera', 14, ACCENT, 4)); self.camera_tab.setIconSize(QSize(18, 14))
+        self.market_tab = button(nav, '快门声市场', self.open_market, 'navTab')
+        self.market_tab.setObjectName('marketNavTab')
+        self.market_tab.setCheckable(True)
+        self.market_tab.setFixedHeight(32)
+        self.market_tab.setIcon(symbol_icon('waveform', 14, ACCENT, 4)); self.market_tab.setIconSize(QSize(18, 14))
+        nav.addStretch()
+        self.outer.addWidget(self.subnav_frame)
         self.step_frame=QFrame();self.step_frame.setObjectName('steps');self.step_layout=QHBoxLayout(self.step_frame);self.step_layout.setContentsMargins(28,11,28,13);self.step_layout.setSpacing(20)
-        self.outer.addWidget(self.step_frame);line(self.outer)
+        self.outer.addWidget(self.step_frame)
+        self.return_market_banner = QFrame(); self.return_market_banner.setStyleSheet('background:#f2f7f5;border-bottom:1px solid #dce6e2;')
+        rb = QHBoxLayout(self.return_market_banner); rb.setContentsMargins(28, 8, 28, 8); rb.setSpacing(10)
+        rb.addWidget(Symbol('waveform', 15, ACCENT))
+        rb.addWidget(label('相机连接并检查通过后将自动返回快门声市场', 'accent', False))
+        rb.addStretch()
+        button(rb, '返回市场', self.open_market, 'compactSecondary')
+        self.return_market_banner.hide()
+        self.outer.addWidget(self.return_market_banner)
+        self._header_sep = line(self.outer)
         self.scroll=QScrollArea();self.scroll.setWidgetResizable(True);self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff);self.outer.addWidget(self.scroll,1)
+        self.market_widget = ShutterSoundMarketWidget(self.audio_market, self._market_controller(), self)
+        self.market_widget.hide()
+        self.outer.addWidget(self.market_widget, 1)
         self.footer_host=QWidget();f=QVBoxLayout(self.footer_host);f.setContentsMargins(0,0,0,0);f.setSpacing(0);self.footer_layout=f;self.outer.addWidget(self.footer_host)
         self.render_loading('正在检查本机组件…')
 
@@ -91,6 +119,18 @@ class Views:
         self.demo_button.setVisible(not self.physical);self.demo_button.setEnabled(not self.inflight and not s.get('busy'))
         self.mode_symbol.kind='cable' if self.physical else 'play';self.mode_symbol.update()
         self.mode_status.setText(('相机已检查' if s.get('compatible') else '相机模式') if self.physical else '演示模式 · 不连接相机')
+        if hasattr(self, 'camera_tab'):
+            self.camera_tab.setChecked(not self.viewing_market)
+            self.market_tab.setChecked(self.viewing_market)
+            self.market_tab.setEnabled(not self.camera_operation_active())
+        if hasattr(self, 'market_widget'):
+            self.step_frame.setVisible(not self.viewing_market)
+            self.scroll.setVisible(not self.viewing_market)
+            self.footer_host.setVisible(not self.viewing_market)
+            self.return_market_banner.setVisible((not self.viewing_market) and self.return_to_market_after_connect)
+            self.market_widget.setVisible(self.viewing_market)
+            if self.viewing_market:
+                self.market_widget.refresh()
         self.clear(self.step_layout)
         for i,name in enumerate(['准备并连接','功能管理']):
             if i:self.step_layout.addWidget(label('›','small',False))
@@ -195,8 +235,11 @@ class Views:
         b=row(l);button(b,'重新启动本地服务',self.start,'primary');b.addStretch();l.addStretch();self.clear(self.footer_layout)
 
     def render(self):
-        s=self.state;busy=bool(s.get('busy'));self.mode.setEnabled(not busy and not self.inflight)
+        s=self.state;busy=bool(s.get('busy'));self.mode.setEnabled(not busy and not self.inflight and not getattr(self, 'audio_import_flow_active', False))
         phase='progress' if busy else s.get('phase','notice');key=(phase,s.get('action'))
+        if self.return_to_market_after_connect and phase == 'home' and s.get('connected') and s.get('compatible'):
+            self.return_to_market_after_connect = False
+            self.viewing_market = True
         old=self.page_key;position=self.scroll.verticalScrollBar().value() if old==key else 0
         if old!=key:
             self.disclosures.clear()
@@ -306,11 +349,54 @@ class Views:
         if self.action=='unlock':
             for f in affected:
                 for ident in f.get('requires',[]):
-                    if by_id.get(ident,{}).get('state')!='enabled' and ident not in selected:return '所选功能有依赖，请同时选择相关功能。'
+                    if by_id.get(ident,{}).get('state')!='enabled' and ident not in selected:
+                        fn = FEATURES.get(f['id'], (f['name'],))[0]
+                        dn = FEATURES.get(ident, (by_id.get(ident, {}).get('name', ident),))[0]
+                        return f'{fn}需要{dn}，请同时选中。'
         else:
             removed={f['id'] for f in affected}
-            if any(f.get('state')!='disabled' and f['id'] not in selected and removed.intersection(f.get('requires',[])) for f in features):return '其他已解锁功能依赖此项目，请同时选中关闭。'
+            for f in features:
+                if f.get('state')!='disabled' and f['id'] not in selected and removed.intersection(f.get('requires',[])):
+                    fn = FEATURES.get(f['id'], (f['name'],))[0]
+                    return f'{fn}依赖此功能，请同时选中关闭。'
         return None
+
+    def _add_feature_trailing(self, layout, state_text, state_color, action_buttons=()):
+        for btn in action_buttons:
+            layout.addWidget(btn)
+        st = label(state_text, 'small', False)
+        st.setObjectName('featureStatusLabel')
+        st.setMinimumWidth(48)
+        st.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        st.setStyleSheet(f'font-size:10px;font-weight:600;color:{state_color};')
+        layout.addWidget(st)
+
+    def _custom_sound_fallback_row(self, listbox):
+        custom = (self.state.get('custom_sound') or {})
+        state = custom.get('state', 'disabled')
+        state_lbl = {'enabled': '已解锁', 'partial': '部分改动', 'error': '校验失败'}.get(state, '未安装')
+        reason = custom.get('reason') or '十槽自定义快门声功能与「电子快门声音」独立；可在快门声市场查看状态或导入音频。'
+        w = QWidget(); r = QHBoxLayout(w); r.setContentsMargins(16, 12, 16, 12); r.setSpacing(12)
+        check = CheckBox(); check.setEnabled(False)
+        check.setAccessibleName('自定义快门声（当前仅支持检查状态与市场导入）'); r.addWidget(check)
+        r.addWidget(Symbol('waveform', 34, ACCENT if state == 'enabled' else '#9cafa7', True))
+        text = column(r, 5, 1)
+        head_row = row(text, 6)
+        heading = label(custom.get('name', '自定义快门声')); heading.setStyleSheet('font-size:13px;font-weight:600;'); head_row.addWidget(heading)
+        badge = label('仅检查状态', 'small', False)
+        badge.setStyleSheet('font-size:9px;color:#6e787a;background:#eef1f0;border-radius:4px;padding:1px 5px;')
+        head_row.addWidget(badge); head_row.addStretch()
+        text.addWidget(label(reason, 'small'))
+        req_lbl = label('需要：电子快门声音', 'small'); req_lbl.setStyleSheet(f'font-size:10px;color:{AMBER};'); text.addWidget(req_lbl)
+        mkt_btn = QPushButton('去快门声市场'); mkt_btn.setObjectName('compactSecondary')
+        mkt_btn.setProperty('testId', 'openAudioMarketButton')
+        mkt_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        mkt_btn.setIcon(symbol_icon('waveform', 13, ACCENT, 4)); mkt_btn.setIconSize(QSize(17, 13))
+        mkt_btn.setEnabled(not self.inflight and not self.state.get('busy'))
+        mkt_btn.clicked.connect(self.open_market)
+        color = ACCENT if state == 'enabled' else (AMBER if state in ('partial', 'error') else MUTED)
+        self._add_feature_trailing(r, state_lbl, color, [mkt_btn])
+        listbox.addWidget(w)
 
     def workspace(self,l):
         s=self.state;features=s.get('features',[]);available=[f for f in features if f.get('available',True)];selected=[f for f in available if f.get('selected')]
@@ -322,6 +408,8 @@ class Views:
         toolbar=QWidget();t=QHBoxLayout(toolbar);t.setContentsMargins(14,13,14,13);t.setSpacing(14);t.addWidget(label('选择功能'));t.addStretch()
         button(t,'选择未解锁或可更新' if self.action=='unlock' else '选择可关闭',lambda:self.command('select',mode='missing' if self.action=='unlock' else 'enabled'),'link')
         button(t,'清空' if len(selected)==len(available) else '全选',lambda:self.command('select',mode='none' if len(selected)==len(available) else 'all'),'quiet');listbox.addWidget(toolbar);line(listbox)
+        has_custom_feature = any(item.get('id') == 'custom_shutter_sound' for item in features)
+        by_id = {item['id']: item for item in features}
         for i,f in enumerate(features):
             if i:line(listbox)
             w=QWidget();r=QHBoxLayout(w);r.setContentsMargins(16,12,16,12);r.setSpacing(12)
@@ -331,17 +419,42 @@ class Views:
             r.addWidget(Symbol(icon,34,ACCENT if f.get('available',True) else '#9cafa7',True));text=column(r,5,1)
             heading=label(name);heading.setStyleSheet('font-size:13px;font-weight:600;'+('color:#9da7a1;' if not f.get('available',True) else ''));text.addWidget(heading)
             text.addWidget(label(explanation if f.get('available',True) else f.get('unavailable_reason',explanation),'small'))
+            reqs = f.get('requires') or []
+            if reqs:
+                req_names = '、'.join(FEATURES.get(rid, (by_id.get(rid, {}).get('name', rid),))[0] for rid in reqs)
+                req_lbl = label('需要：' + req_names, 'small')
+                req_lbl.setStyleSheet(f'font-size:10px;color:{AMBER};')
+                text.addWidget(req_lbl)
             state_text='暂未开放' if not f.get('available',True) else {'enabled':'已解锁','disabled':'未解锁','partial':'部分解锁','unknown':'待核实'}.get(f['state'],'待确认')
             if f.get('available',True) and f.get('update_available'):state_text+=' · 可更新'
-            st=label(state_text,'small',False);st.setStyleSheet('font-size:10px;color:'+ (ACCENT if f.get('available',True) and f['state']=='enabled' else MUTED));r.addWidget(st)
+            action_buttons = []
             if f.get('update_available'):
                 is_ftp = f['id'] == 'ftp'
-                update=button(r,'更新 FTP' if is_ftp else '更新 FL2／FL3',
-                              lambda is_ftp=is_ftp:self.command('update_ftp' if is_ftp else 'update_fl23'),
-                              'secondary',not self.inflight and not s.get('busy'))
+                update = QPushButton('更新 FTP' if is_ftp else '更新 FL2／FL3')
                 update.setObjectName('ftpUpdateButton' if is_ftp else 'fl23UpdateButton')
+                update.setProperty('role', 'compactSecondary')
+                update.setStyleSheet('background:#f0f2f1;border:1px solid #dde3e0;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:500;')
+                update.setCursor(Qt.CursorShape.PointingHandCursor)
+                update.setEnabled(not self.inflight and not s.get('busy'))
                 update.setToolTip('仅更新当前功能，保留其他功能和设置')
+                update.clicked.connect(lambda _=False, is_ftp=is_ftp: self.command('update_ftp' if is_ftp else 'update_fl23'))
+                action_buttons.append(update)
+            if f['id'] == 'custom_shutter_sound':
+                mkt = QPushButton('去快门声市场')
+                mkt.setObjectName('openAudioMarketButton')
+                mkt.setStyleSheet('background:#f0f2f1;border:1px solid #dde3e0;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:500;')
+                mkt.setCursor(Qt.CursorShape.PointingHandCursor)
+                mkt.setIcon(symbol_icon('waveform', 13, ACCENT, 4)); mkt.setIconSize(QSize(17, 13))
+                mkt.setEnabled(not self.inflight and not s.get('busy'))
+                mkt.setToolTip('前往快门声市场查看状态、读取相机槽位或导入音频')
+                mkt.clicked.connect(self.open_market)
+                action_buttons.append(mkt)
+            state_color = ACCENT if f.get('available',True) and f['state']=='enabled' else MUTED
+            self._add_feature_trailing(r, state_text, state_color, action_buttons)
             listbox.addWidget(w)
+            if f['id'] == 'sound' and not has_custom_feature:
+                line(listbox)
+                self._custom_sound_fallback_row(listbox)
         right,box=panel(None);right.setFixedWidth(270);right.setObjectName('actionPanel');columns.addWidget(right,0,Qt.AlignmentFlag.AlignTop)
         box.addWidget(label('调整所选功能','heading'));box.addSpacing(4)
         seg=Segments([('unlock','解锁'),('close','关闭')],self.action,self.set_action);seg.setAccessibleName('操作方式');box.addWidget(seg,0,Qt.AlignmentFlag.AlignLeft);box.addSpacing(10)
@@ -476,4 +589,6 @@ class Views:
             button(h,'继续操作，重新连接',lambda:self.command('restart_preparation'),'primary')
         else:
             h.addWidget(Symbol('cable' if self.physical else 'info',13,MUTED));h.addWidget(label(('相机检查已通过 · MSC 提示消失不等于断线，请保持 USB 连接' if s.get('compatible') else '请保持相机开机和 USB 连接，等待应用确认结果') if self.physical else '合成数据演示 · 所有操作均不访问相机','small',False));h.addStretch()
+            if phase=='home' and self.physical and s.get('connected'):
+                button(h,'断开相机',lambda:self.command('disconnect_camera'),'compactSecondary',not self.inflight and not s.get('busy'))
             if phase=='home':button(h,'重新连接',lambda:self.command('restart_preparation'),'link')

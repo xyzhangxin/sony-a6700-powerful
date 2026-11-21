@@ -10,7 +10,7 @@ import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT/'src'), str(ROOT/'tests')]
+sys.path[:0] = [str(ROOT/'src'), str(ROOT/'tests'), str(ROOT/'scripts')]
 
 
 def cases(suite):
@@ -28,7 +28,7 @@ def main():
     args = parser.parse_args()
     discovered = unittest.defaultTestLoader.discover(str(ROOT/'tests'))
     selected = unittest.TestSuite(test for test in cases(discovered)
-                                 if args.native or not test.id().startswith(('test_native.', 'test_fl23_package.FileNativeTests.')))
+                                 if args.native or not test.id().startswith(('test_native.', 'test_fl23_package.FileNativeTests.', 'test_fl23_state.')))
     print('Device access: none. Native emulation: ' + ('included' if args.native else 'excluded'), flush=True)
     result = unittest.TextTestRunner(verbosity=2).run(selected)
     if args.strict and result.skipped:

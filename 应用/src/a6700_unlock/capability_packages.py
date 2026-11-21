@@ -12,14 +12,30 @@ import json
 import re
 
 from .creative_looks import FEATURES as CREATIVE_FEATURES
+from .device_profile import guard_compatibility_overlay
 from .operation_workflow import WORKFLOW_REVISION, WORKFLOW_SCHEMA
 
 ADAPTER_SET_SCHEMA = "a6700.adapter-set/v1"
 CAPABILITY_PACKAGE_SCHEMA = "a6700.capability-package/v1"
 CORE_API_VERSION = 1
-_EXECUTORS = {"fixed-sector-transaction", "creative-look-package"}
+_EXECUTORS = {
+    "fixed-sector-transaction",
+    "creative-look-package",
+    "custom-shutter-sound-package",
+}
 _REQUIRED = {"independent-readback", "fresh-preflight", "shared-device-lock"}
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+CUSTOM_SHUTTER_SOUND_CAPABILITY = "custom_shutter_sound"
+_STARTUP_LOADER = "startup-loader"
+_STARTUP_LOADER_RETENTION = "retain-while-any-dependent-enabled"
+CUSTOM_SHUTTER_SOUND_UNAVAILABLE = (
+    "0.4.3候选：菜单注册、原生调度、DMM/CP播放与启动装载尚未完成实机验收")
+_CUSTOM_SHUTTER_SOUND_FEATURE = {
+    "id": CUSTOM_SHUTTER_SOUND_CAPABILITY,
+    "name": "自定义快门声",
+    "revision": 2,
+    "requires": ["sound"],
+}
 
 
 class CapabilityPackageError(ValueError):
@@ -86,7 +102,41 @@ def _creative_package(feature, available, manifest, manifest_digest):
             carrier_revision=manifest["carrier_revision"],
             variants=sorted({1, *(int(flags) for flags in manifest["variants"])}),
         ),
-        shared_resources=[dict(id="startup-loader", retention="retain-while-any-dependent-enabled")],
+        shared_resources=[dict(id=_STARTUP_LOADER, retention=_STARTUP_LOADER_RETENTION)],
+    )
+    return package
+
+
+def _custom_sound_package(profile, *, available=True):
+    """Represent the unified /setting/fl23 custom-shutter-sound capability package."""
+    from .custom_sound_capability_package import load_custom_sound_capability_package
+    package_manifest = load_custom_sound_capability_package()
+    is_available = bool(available and package_manifest.get("installable"))
+    package = _base_package(_CUSTOM_SHUTTER_SOUND_FEATURE, is_available)
+    if not is_available:
+        package["unavailable_reason"] = CUSTOM_SHUTTER_SOUND_UNAVAILABLE
+    package["shared_resources"] = [
+        dict(id=_STARTUP_LOADER, retention=_STARTUP_LOADER_RETENTION),
+    ]
+    package["modification"] = dict(
+        executor="custom-shutter-sound-package",
+        profile_sha256=profile.digest,
+        catalog_sha256=profile.catalog.digest,
+        slot_count=10,
+        storage_schema="a6700.custom-sound-record/v2",
+        menu="sound-options/electronic-shutter-sound",
+        startup_action=dict(
+            id=CUSTOM_SHUTTER_SOUND_CAPABILITY,
+            loader=_STARTUP_LOADER,
+            earliest_boot_ms=10_000,
+        ),
+        installable=is_available,
+        package_schema=package_manifest["schema"],
+        menu_ui=package_manifest["menu_ui"],
+        carrier=package_manifest["carrier"],
+        binding=package_manifest["binding"],
+        slot_writer=package_manifest["slot_writer"],
+        validation=package_manifest["validation"],
     )
     return package
 
@@ -138,6 +188,10 @@ def validate_adapter_set(adapter_set):
     for key in ("profile_sha256", "catalog_sha256"):
         if not isinstance(body.get(key), str) or not _DIGEST.fullmatch(body[key]):
             raise CapabilityPackageError("适配集资源摘要无效：" + key)
+    compatibility_digest = body.get("guard_compatibility_sha256")
+    if compatibility_digest is not None and (
+            not isinstance(compatibility_digest, str) or not _DIGEST.fullmatch(compatibility_digest)):
+        raise CapabilityPackageError("适配集守卫兼容摘要无效")
     packages = body.get("packages")
     if not isinstance(packages, list) or not packages:
         raise CapabilityPackageError("适配集没有能力包")
@@ -162,13 +216,17 @@ def validate_adapter_set(adapter_set):
 
 
 def builtin_adapter_set(profile, *, fl23_available=True, names_available=True,
-                        include_creative_looks=True):
+                        custom_sound_available=True,
+                        include_creative_looks=True, include_custom_sound=True):
     """Compile the currently bundled resources into one exact adapter set."""
     _validate_edit_ownership(profile)
     creative_ids = {feature['id'] for feature in CREATIVE_FEATURES}
     packages = [_ordinary_package(profile, feature)
                 for feature in profile.catalog.data["features"]
                 if feature['id'] not in creative_ids]
+    if include_custom_sound and any(feature["id"] == "sound"
+           for feature in profile.catalog.data["features"]):
+        packages.append(_custom_sound_package(profile, available=custom_sound_available))
     creative = None
     if include_creative_looks:
         manifest, manifest_digest = _load_creative_manifest()
@@ -184,6 +242,9 @@ def builtin_adapter_set(profile, *, fl23_available=True, names_available=True,
         profile_sha256=profile.digest, catalog_sha256=profile.catalog.digest,
         core_api_version=CORE_API_VERSION, packages=packages,
     )
+    compatibility = guard_compatibility_overlay(profile)
+    if compatibility:
+        body["guard_compatibility_sha256"] = _digest(compatibility)
     adapter_set = dict(body, digest=_digest(body))
     return validate_adapter_set(adapter_set)
 
@@ -193,6 +254,15 @@ def package_versions(adapter_set):
                                         workflow_revision=package["workflow"]["workflow_revision"],
                                         available=package["available"])
             for package in adapter_set["packages"]}
+
+
+def custom_shutter_sound_available(adapter_set):
+    """Return whether the built-in custom-sound package is open for planning."""
+    validate_adapter_set(adapter_set)
+    for package in adapter_set["packages"]:
+        if package["package_id"] == CUSTOM_SHUTTER_SOUND_CAPABILITY:
+            return package["available"]
+    raise CapabilityPackageError("适配集缺少自定义快门声能力包")
 
 
 def resolve_capability_selection(adapter_set, selected, action):
@@ -216,10 +286,11 @@ def resolve_capability_selection(adapter_set, selected, action):
         if identifier in resolved:
             return
         resolved.add(identifier)
-        for dependency in packages[identifier]["dependencies"]:
-            if not packages[dependency]["available"]:
-                raise CapabilityPackageError("依赖能力包未开放：" + dependency)
-            include(dependency)
+        if action in ("unlock", "restore"):
+            for dependency in packages[identifier]["dependencies"]:
+                if not packages[dependency]["available"]:
+                    raise CapabilityPackageError("依赖能力包未开放：" + dependency)
+                include(dependency)
 
     for identifier in identifiers:
         include(identifier)

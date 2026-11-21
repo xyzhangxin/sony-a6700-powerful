@@ -105,9 +105,9 @@ def run(window, report):
         assert not any('免责声明与开源许可' in item.text() for item in window.scroll.widget().findChildren(QLabel))
         checks.append('merged-preparation-first-screen')
         prepare()
-        assert sum(row.get('available',True) for row in window.state['features'])==6
-        assert {row['id'] for row in window.state['features'] if row.get('available',True)}=={'ftp','shutter','exposure','sound','fl23','creative_look_names'}
-        checks.append('preparation-and-inspect-six-available')
+        assert sum(row.get('available',True) for row in window.state['features'])==7
+        assert {row['id'] for row in window.state['features'] if row.get('available',True)}=={'ftp','shutter','exposure','sound','fl23','creative_look_names','custom_shutter_sound'}
+        checks.append('preparation-and-inspect-seven-available')
         capture('features')
         left=window.scroll.widget().findChild(QWidget,'featureList')
         right=window.scroll.widget().findChild(QWidget,'actionPanel')
@@ -116,6 +116,19 @@ def run(window, report):
         assert right.width()==270
         assert window.footer_host.isVisible()
         assert window.footer_host.geometry().bottom()<=window.centralWidget().height()
+        from PySide6.QtWidgets import QLabel as _QLabel
+        status_labels = left.findChildren(_QLabel, 'featureStatusLabel')
+        assert len(status_labels) >= 8, len(status_labels)
+        right_edges = [lbl.mapTo(left, lbl.rect().topRight()).x() for lbl in status_labels]
+        assert max(right_edges) - min(right_edges) <= 2, right_edges
+        market_btn = left.findChild(QPushButton, 'openAudioMarketButton')
+        assert market_btn is not None and market_btn.isEnabled()
+        custom_status_lbl = market_btn.parentWidget().findChild(_QLabel, 'featureStatusLabel')
+        assert custom_status_lbl is not None
+        assert market_btn.mapTo(left, market_btn.rect().topRight()).x() < custom_status_lbl.mapTo(left, custom_status_lbl.rect().topLeft()).x()
+        assert window.camera_tab.height() == window.market_tab.height(), (window.camera_tab.height(), window.market_tab.height())
+        assert window.camera_tab.font().pixelSize() == window.market_tab.font().pixelSize()
+        checks.append('feature-status-right-aligned-and-market-button-left')
         checks.append('mac-layout-two-column-workspace-and-fixed-footer')
         # The native row action must expose the 0.4.1 repair update without
         # requiring a simulated legacy package or touching a real device.
@@ -168,7 +181,7 @@ def run(window, report):
             assert not result['device_access'] and not result['write_attempted']
             assert not window.state['compatible'] and not window.state['ready']
             assert [s['id'] for s in result['aftercare']['steps']]==['off','usb-out','battery-out','wait','battery-in','on']
-            assert len(result['aftercare']['features'])==6
+            assert len(result['aftercare']['features'])==7
             notices=window.scroll.widget().findChildren(QLabel,'fl23StartupNotice')
             assert bool(notices)==(action=='unlock')
             if action=='unlock':
@@ -199,6 +212,43 @@ def run(window, report):
             window.command('restart_preparation');until(lambda:window.state.get('phase')=='preparation');prepare()
             assert {f['id'] for f in window.state['features'] if f['state']=='enabled' and f['id'] in ('fl23','creative_look_names')}==expected
         checks.append('independent-name-fl23-combinations-preserve-unselected-option')
+        # Custom shutter sound market & 7 default sounds + dedup + WAV trim + demo install
+        visible_default = window.audio_market.visible_sounds()
+        assert [s.title for s in visible_default] == ['起跳吃金币', '扇巴掌', '鸭叫', '嘟嘟', '清脆单音', '柔和双音', '轻触快门'], [s.title for s in visible_default]
+        market_btn = window.scroll.widget().findChild(QPushButton, 'openAudioMarketButton')
+        assert market_btn is not None
+        market_btn.click(); app.processEvents()
+        assert window.viewing_market and window.market_widget.isVisible()
+        capture('market')
+        import math as _math, struct as _struct, tempfile as _tf, wave as _wave
+        from pathlib import Path as _Path
+        from audio_market import AudioTrimRequest as _TrimReq, AudioMarketSession as _AMSession
+        with _tf.TemporaryDirectory() as td:
+            wav_p = _Path(td) / 'long_beep.wav'
+            with _wave.open(str(wav_p), 'wb') as wf:
+                wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(24000)
+                wf.writeframes(b''.join(_struct.pack('<h', int(12000 * _math.sin(2 * _math.pi * 660 * i / 24000))) for i in range(12000)))
+            req = window.audio_market.import_local(wav_p)
+            assert isinstance(req, _TrimReq)
+            trimmed = window.audio_market.save_trim(req, 0.05, 0.40)
+            assert trimmed.duration_ms == 350 and trimmed.personal
+            renamed = window.audio_market.rename_personal_sound(trimmed, '烟测自定义快门声')
+            assert renamed.title == '烟测自定义快门声'
+            assert window.audio_market.install_demo(renamed, slot=1, replacing=None)
+            assert window.audio_market.slots[0].sound.title == '烟测自定义快门声'
+            # Dedup check on existing library containing a bundled UUID
+            dedup_dir = _Path(td) / 'dup' / '336BFC4B-BBDB-4285-ADDF-353B4D2223F9'
+            dedup_dir.mkdir(parents=True)
+            (dedup_dir / 'audio.wav').write_bytes(wav_p.read_bytes()[:44 + 8400 * 2])
+            (dedup_dir / 'audio.json').write_text(json.dumps({'title': '已存在金币音', 'subtitle': '24000 Hz · 16 位单声道', 'durationMS': 350, 'wavFilename': 'audio.wav'}, ensure_ascii=False), encoding='utf-8')
+            dup_sess = _AMSession(library=_Path(td) / 'dup', favorites_store={'audioMarketFavorites': ['336BFC4B-BBDB-4285-ADDF-353B4D2223F9']})
+            dup_vis = dup_sess.visible_sounds()
+            assert len(dup_vis) == 7 and sum(1 for x in dup_vis if x.id == '336BFC4B-BBDB-4285-ADDF-353B4D2223F9') == 1
+            assert dup_vis[0].title == '已存在金币音'
+            dup_sess.cleanup()
+        window.open_camera_workspace(); app.processEvents()
+        assert not window.viewing_market
+        checks.append('custom-shutter-sound-market-seven-defaults-trim-dedup-and-demo-install')
         # Active native settings are restored first, then firmware is closed.
         window.command('reset', scenario='close-active')
         until(lambda:window.state.get('scenario')=='close-active' and window.state.get('phase')=='notice')

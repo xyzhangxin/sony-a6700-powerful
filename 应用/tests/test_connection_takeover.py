@@ -41,7 +41,8 @@ class TakeoverTests(unittest.TestCase):
         target.start(); self.addCleanup(target.stop)
 
     def holder(self, ignore=False):
-        child = subprocess.Popen([sys.executable, '-I', '-S', '-B', '-c', HOLDER,
+        interpreter = getattr(sys, '_base_executable', sys.executable) if os.name == 'nt' else sys.executable
+        child = subprocess.Popen([interpreter, '-I', '-S', '-B', '-c', HOLDER,
                                   str(self.lock), 'ignore' if ignore else 'normal'],
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         def cleanup():

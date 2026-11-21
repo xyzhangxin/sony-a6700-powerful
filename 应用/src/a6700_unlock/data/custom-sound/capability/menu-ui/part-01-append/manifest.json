@@ -1,0 +1,135 @@
+{
+  "devices": [
+    "/dev/nflasha15",
+    "/dev/nflasha5",
+    "/dev/nflasha8"
+  ],
+  "entries": [
+    {
+      "index": 0,
+      "device": 0,
+      "device_offset": 47477248,
+      "absolute_sector": 1919545,
+      "role": "uxc-data+default-label",
+      "mask_hex": "000000000000000000000000000000000000000000000000fbb3ff3f000000000000000000000000000000000000000000000000000000000000000000000000",
+      "unmanaged_sha256": "6b7ffeac04b793cae62be2f0cd64659a4a52c2cb0f8fc1112d20ea643c68f7f8",
+      "before_sha256": "6b7ffeac04b793cae62be2f0cd64659a4a52c2cb0f8fc1112d20ea643c68f7f8",
+      "after_sha256": "1eab3c8d96b11f3fab309cfee74df26e33cab4244a20d441171814655ed9a104",
+      "edits": [
+        {
+          "offset": 192,
+          "disabled": "0000",
+          "enabled": "4a8f"
+        },
+        {
+          "offset": 195,
+          "disabled": "00000000000000",
+          "enabled": "1ee9bb98e8aea4"
+        },
+        {
+          "offset": 204,
+          "disabled": "0000",
+          "enabled": "4b8f"
+        },
+        {
+          "offset": 207,
+          "disabled": "000000000000000000000000000000",
+          "enabled": "1e6475636b5f717561636b2e776176"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "device": 0,
+      "device_offset": 588670976,
+      "absolute_sector": 2976564,
+      "role": "uxc-data",
+      "mask_hex": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000fbb7ff3f00000000000000000000000000",
+      "unmanaged_sha256": "0dc4a413f288b752d2edb65424c208c69547619ef8480f0528b9cfca11878a27",
+      "before_sha256": "0dc4a413f288b752d2edb65424c208c69547619ef8480f0528b9cfca11878a27",
+      "after_sha256": "f627c2b3be9cf8bf9d31ff5ed5f294fb2c9c0ba77e386e966f4fb3fd3ed4d155",
+      "edits": [
+        {
+          "offset": 376,
+          "disabled": "0000",
+          "enabled": "4a8f"
+        },
+        {
+          "offset": 379,
+          "disabled": "0000000000000000",
+          "enabled": "1e466163746f7279"
+        },
+        {
+          "offset": 388,
+          "disabled": "0000",
+          "enabled": "4b8f"
+        },
+        {
+          "offset": 391,
+          "disabled": "000000000000000000000000000000",
+          "enabled": "1e6475636b5f717561636b2e776176"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "device": 0,
+      "device_offset": 469357568,
+      "absolute_sector": 2743530,
+      "role": "uxc-data",
+      "mask_hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff3fffffff0f000000000000",
+      "unmanaged_sha256": "98feaa2ac14ef2c604f7ce1b27df228a890cf5e7906052b1b7524b0be956d4a3",
+      "before_sha256": "98feaa2ac14ef2c604f7ce1b27df228a890cf5e7906052b1b7524b0be956d4a3",
+      "after_sha256": "f00772c75a88847782d2e4a5ef2333f6a92745922abf5484ed918664ccc9fb80",
+      "edits": [
+        {
+          "offset": 408,
+          "disabled": "00000000000000000000000000000000000000000000",
+          "enabled": "34ea041ee794b5e5ad90e5bfabe997a8e5a3b0e99fb3"
+        },
+        {
+          "offset": 432,
+          "disabled": "00000000000000000000000000000000000000000000000000000000",
+          "enabled": "35ea041ee98089e68ba9e794b5e5ad90e5bfabe997a8e5a3b0e99fb3"
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "device": 0,
+      "device_offset": 48696832,
+      "absolute_sector": 1921927,
+      "role": "uxc-data",
+      "mask_hex": "00000000000000000000000000000000000000000000000000fffff7ffffffff0700000000000000000000000000000000000000000000000000000000000000",
+      "unmanaged_sha256": "00119cd5701eda4b9afc9a6d98f38d6079724ae741d94e171ca7882a95a4db2f",
+      "before_sha256": "00119cd5701eda4b9afc9a6d98f38d6079724ae741d94e171ca7882a95a4db2f",
+      "after_sha256": "74d347845130932be718f4e559cb044ac1b3ec52195e172265166bf9312910d6",
+      "edits": [
+        {
+          "offset": 200,
+          "disabled": "00000000000000000000000000000000000000",
+          "enabled": "34ea041e452d5368757474657220536f756e64"
+        },
+        {
+          "offset": 220,
+          "disabled": "000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "enabled": "35ea041e53656c6563742074686520656c656374726f6e6963207368757474657220736f756e64"
+        }
+      ]
+    }
+  ],
+  "sector_count": 4,
+  "before_sha256": "ad2365c5313838988d493a54e2e96132ef80d954773e2a116429b379251bea71",
+  "after_sha256": "587dbc26f7f03b3d3300701f8fb593efdd060f46b8b062078433f156ed96c66e",
+  "part": "part-01-append",
+  "row_address": "0x3781000",
+  "camera_access": false,
+  "installable": true,
+  "profile_sha256": "1f391a2e068c39f548b5ce1d15caad5c1b301ff95ee113fed7966ab318ae8d87",
+  "files": {
+    "profile.h": "233296808dcd901223cac27673fc51614a2f09128758e7b271110e68e4ded018",
+    "transaction.c": "53cd3393c07dfdb7a219cf73906862ac389df9d853a90d762deec777c0e37e82",
+    "reader.elf": "63f2e4929bdd699fbadfe5dd73f96482d26c83f645f6b7238b586745cff9acc1",
+    "writer.elf": "9c8a90d8b1fdfef15838224fc31b53ff1967aa207e5521efa80fad9855177cb6"
+  }
+}

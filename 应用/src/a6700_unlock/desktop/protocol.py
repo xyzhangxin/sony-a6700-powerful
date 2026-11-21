@@ -25,9 +25,24 @@ _COMMAND_FIELDS = {
     "backup": set(), "restore": {"backup_id"}, "update_fl23": set(), "update_ftp": set(),
     "takeover": {"confirmation", "confirmed"}, "cancel": set(), "disconnect": set(),
     "reconnect": set(), "home": set(), "shutdown": set(),
+    "disconnect_camera": set(),
     "diagnostic": {"camera"}, "guided_diagnostic": {"action"},
     "upload_feedback": {"description", "images"},
     "check_updates": set(), "check_app_update": set(), "download_app_update": set(),
+    "list_audio": set(),
+    "refresh_audio_slots": set(),
+    "preview_audio": {"package_id", "sound_id"},
+    "export_audio_package": {
+        "path", "package_id", "version", "title", "description", "author",
+        "license", "sound_title",
+    },
+    "plan_audio_import": {"source", "slot", "path", "package_id", "sound_id", "filename"},
+    "plan_audio_import_batch": {"package_id"},
+    "confirm_audio_import": {"plan_digest", "confirmed"},
+    "gate_audio_import": {"plan_digest"},
+    "confirm_audio_import_batch": {"batch_digest", "confirmed"},
+    "gate_audio_import_batch": {"batch_digest"},
+    "execute_audio_import": {"plan_digest"},
 }
 CAPABILITIES = dict(
     commands=sorted(_COMMAND_FIELDS), workflow_schema=WORKFLOW_SCHEMA,
@@ -35,7 +50,13 @@ CAPABILITIES = dict(
     execution="local-core", arbitrary_device_requests=False,
 )
 _SIMULATION_ONLY = {"reset", "disconnect", "reconnect"}
-_PHYSICAL_ONLY = {"set_automatic_failure_feedback", "set_usage", "start_usage", "preview_failure_feedback", "upload_failure_feedback", "takeover", "diagnostic", "guided_diagnostic", "upload_feedback", "check_updates", "check_app_update", "download_app_update"}
+_PHYSICAL_ONLY = {"set_automatic_failure_feedback", "disconnect_camera", "set_usage", "start_usage", "preview_failure_feedback", "upload_failure_feedback", "takeover", "diagnostic", "guided_diagnostic", "upload_feedback",
+                  "check_updates", "check_app_update", "download_app_update", "list_audio", "refresh_audio_slots", "preview_audio", "export_audio_package",
+                  "plan_audio_import",
+                  "plan_audio_import_batch",
+                  "confirm_audio_import", "gate_audio_import",
+                  "confirm_audio_import_batch", "gate_audio_import_batch",
+                  "execute_audio_import"}
 
 
 def capabilities(mode):

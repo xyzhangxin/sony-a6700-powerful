@@ -16,16 +16,25 @@ import struct
 import uuid
 
 from .device_protocol import DeviceError,request,response
-from .operations import save_json,make_directory,record_warning,_sync_directory
-from .host_io import open_exclusive
+from .operations import save_json,make_directory,record_warning
+from . import host_io
 
 sha=lambda data:hashlib.sha256(data).hexdigest()
 
+# These exact carriers publish FL23's menu lookups before the custom sound
+# stage compares them with its factory preimages. Keep them recognizable so
+# a device already running one can close either feature using the same tool.
+_INCOMPATIBLE_MENU_CARRIERS = {
+    5: '637f7aaf73ba2b2c2c8e8853e6ac23440a0fa982f6cc08383b5f2dd0e301e9b9',
+    7: 'e974acbe0028ad51f4c5a5fa167b625289bf927c122ef795424f75f283c882db',
+}
+
 
 def save_bytes(path,data):
-    with os.fdopen(open_exclusive(path),'wb') as stream:
+    fd=host_io.open_exclusive(path)
+    with os.fdopen(fd,'wb') as stream:
         stream.write(data);stream.flush();os.fsync(stream.fileno())
-    _sync_directory(Path(path).parent)
+    host_io.sync_directory(Path(path).parent)
 
 
 class Profile:
@@ -43,10 +52,11 @@ class Profile:
 
 
 class Package:
-    def __init__(self,root=None):
+    def __init__(self,root=None,*,menu_ui=None):
+        from concurrent.futures import ThreadPoolExecutor
         self.root=root or files('a6700_unlock').joinpath('data/fl23')
-        self.manifest=json.loads(self.root.joinpath('manifest.json').read_text(encoding='utf-8'))
-        self.recipe=json.loads(self.root.joinpath('recipe.json').read_text(encoding='utf-8'))
+        self.manifest=json.loads(self.root.joinpath('manifest.json').read_text())
+        self.recipe=json.loads(self.root.joinpath('recipe.json').read_text())
         canonical=dict(self.recipe);digest=canonical.pop('profile_sha256')
         if (sha(json.dumps(canonical,sort_keys=True,separators=(',',':')).encode())!=digest or
             self.manifest.get('profile_sha256')!=digest or self.manifest.get('names') is not False or
@@ -62,55 +72,104 @@ class Package:
             data=self.root.joinpath(name+'.elf').read_bytes()
             if sha(data)!=row['sha256'] or len(data)!=row['bytes']:raise DeviceError('FL23 原生事务校验失败')
             self.payloads[name]=data
+        checks=[]
         for name,digest in self.manifest['source_sha256'].items():
-            if sha(self.root.joinpath(name).read_bytes())!=digest:raise DeviceError('FL23 原生源码与载荷不一致')
+            checks.append((self.root.joinpath(name),digest,'FL23 原生源码与载荷不一致'))
         for name,digest in self.manifest.get('upstream_source_sha256',{}).items():
-            if sha(files('a6700_unlock').joinpath(name).read_bytes())!=digest:
-                raise DeviceError('FL23 源码变化后尚未重新构建安装组件')
+            checks.append((files('a6700_unlock').joinpath(name),digest,'FL23 源码变化后尚未重新构建安装组件'))
         if 'runtime_source_sha256' in self.manifest:
             raw=self.root.joinpath('runtime/manifest.json').read_bytes()
             if sha(raw)!=self.manifest['runtime_source_sha256']:raise DeviceError('FL23 运行库源码清单不一致')
             for name,digest in json.loads(raw)['files'].items():
                 path=Path(name)
-                if path.is_absolute() or '..' in path.parts or sha(self.root.joinpath('runtime/'+name).read_bytes())!=digest:
+                if path.is_absolute() or '..' in path.parts:
                     raise DeviceError('FL23 运行库源码与构建不一致')
+                checks.append((self.root.joinpath('runtime/'+name),digest,'FL23 运行库源码与构建不一致'))
         self.carriers={1:self.carrier}
         variants=self.manifest.get('variants',{})
-        if variants and set(variants)!={'2','3'}:raise DeviceError('创意外观组合清单不完整')
+        if variants and set(variants) not in ({'2','3'},{'2','3','4','5','6','7'}):
+            raise DeviceError('创意外观／快门声组合清单不完整')
         for flags,row in variants.items():
             folder=self.root.joinpath('variants/'+flags)
             data=folder.joinpath('carrier.bin').read_bytes()
             runtime=folder.joinpath('runtime/manifest.json').read_bytes()
             if len(data)!=row['bytes'] or sha(data)!=row['sha256'] or sha(runtime)!=row['runtime_sha256']:
                 raise DeviceError('创意外观组合载荷校验失败')
-            for name,digest in json.loads(runtime)['files'].items():
+            runtime_manifest=json.loads(runtime)
+            check_base=self.root if runtime_manifest.get('file_root')=='fl23' else folder.joinpath('runtime')
+            for name,digest in runtime_manifest['files'].items():
                 path=Path(name)
-                if path.is_absolute() or '..' in path.parts or sha(folder.joinpath('runtime/'+name).read_bytes())!=digest:
+                if path.is_absolute() or '..' in path.parts:
                     raise DeviceError('创意外观组合源码与载荷不一致')
+                checks.append((check_base.joinpath(name),digest,'创意外观组合源码与载荷不一致'))
             self.carriers[int(flags)]=data
+        if checks:
+            def verify(item):
+                resource,expected_digest,message=item
+                if sha(resource.read_bytes())!=expected_digest:
+                    return message
+                return None
+            with ThreadPoolExecutor(max_workers=min(8,len(checks))) as pool:
+                for failure in pool.map(verify,checks):
+                    if failure is not None:
+                        raise DeviceError(failure)
         revision=self.manifest.get('carrier_revision',1)
         legacy=self.manifest.get('legacy_carriers',{})
-        if type(revision) is not int or revision not in (1,2) or (legacy and (revision!=2 or set(legacy)!={'5','7'})):
+        if type(revision) is not int or not 1<=revision<=5:
             raise DeviceError('FL23 功能包版本清单不匹配')
-        self.file_specs={f:dict(flags=f,revision=revision if f&1 else 1,bytes=len(data),sha256=sha(data))
+        if legacy:
+            if revision<2:raise DeviceError('FL23 功能包版本清单不匹配')
+            if revision==2 and set(legacy)!={'5','7'}:raise DeviceError('FL23 功能包版本清单不匹配')
+        self.file_specs={f:dict(flags=f,revision=revision if (revision>=3 or f&1) else 1,bytes=len(data),sha256=sha(data))
                          for f,data in self.carriers.items()}
         for ident,row in legacy.items():
-            if (row.get('flags')!=int(ident)&3 or row.get('revision')!=1 or
+            numeric=int(ident)
+            expected_flags=(numeric&7) if numeric>=256 else (numeric&3)
+            expected_rev=(numeric>>8) if numeric>=256 else 1
+            if (row.get('flags')!=expected_flags or row.get('revision')!=expected_rev or
+                    not 1<=expected_rev<revision or
                     type(row.get('bytes')) is not int or not 1024<=row['bytes']<=2098176 or
                     len(bytes.fromhex(row['sha256']))!=32 or
                     row['sha256'] in {r['sha256'] for r in self.file_specs.values()}):
                 raise DeviceError('FL23 旧版识别清单不匹配')
-            self.file_specs[int(ident)]=dict(row)
+            self.file_specs[numeric]=dict(row)
+        self.menu_ui=menu_ui
+        if self.menu_ui is None and root is None and set(self.carriers)>={4,5,6,7}:
+            from .custom_sound_capability_package import load_custom_sound_capability_package, load_custom_sound_menu_ui_assets
+            from .custom_sound_native import load_custom_sound_payload
+            load_custom_sound_capability_package()
+            load_custom_sound_payload()
+            self.menu_ui=load_custom_sound_menu_ui_assets()
+
+
+_AVAILABILITY_CACHE=None
+
+
+def availability():
+    """Verify bundled FL23/creative-look assets once per process."""
+    global _AVAILABILITY_CACHE
+    if _AVAILABILITY_CACHE is not None:
+        return _AVAILABILITY_CACHE[:2]
+    try:
+        pkg=Package()
+        flags=(True,{1,2,3}<=set(pkg.carriers),{1,2,3,4,5,6,7}<=set(pkg.carriers) and pkg.menu_ui is not None)
+    except (OSError,ValueError,KeyError,DeviceError):
+        return (False,False)
+    _AVAILABILITY_CACHE=flags
+    return flags[:2]
 
 
 def available():
-    try:Package();return True
-    except (OSError,ValueError,KeyError,DeviceError):return False
+    return availability()[0]
 
 
 def names_available():
-    try:return set(Package().carriers)=={1,2,3}
-    except (OSError,ValueError,KeyError,DeviceError):return False
+    return availability()[1]
+
+
+def custom_sound_availability():
+    availability()
+    return bool(_AVAILABILITY_CACHE and _AVAILABILITY_CACHE[2])
 
 
 def plan_blocks(package,sectors,action):
@@ -182,19 +241,70 @@ class Session:
     def __init__(self,package,backend,invoke,directory):
         self.package,self.backend,self.invoke,self.directory=package,backend,invoke,Path(directory)
         self.events=0;self.uncertain=False
-    def exchange(self,name,config,parser):
-        self.events+=1;prefix=self.directory/f'{self.events:03d}-{name}'
-        save_json(prefix.with_suffix('.intent.json'),dict(payload_sha256=sha(self.package.payloads[name]),request_sha256=sha(config)))
+    def exchange_payload(self,label,binary,config,parser):
+        self.events+=1;prefix=self.directory/f'{self.events:03d}-{label}'
+        save_json(prefix.with_suffix('.intent.json'),dict(payload_sha256=sha(binary),request_sha256=sha(config)))
         save_bytes(prefix.with_suffix('.request'),config)
-        raw=self.invoke(self.package.payloads[name],config)
+        raw=self.invoke(binary,config)
         save_bytes(prefix.with_suffix('.reply'),raw)
         return parser(raw)
+    def exchange(self,name,config,parser):
+        return self.exchange_payload(name,self.package.payloads[name],config,parser)
     def blocks(self,before=None,after=None):
         nonce=uuid.uuid4().bytes;writing=before is not None;p=self.package.profile
         cfg=request(p,nonce,before,after)
         result=self.exchange('writer' if writing else 'reader',cfg,lambda raw:response(raw,nonce,0 if writing else len(p.entries)))
         if result['status']:raise DeviceError('FL23 固定事务拒绝：'+str(result))
         return result['sectors']
+    def menu_part_blocks(self,part,before=None,after=None):
+        from .custom_sound_capability_package import menu_ui_request,menu_ui_response
+        nonce=uuid.uuid4().bytes;writing=before is not None
+        cfg=menu_ui_request(part,nonce,before,after)
+        binary=part['writer'] if writing else part['reader']
+        label=part['name']+('-writer' if writing else '-reader')
+        result=self.exchange_payload(label,binary,cfg,lambda raw:menu_ui_response(raw,nonce,part,writing=writing))
+        if result['status']:raise DeviceError('自定义快门声菜单UI事务拒绝：'+str(result))
+        return result['sectors']
+    def inspect_menu_ui(self):
+        assets=getattr(self.package,'menu_ui',None)
+        if not assets:return None
+        from .custom_sound_capability_package import plan_menu_ui_part
+        records=[];part_states=[]
+        for part in assets['parts']:
+            observed=self.menu_part_blocks(part)
+            detail,_=plan_menu_ui_part(part,observed,'inspect')
+            records.append(dict(detail=detail,part=part['name']))
+            part_states.append(detail['state'])
+        state='enabled' if part_states and set(part_states)=={'enabled'} else 'disabled' if part_states and set(part_states)=={'disabled'} else 'partial'
+        return dict(state=state,parts=records)
+    def apply_menu_ui(self,action,progress=lambda _:None):
+        if action not in ('unlock','close'):raise ValueError('Unsupported menu UI action')
+        assets=getattr(self.package,'menu_ui',None)
+        if not assets:raise DeviceError('缺少自定义快门声菜单UI资产')
+        from .custom_sound_capability_package import plan_menu_ui_part
+        parts=list(assets['parts']) if action=='unlock' else list(reversed(assets['parts']))
+        wanted='enabled' if action=='unlock' else 'disabled'
+        changed_bytes=0
+        for part in parts:
+            observed=self.menu_part_blocks(part)
+            detail,target=plan_menu_ui_part(part,observed,action)
+            if detail['changed_bytes']==0 and detail['state']==wanted:
+                continue
+            progress(('正在写入' if action=='unlock' else '正在恢复')+'自定义快门声菜单UI：'+part['name']+'…')
+            self.menu_part_blocks(part,observed,target)
+            readback=self.menu_part_blocks(part)
+            check,_=plan_menu_ui_part(part,readback,'inspect')
+            if readback!=target or check['state']!=wanted:
+                raise DeviceError('自定义快门声菜单UI独立回读不一致：'+part['name'])
+            changed_bytes+=detail['changed_bytes']
+        return changed_bytes
+    def wipe_csnd(self):
+        from .custom_sound_native import custom_sound_wipe_request,custom_sound_response,load_custom_sound_payload
+        nonce=uuid.uuid4().bytes
+        result=self.exchange_payload('csnd-wipe',load_custom_sound_payload(),
+            custom_sound_wipe_request(nonce),lambda raw:custom_sound_response(raw,nonce))
+        if result['status']:raise DeviceError('清除 /setting/csnd 目录及音频文件失败：'+str(result))
+        return result
     def file(self,op=0,offset=0,data=b'',length=0,flags=1):
         p=self.package;nonce=uuid.uuid4().bytes
         cfg=struct.pack('<4sI16s32s4I',b'A67F',1,nonce,bytes.fromhex(p.profile.digest),op,offset,len(data) if op==2 else length,flags if flags!=1 else 0)+data
@@ -258,6 +368,7 @@ class Session:
 def inspect(session):
     before=session.blocks();detail,_=plan_blocks(session.package,before,'inspect')
     units=session.units();file=session.file();audit=session.file(5);selected=session.selection()
+    menu=session.inspect_menu_ui() if getattr(session.package,'menu_ui',None) is not None and hasattr(session,'inspect_menu_ui') else None
     file['owned_mask']=audit['mask']
     unit_enabled=all(sha(value)==row['after_sha256'] for row,value in zip(session.package.recipe['cp_units'],units))
     unit_original=all(sha(value)==row['before_sha256'] for row,value in zip(session.package.recipe['cp_units'],units))
@@ -265,11 +376,20 @@ def inspect(session):
     enabled=detail['startup']=='enabled' and detail['cp']=='enabled' and unit_enabled and bool(flags&1)
     disabled=detail['cp']=='disabled' and unit_original and (
         (detail['startup']=='disabled' and not file['owned_mask']) or
-        (detail['startup']=='enabled' and flags==2))
+        (detail['startup']=='enabled' and file['present'] and not (flags&1)))
     if hasattr(session.package,'carriers') and len(session.package.carriers)>1:
         detail['flags']=flags if detail['startup']=='enabled' else 0
-        detail['names_state']=('enabled' if flags&2 else 'disabled') if detail['startup']=='enabled' and file['present'] else (
-            'disabled' if detail['startup']=='disabled' and not file['owned_mask'] else 'partial')
+        detail['names_state']=(('enabled' if flags&2 else 'disabled') if detail['startup']=='enabled' and file['present'] else
+            ('disabled' if detail['startup']=='disabled' and not file['owned_mask'] else 'partial'))
+        if 4 in session.package.carriers:
+            menu_state=menu['state'] if menu is not None else ('enabled' if (flags&4 and detail['startup']=='enabled' and file['present']) else 'disabled')
+            if detail['startup']=='enabled' and file['present'] and (flags&4) and menu_state=='enabled':
+                detail['custom_sound_state']='enabled'
+            elif menu_state=='disabled' and ((detail['startup']=='disabled' and not file['owned_mask']) or (detail['startup']=='enabled' and file['present'] and not (flags&4))):
+                detail['custom_sound_state']='disabled'
+            else:
+                detail['custom_sound_state']='partial'
+            detail['menu']=menu
     state='enabled' if enabled else 'disabled' if disabled else 'partial'
     row=dict(id='fl23',name='FL2／FL3 创意外观',state=state,available=True)
     target=getattr(session.package,'manifest',{}).get('carrier_revision',1)
@@ -335,13 +455,16 @@ def update_units(session,units,action):
     if ap_after!=ap_before:raise DeviceError('FL23 CP 保存改变了原有外观／MR 设置')
 
 
-def perform(backend,action,directory,progress=lambda _:None,features=None,*,validate_close=False):
+def perform(backend,action,directory,progress=lambda _:None,features=None,*,validate_close=False,validate_unlock=False):
     """Caller holds device lock; install is journaled, never auto-replayed."""
-    if action not in ('inspect','unlock','close') or (validate_close and action!='inspect'):
+    if (action not in ('inspect','unlock','close')
+            or ((validate_close or validate_unlock) and action!='inspect')
+            or (validate_close and validate_unlock)):
         raise ValueError('未知创意外观操作')
     package=Package()
     if len(getattr(package,'carriers',{}))>1:
-        return perform_options(package,backend,action,directory,progress,features,validate_close=validate_close)
+        return perform_options(package,backend,action,directory,progress,features,
+                               validate_close=validate_close,validate_unlock=validate_unlock)
     if features is not None and set(features)!={'fl23'}:raise DeviceError('中文名称安装组件尚未准备完成')
     run=Path(directory)/'runs'/('fl23-'+uuid.uuid4().hex)
     make_directory(run)
@@ -414,54 +537,85 @@ def perform(backend,action,directory,progress=lambda _:None,features=None,*,vali
     return result
 
 
-def perform_options(package,backend,action,directory,progress,features=None,*,validate_close=False):
-    """One shared loader, independent FL23/Chinese flags, CP only for FL23.
-
-    A carrier switch first makes AP/WBI startup inert, then verifies the
-    atomic replacement, adjusts CP if necessary, and reactivates startup last.
-    Nothing modifies the current process's published RAM model in place.
-    """
+def perform_options(package,backend,action,directory,progress,features=None,*,validate_close=False,validate_unlock=False):
+    """One shared loader, independent flags 1..7, CP for FL23, 23-sector menu-ui + /setting/csnd wipe for custom sound."""
     from .creative_looks import FEATURES,FEATURE_IDS
+    has_custom=4 in getattr(package,'carriers',{})
+    valid_ids=FEATURE_IDS if has_custom else ('fl23','creative_look_names')
+    bits={'fl23':1,'creative_look_names':2,'custom_shutter_sound':4}
     selected=tuple(features or ('fl23',))
-    if action not in ('inspect','unlock','close') or not set(selected)<=set(FEATURE_IDS) or len(set(selected))!=len(selected):
-        raise ValueError('未知或重复的创意外观功能')
+    if action not in ('inspect','unlock','close') or not set(selected)<=set(valid_ids) or len(set(selected))!=len(selected):
+        raise ValueError('未知或重复的功能包选项')
     run=Path(directory)/'runs'/('looks-'+uuid.uuid4().hex);make_directory(run)
     result=dict(action=action,status='error',device_access=True,write_attempted=False,verified=False,
         run_directory=str(run),selected_features=list(selected),profile_sha256=package.profile.digest,full_backup=False)
     def rows(row,detail):
-        return [row,dict(id='creative_look_names',name=FEATURES[1]['name'],state=detail['names_state'],available=True)]
+        items=[row,dict(id='creative_look_names',name=FEATURES[1]['name'],state=detail['names_state'],available=True)]
+        if has_custom:
+            items.append(dict(id='custom_shutter_sound',name=FEATURES[2]['name'],requires=['sound'],
+                              state=detail['custom_sound_state'],available=True))
+        return items
     try:
         with service_files(backend,run) as invoke:
             session=Session(package,backend,invoke,run)
-            progress('正在读取创意外观代码、参数和功能包状态…')
+            progress('正在读取创意外观与自定义快门声载荷、参数和菜单状态…')
             row,detail,before,units,file,main=inspect(session)
             observed=rows(row,detail)
+            menu_read_sectors=sum(p['manifest']['sector_count'] for p in package.menu_ui['parts']) if getattr(package,'menu_ui',None) else 0
+            total_read_sectors=len(package.profile.entries)+len(package.recipe['guards'])+menu_read_sectors
             result['plan']=dict(compatible=True,features=observed,selected_features=list(selected),
-                read_sectors=len(package.profile.entries)+len(package.recipe['guards']),
-                read_bytes=(len(package.profile.entries)+len(package.recipe['guards']))*512,changed_bytes=0)
-            if action=='close' or validate_close:
-                legacy=('fl23' in selected and detail['startup']=='disabled' and not file['present']
-                        and not file['owned_mask']&~4 and any(r['state']=='partial' for r in observed))
-                if any(r['state']=='partial' for r in observed) and not legacy:
-                    raise DeviceError('创意外观安装状态不完整，未开始关闭任何所选功能。')
+                read_sectors=total_read_sectors,read_bytes=total_read_sectors*512,changed_bytes=0)
+            legacy_condition=(
+                'fl23' in selected and detail['startup']=='disabled' and not file['present']
+                and not (file['owned_mask']&~4) and any(r['state']=='partial' for r in observed)
+            )
+            custom_only_partial=(
+                has_custom and 'custom_shutter_sound' in selected
+                and all(r['state'] in ('enabled','disabled') for r in observed if r['id']!='custom_shutter_sound')
+                and detail.get('custom_sound_state')=='partial'
+                and (file['present'] or detail['startup']=='disabled')
+            )
+            current=detail['flags']
+            target=current
+            planned_action = 'unlock' if validate_unlock else 'close' if validate_close else action
+            if planned_action != 'inspect':
+                for feature in selected:
+                    bit=bits[feature]
+                    target=(target|bit) if planned_action=='unlock' else (target&~bit)
+            candidate=package.carriers.get(target)
+            refused_digest=_INCOMPATIBLE_MENU_CARRIERS.get(target)
+            blocked=(planned_action!='inspect' and candidate is not None and refused_digest
+                     and sha(candidate)==refused_digest)
+            if not blocked and planned_action=='close':
+                if any(r['state']=='partial' for r in observed) and not legacy_condition and not custom_only_partial:
+                    raise DeviceError('功能包安装状态不完整，未开始关闭任何所选功能。')
                 if 'fl23' in selected:
                     require_stock_values(session.ap_values())
                 result['close_ready']=True
-            if action=='inspect':result['status']='inspected'
+            if blocked:
+                result['plan']['compatible']=False
+                error='当前版本的 FL2／FL3 与自定义快门声共用菜单入口，联合冷启动校验失败。'
+                if planned_action=='close':
+                    error+='请同时关闭 FL2／FL3 或自定义快门声。'
+                result.update(error=error, after_flags=target)
+            elif action=='inspect':
+                result['status']='inspected'
             else:
-                current=detail['flags']
-                legacy_close=(action=='close' and 'fl23' in selected and detail['startup']=='disabled'
-                    and not file['present'] and not file['owned_mask']&~4
-                    and any(r['state']=='partial' for r in observed))
+                legacy_close=action=='close' and legacy_condition
                 # Do not infer an unselected option from incomplete state.
-                if any(r['state']=='partial' for r in observed) and not legacy_close:
-                    raise DeviceError('创意外观安装状态不完整；请先核对记录并完成恢复，未自动覆盖另一选项。')
-                target=current
-                for feature in selected:
-                    bit=1 if feature=='fl23' else 2
-                    target=(target|bit) if action=='unlock' else (target&~bit)
-                repair_update=action=='unlock' and 'fl23' in selected and row.get('update_available',False)
-                if target==current and not legacy_close and not repair_update:
+                if any(r['state']=='partial' for r in observed) and not legacy_close and not custom_only_partial:
+                    raise DeviceError('功能包安装状态不完整；请先核对记录并完成恢复，未自动覆盖另一选项。')
+                target_rev=getattr(package,'manifest',{}).get('carrier_revision',1)
+                installed_rev=file.get('revision',1)
+                repair_update=action=='unlock' and (
+                    ('fl23' in selected and row.get('update_available',False)) or
+                    (bool(target) and file['present'] and installed_rev<target_rev and any(bits[f]&current for f in selected))
+                )
+                menu_needs_work=has_custom and (
+                    (bool(target&4) and detail.get('custom_sound_state')!='enabled') or
+                    (not (target&4) and (bool(current&4) or detail.get('custom_sound_state')!='disabled'))
+                )
+                if target==current and not legacy_close and not repair_update and not menu_needs_work:
                     result.update(status='no-op',verified=True,final_features=observed)
                 else:
                     if (current&1 or legacy_close) and not target&1:
@@ -469,7 +623,7 @@ def perform_options(package,backend,action,directory,progress,features=None,*,va
                     _,on=plan_blocks(package,before,'unlock');_,off=plan_blocks(package,before,'close')
                     after=[(on if (target&1 if entry['device']==2 else target) else off)[i]
                            for i,entry in enumerate(package.profile.entries)]
-                    inert=(pause_startup_branches(package,before) if repair_update and target==current else
+                    inert=(pause_startup_branches(package,before) if repair_update and target==current and not menu_needs_work else
                         [off[i] if entry['device']!=2 else raw for i,(entry,raw) in enumerate(zip(package.profile.entries,before))])
                     save_json(run/'preimages.json',dict(sectors=[s.hex() for s in before],cp_units=[u.hex() for u in units],full_backup=False))
                     changed=sum(sum(a!=b for a,b in zip(x,y)) for x,y in zip(before,after))
@@ -478,34 +632,45 @@ def perform_options(package,backend,action,directory,progress,features=None,*,va
                         package_update=repair_update,installed_revision=row.get('installed_revision'),target_revision=row.get('target_revision')))
                     result['write_attempted']=True
                     if before!=inert:
-                        progress('正在暂停创意外观启动入口…');session.blocks(before,inert)
-                        if session.blocks()!=inert:raise DeviceError('创意外观启动入口暂停回读失败')
+                        progress('正在暂停开机常驻加载入口…');session.blocks(before,inert)
+                        if session.blocks()!=inert:raise DeviceError('开机加载入口暂停回读失败')
                         before=inert
                     if target:
                         carrier=package.carriers[target]
                         if file.get('flags')!=target or not file['present'] or repair_update:
-                            if file.get('owned_mask',0)&2:raise DeviceError('创意外观存在未完成的暂存事务，未重复上传')
-                            progress('正在更新 FL2／FL3 修复包…' if repair_update else '正在安装所选创意外观组合…');session.file(1,flags=target)
+                            if file.get('owned_mask',0)&2:raise DeviceError('存在未完成的 /setting/fl23 暂存事务，未重复上传')
+                            progress('正在更新 /setting/fl23 修复包…' if repair_update else '正在安装所选 /setting/fl23 功能组合…');session.file(1,flags=target)
                             for at in range(0,len(carrier),65536):session.file(2,at,carrier[at:at+65536],flags=target)
                             session.file(3,flags=target)
                         data=b''.join(session.file(0,at,length=min(65536,len(carrier)-at),flags=target)['data'] for at in range(0,len(carrier),65536))
-                        if data!=carrier:raise DeviceError('创意外观组合独立回读失败')
+                        if data!=carrier:raise DeviceError('/setting/fl23 组合载荷独立回读失败')
+                    menu_changed=0
+                    if has_custom and getattr(package,'menu_ui',None) is not None:
+                        if target&4 and detail.get('custom_sound_state')!='enabled':
+                            menu_changed+=session.apply_menu_ui('unlock',progress)
+                        elif not (target&4) and (bool(current&4) or detail.get('custom_sound_state')!='disabled'):
+                            menu_changed+=session.apply_menu_ui('close',progress)
+                            progress('正在彻底清除 /setting/csnd 所有自定义音频与状态文件…')
+                            session.wipe_csnd()
+                    elif has_custom and not (target&4) and bool(current&4):
+                        progress('正在彻底清除 /setting/csnd 所有自定义音频与状态文件…')
+                        session.wipe_csnd()
                     if (current^target)&1 or legacy_close:
                         progress('正在更新 FL2／FL3 专属 CP 依赖…')
                         update_units(session,units,'unlock' if target&1 else 'close')
                     if before!=after:
-                        progress('正在提交创意外观代码和启动入口…');session.blocks(before,after)
-                        if session.blocks()!=after:raise DeviceError('创意外观代码独立回读失败')
+                        progress('正在提交代码变更与开机加载入口…');session.blocks(before,after)
+                        if session.blocks()!=after:raise DeviceError('代码变更独立回读失败')
                     if not target:
                         session.file(6)
-                        if session.file(5)['mask']:raise DeviceError('创意外观功能包仍有残留')
+                        if session.file(5)['mask']:raise DeviceError('/setting/fl23 功能包仍有残留')
                     final,fd,_,final_units,_,_=inspect(session);final_rows=rows(final,fd)
-                    if fd['flags']!=target or any(r['state']!=('enabled' if target&(1<<i) else 'disabled') for i,r in enumerate(final_rows)):
-                        raise DeviceError('创意外观组合最终状态不一致')
+                    if fd['flags']!=target or any(r['state']!=('enabled' if target&bits[r['id']] else 'disabled') for r in final_rows):
+                        raise DeviceError('功能包组合最终状态不一致')
                     if repair_update and final.get('update_available'):raise DeviceError('FL23 修复包版本独立回读未通过')
                     if not (current^target)&1 and not legacy_close and final_units!=units:
-                        raise DeviceError('创意外观更新改变了原有 CP 参数')
-                    result['plan']['changed_bytes']=changed
+                        raise DeviceError('功能包更新改变了原有 CP 参数')
+                    result['plan']['changed_bytes']=changed+menu_changed
                     result.update(status='completed',verified=True,final_features=final_rows,restart_required=True,
                         before_flags=current,after_flags=target,package_updated=repair_update)
                     progress('所选功能写入及回读通过；冷启动后生效。')

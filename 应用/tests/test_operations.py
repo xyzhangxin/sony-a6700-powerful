@@ -1,6 +1,7 @@
 from copy import deepcopy
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -8,7 +9,6 @@ from unittest.mock import patch
 import zipfile
 
 from test_planner import fixture
-from platform_lock import lock_file
 from a6700_unlock.backup import (ARCHIVE_NAMES, KIND, list_backups, load_backup,
                                  restore_plan)
 from a6700_unlock.catalog import Catalog
@@ -111,7 +111,7 @@ class OperationTests(unittest.TestCase):
         self.assertEqual({f["state"] for f in result["final_features"]},{"enabled"})
         self.assertEqual((backend.writes,backend.reads),(1,2))
         self.assertFalse(result["full_backup"])
-        public = json.loads((Path(result["run_directory"])/"result.json").read_text(encoding='utf-8'))
+        public = json.loads((Path(result["run_directory"])/"result.json").read_text())
         self.assertNotIn("sectors",public["native_result"])
     def test_unknown_guard_blocks_entire_operation(self):
         bad = list(self.sectors);bad[3] = b"x"+bad[3][1:]
@@ -163,7 +163,7 @@ class OperationTests(unittest.TestCase):
         self.assertTrue(result["verified"])
         self.assertEqual((backend.writes, backend.reads), (1, 2))
         self.assertIn("相机执行结果", result["record_warning"])
-        stored = json.loads((Path(result["run_directory"]) / "result.json").read_text(encoding='utf-8'))
+        stored = json.loads((Path(result["run_directory"]) / "result.json").read_text())
         self.assertEqual(stored["record_warning"], result["record_warning"])
 
     def test_multiple_report_failures_preserve_warnings_and_verified_state(self):
@@ -189,19 +189,20 @@ class OperationTests(unittest.TestCase):
     def test_journal_failure_prevents_writer(self):
         backend = Backend(self.sectors,self.directory)
         with patch("a6700_unlock.operations.os.fsync",side_effect=OSError("disk failed")):
-            try:
-                execute(self.profile,backend,"unlock",self.directory)
-            except OSError:
-                # POSIX: the failing fsync surfaces from lock/directory setup.
-                # Windows only fsyncs journal files, so the same failure is
-                # reported through the error result instead of an exception.
-                pass
+            if os.name == "posix":
+                with self.assertRaises(OSError):
+                    execute(self.profile,backend,"unlock",self.directory)
+            else:
+                result = execute(self.profile,backend,"unlock",self.directory)
+                self.assertEqual(result["status"], "error")
+                self.assertFalse(result["write_attempted"])
         self.assertEqual(backend.writes,0)
     def test_lock_prevents_concurrent_device_operations(self):
         with device_lock(self.directory):
             with self.assertRaises(DeviceError):
                 execute(self.profile,Backend(self.sectors,self.directory),"unlock",self.directory)
     def test_host_lock_covers_different_state_directories_and_research_tools(self):
+        from platform_lock import lock_file
         from a6700_unlock.operations import host_lock_path, make_directory
         first, second = self.directory / "one", self.directory / "two"
         with device_lock(first):
@@ -209,7 +210,7 @@ class OperationTests(unittest.TestCase):
                 execute(self.profile, Backend(self.sectors, second), "inspect", second)
         path = host_lock_path()
         make_directory(path.parent)
-        with path.open("a") as research:
+        with path.open("a+b") as research:
             lock_file(research)
             with self.assertRaises(DeviceError):
                 with device_lock(second):

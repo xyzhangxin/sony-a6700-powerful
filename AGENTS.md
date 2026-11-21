@@ -22,12 +22,12 @@ python3 应用/scripts/check.py --strict
 应用开发依赖安装、原生仿真与构建见 `参与开发.md`。根 `.github/` 是本仓库统一的 CI 和贡献模板；CI 不访问相机。不得把本地测试写成远端 CI 已通过。
 
 - 先搜索和更新已有模块、教程与状态，不创建 final/final2、平行 USB 引擎或重复状态清单。临时报告放被忽略的 `应用/reports/主题/任务/`，构建放 `应用/dist/`，不提交缓存和安装包。
-- 当前开放 FL2／FL3、创意外观中文名称、FTP、关机快门帘、灵活曝光、电子快门声音，可逐项选择；声音不依赖灵活曝光。位移多帧合成与动态增强防抖禁用，不自动重新启用；完整备份恢复未实现，桌面入口隐藏。
+- 当前开放 FL2／FL3、创意外观中文名称、FTP、关机快门帘、灵活曝光、电子快门声音、自定义快门声，可逐项选择；声音不依赖灵活曝光，自定义快门声依赖电子快门声音。位移多帧合成与动态增强防抖禁用，不自动重新启用；完整备份恢复未实现，桌面入口隐藏。
 - 不自动访问真实相机。设备操作共用 `operations.device_lock`，忙时排队，不能删除锁、换状态目录、重发写入器或绕过内容守卫。取得锁后重新检查当前设备及前序结果，不沿用旧预检。macOS 锁为 `~/Library/Application Support/sony-a6700-ftp/.assistant.lock`，其余平台见代码。
 - 设备范围或掩码变化必须同步清单、profile、原生载荷和 manifest，附相应验证；不能只改界面开关。区分模拟、只读预检、实机写入、重启后功能验收。
 - Pico 三份源码保留历史输入哈希；时序、GPIO、机型适配需要独立证据。硬件路线只提供引导与已知区间备份，不扩充未验证全盘恢复。
 - 不提交固件、私人备份、机身标识、校准、密钥、ProductInfo 原文或个人路径／原始日志。不得恢复已排除的历史原厂扇区数组，应用源码打包有已知路径和块哈希守卫。
-- 仅允许固定引导、应用`data/native/`固定读写及关闭前检查／复位自编ELF，以及`data/fl23/`固定carrier.bin、`variants/{2,3}/carrier.bin`与三份自编ELF；FL23须保留recipe、manifest、冻结runtime源码与构建脚本；保留对应源码、哈希与来源；发行 ZIP 在 GitHub Release 分发，与同版源码、说明、校验成组，不覆盖已分发文件。
+- 仅允许固定引导、应用 `data/native/` 固定读写／关闭前检查／复位与 `custom-sound-binding/probe.elf`／`custom-sound-reader.elf` 自编 ELF、`data/diagnostics/*.elf`、`data/ftp-migration/native/*.elf`、`data/custom-sound/custom-sound-writer.elf`（含受检菜单 UI 载荷）、`data/fl23/` 固定 `carrier.bin`、`variants/{2..7}/carrier.bin` 与三份自编 ELF；必须保留对应 recipe、manifest、冻结 runtime／C 源码、构建脚本与来源；发行 ZIP 在 GitHub Release 分发，与同版源码、说明、校验成组，不覆盖已分发文件。
 - Windows驱动安装器仅允许`应用/desktop/windows/driver/wdi-simple.exe`固定摘要及对应libwdi源包；SetupAPI和驱动助手只能处理限定的Sony PID，不得引入未审查安装器或让主应用提权。
 - 自有 GPL-3.0-only；第三方按各自许可，见 `NOTICE`。不得以“仅供学习”承诺免责、删除归属或增加与 GPL 冲突的用途限制。修改须附原因、范围、实际验证与未验证事项。
 

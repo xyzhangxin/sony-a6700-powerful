@@ -78,6 +78,8 @@ def device_lock(directory, *, observe_returned_settings=False):
             make_directory(path.parent)
             lock = stack.enter_context(path.open("a+b"))
             stack.enter_context(host_io.exclusive_lock(lock))
+        from .package_installation import guard_pending_package_installation
+        guard_pending_package_installation()
         from .close_setting import guard_pending_settings
         guard_pending_settings(directory,observe_returned=observe_returned_settings)
         yield
@@ -281,7 +283,7 @@ def _restore_session(profile, backend, backup, directory, progress, dry_run=Fals
 
 
 def _execute_session(profile, backend, action, directory, progress, dry_run=False, features=None,
-                     manage_backend=True, update_plan_builder=None):
+                     manage_backend=True, update_plan_builder=None, preimage_guard=None, preparation_guard=None):
     """Shared transaction; physical caller must hold device_lock.
 
     The desktop simulator calls this with an in-memory backend and a private
@@ -301,6 +303,11 @@ def _execute_session(profile, backend, action, directory, progress, dry_run=Fals
                 verify_pending_settings(backend, directory)
             progress("正在读取补丁目标和结构守卫…")
             before = backend.read(uuid.uuid4().bytes)
+            # Optional session approval guard runs on this transaction's fresh
+            # read, before preparation can change camera settings. It cannot
+            # replace the planner, native preimages or independent readback.
+            if preimage_guard is not None:
+                preimage_guard(before)
             if action == "update":
                 from .feature_updates import plan_update
                 selected = [features] if isinstance(features, str) else features
@@ -314,9 +321,12 @@ def _execute_session(profile, backend, action, directory, progress, dry_run=Fals
                 plan, after = inspect_sectors(profile, before, action, features)
             save_json(run_dir / "plan.json", plan)
             result["plan"] = plan
+            if plan.get("guard_compatibility"):
+                progress(f"已识别 {len(plan['guard_compatibility'])} 个已知第三方回放筛选守卫状态。")
             if plan['compatible'] and action == 'close':
+                approval = dict(approval_guard=preparation_guard) if preparation_guard is not None else {}
                 preparation = prepare_close(backend, plan.get('selected_features', ()),
-                                            run_dir, progress, apply=not dry_run)
+                                            run_dir, progress, apply=not dry_run, **approval)
                 if not attach_preparation(result, preparation):
                     return result
                 if result['settings_write_attempted']:

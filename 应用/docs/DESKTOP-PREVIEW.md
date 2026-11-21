@@ -22,6 +22,8 @@ dev19 改为三步：操作前须知、准备并连接、功能管理；默认�
 
 ## 内置环境版与开发预览
 
+开发版本的默认文件名和窗口标题自动附带完整版本，例如 `Powerful6700 0.4.3.dev1.app`。每个开发版本使用独立的 macOS 应用标识，可和其他版本同时打开。正式包使用 `Powerful6700.app`。手动指定开发包的 `--output` 时也沿用此命名。
+
 内置环境版针对 Apple Silicon macOS 13+，接收者无需另装 Python、PyUSB、libusb 或编译器。构建机器仍需要 Swift／Clang Command Line Tools：
 
 ```sh
@@ -73,4 +75,4 @@ python3 scripts/check_macos_app.py 'dist/Powerful6700.app'
 
 `python scripts/check.py --strict` 可在无相机、无桌面会话环境验证状态机和协议。新增测试覆盖准备阻断、模拟往返与重复执行、部分增量、各故障结果、取消发生在写前／写后、重复操作阻断及断连失效。
 
-macOS CI 增加本地预览的编译步骤，不启动真实 USB 操作。实际窗口点击与视觉检查需要已解锁的桌面会话；编译成功与状态机通过不替代这一步。2026-10-19 已在维护者 Apple Silicon Mac 检查四页与进度布局、按钮阻断、增量／重复操作、场景切换、断连、通信故障、写后取消与许可证弹窗，范围及未覆盖项见 `VALIDATION.md`；远端 CI 尚未执行。
+macOS CI 增加本地预览的编译步骤，不启动真实 USB 操作。实际窗口点击需要已解锁的桌面会话；2026-11-11 起中文页面视觉回归可用 `scripts/render_macos_ui.py` 离屏渲染并 OCR，不依赖屏幕录制权限。2026-10-19 已在维护者 Apple Silicon Mac 检查四页与进度布局、按钮阻断、增量／重复操作、场景切换、断连、通信故障、写后取消与许可证弹窗，范围及未覆盖项见 `VALIDATION.md`；远端 CI 尚未执行。

@@ -34,6 +34,25 @@ class GuardVolatileTests(unittest.TestCase):
     def inspect(self, sectors):
         return inspect_sectors(self.profile, sectors, "inspect")[0]
 
+    def test_superblock_diagnosis_does_not_accept_drift(self):
+        base = bytearray(512)
+        base[56:58] = b"\x53\xef"
+        row = self.profile.entries[self.guard_index]
+        row.update(device=0, device_offset=1024, sha256=hashlib.sha256(base).hexdigest())
+        with patch.object(device_profile, "_EXT2_SUPERBLOCK_SHA256", row["sha256"]), \
+                patch.object(device_profile, "_EXT2_WITHOUT_RUNTIME_SHA256", row["sha256"]):
+            for field, category in ((44, "runtime_fields_only"), (96, "other_fields_changed"),
+                                    (56, "magic_mismatch")):
+                with self.subTest(field=field):
+                    changed = bytearray(base)
+                    changed[field] ^= 1
+                    sectors = list(self.sectors)
+                    sectors[self.guard_index] = bytes(changed)
+                    plan, after = inspect_sectors(self.profile, sectors, "unlock")
+                    self.assertFalse(plan["compatible"])
+                    self.assertEqual(plan["issues"][0]["superblock_difference"], category)
+                    self.assertEqual(after, sectors)
+
     def test_camera_refreshed_inode_times_no_longer_block(self):
         drifted = bytearray(self.sectors[self.guard_index])
         drifted[8:20] = b"\x11" * 12

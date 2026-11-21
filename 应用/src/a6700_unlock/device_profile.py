@@ -16,6 +16,27 @@ DEVICE_SECTORS = {0: 0x165800, 1: 0x96000, 2: 48844}
 IMAGE_DEVICES = {"app": 0, "wbi": 1, "cpapp": 2}
 PLAIN_IMAGES = {"wbi", "cpapp"}
 
+# Host diagnostic only. Bind the comparison to the known ext2 primary
+# superblock and its exact original digest, independent of profile numbering.
+_EXT2_SUPERBLOCK_SHA256 = "264930c556e6d4308bcc6e7b4dc6156e9e867fd7c02d056950c03b0c625207ad"
+_EXT2_WITHOUT_RUNTIME_SHA256 = "a4c466b8180ca921b44dba2a7499a079a18b3b116f1d772ddb8d94fd9864bb10"
+_EXT2_RUNTIME_FIELDS = ((12, 20), (44, 54), (58, 60), (64, 68), (232, 236))
+
+
+def _superblock_difference(row, sector):
+    if (row["device"], row["device_offset"], row.get("sha256")) != (0, 1024, _EXT2_SUPERBLOCK_SHA256):
+        return None
+    if sector[56:58] != b"\x53\xef":
+        return "magic_mismatch"
+    # Exclude space/inode counters, mount/write/check times, mount counts,
+    # filesystem state and last orphan. Keep every other byte in the comparison.
+    normalized = bytearray(sector)
+    for start, end in _EXT2_RUNTIME_FIELDS:
+        normalized[start:end] = bytes(end - start)
+    if hashlib.sha256(normalized).hexdigest() == _EXT2_WITHOUT_RUNTIME_SHA256:
+        return "runtime_fields_only"
+    return "other_fields_changed"
+
 
 @dataclass(frozen=True)
 class DeviceProfile:
@@ -121,6 +142,7 @@ def load_device_profile(catalog):
 
 GUARD_VOLATILE_KIND = "guard-volatile-overlay"
 _guard_volatile_data = None
+_guard_compatibility_data = None
 
 
 def _load_guard_volatile_data():
@@ -144,9 +166,16 @@ def guard_volatile_overlay(profile):
     every other byte of the sector stays pinned byte-for-byte. Any other
     profile (synthetic test fixtures, future revisions) gets no overlay.
     """
-    data = _load_guard_volatile_data()
-    if data.get("profile_sha256") != profile.digest:
-        return {}
+    # A separately built fixed migration profile can carry its reviewed inode
+    # overlay inside the profile itself. Its complete layout is then covered
+    # by the same digest compiled into the reader/writer, without global state.
+    data = profile.data.get("guard_volatile_overlay")
+    if data is None:
+        data = _load_guard_volatile_data()
+        if data.get("profile_sha256") != profile.digest:
+            return {}
+    elif data.get("schema") != 1 or data.get("kind") != GUARD_VOLATILE_KIND:
+        raise CatalogError("Unsupported inline guard volatile overlay")
     inode = data.get("inode_size")
     fields = data.get("volatile_fields")
     if (type(inode) is not int or not 0 < inode <= 512 or not isinstance(fields, list)
@@ -185,6 +214,42 @@ def _zero_inode_times(sector, inode_size, fields):
     return bytes(normalized)
 
 
+def guard_compatibility_overlay(profile):
+    """Recognize exact third-party guard contents while preserving their bytes."""
+    global _guard_compatibility_data
+    if _guard_compatibility_data is None:
+        _guard_compatibility_data = json.loads(
+            files("a6700_unlock").joinpath("data/guard-compatibility.json")
+            .read_text(encoding="utf-8"))
+    data = _guard_compatibility_data
+    if data.get("schema") != 1 or data.get("kind") != "guard-compatibility-overlay":
+        raise CatalogError("Unsupported guard compatibility overlay")
+    if data.get("profile_sha256") != profile.digest:
+        return {}
+    records = {}
+    for key, record in data["records"].items():
+        try:
+            index = int(key)
+        except ValueError:
+            raise CatalogError("Invalid guard compatibility index") from None
+        if not 0 <= index < len(profile.entries):
+            raise CatalogError("Guard compatibility index outside profile")
+        row = profile.entries[index]
+        if (row["role"] != "guard" or row["device"] != record["device"]
+                or row["device_offset"] != record["device_offset"]
+                or row["sha256"] != record["original_sha256"]):
+            raise CatalogError("Guard compatibility record does not match profile entry")
+        variants = {}
+        for variant in record["variants"]:
+            digest = variant["sha256"]
+            if (len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest)
+                    or digest == row["sha256"] or digest in variants):
+                raise CatalogError("Invalid guard compatibility digest")
+            variants[digest] = dict(source=data["source"]["name"], patches=variant["patches"])
+        records[index] = variants
+    return records
+
+
 def _feature_selection(catalog, features):
     ids = [f["id"] for f in catalog.data["features"]]
     if features is None:
@@ -206,7 +271,8 @@ def _feature_selection(catalog, features):
     return "explicit", selected
 
 
-def inspect_sectors(profile: DeviceProfile, sectors: list[bytes], action="inspect", features=None):
+def inspect_sectors(profile: DeviceProfile, sectors: list[bytes], action="inspect", features=None,
+                    *, allow_guard_compatibility=True):
     if action not in ("inspect", "unlock", "close"):
         raise ValueError("Unsupported device operation")
     if len(sectors) != len(profile.entries) or any(len(s) != 512 for s in sectors):
@@ -219,6 +285,8 @@ def inspect_sectors(profile: DeviceProfile, sectors: list[bytes], action="inspec
     issues = []
     masks = profile.masks()
     volatile_guards = guard_volatile_overlay(profile)
+    compatible_guards = guard_compatibility_overlay(profile) if allow_guard_compatibility else {}
+    recognized_guards = []
     for row, sector, mask in zip(profile.entries, sectors, masks):
         if row["role"] == "target":
             if schema == 2:
@@ -249,11 +317,22 @@ def inspect_sectors(profile: DeviceProfile, sectors: list[bytes], action="inspec
                 normalized = _zero_inode_times(sector, overlay_row["inode_size"],
                                                overlay_row["fields"])
                 expected = overlay_row["normalized_sha256"]
-        if hashlib.sha256(normalized).hexdigest() != expected:
-            issues.append(dict(kind="sector-guard-mismatch", role=row["role"],
-                               index=row["index"],
-                               device=profile.data["devices"][row["device"]],
-                               offset=row["device_offset"]))
+        actual_digest = hashlib.sha256(normalized).hexdigest()
+        if actual_digest != expected:
+            variant = compatible_guards.get(row["index"], {}).get(actual_digest)
+            if variant is not None:
+                recognized_guards.append(dict(index=row["index"], **variant))
+            else:
+                issue = dict(kind="sector-guard-mismatch", role=row["role"], index=row["index"],
+                             device=profile.data["devices"][row["device"]],
+                             offset=row["device_offset"],
+                             expected_sha256=expected, actual_sha256=actual_digest)
+                difference = _superblock_difference(row, sector)
+                if difference is not None:
+                    issue["superblock_difference"] = difference
+                if actual_digest in guard_compatibility_overlay(profile).get(row["index"], {}):
+                    issue["known_ftp_variant"] = True
+                issues.append(issue)
     observations = []
     for edit in catalog.edits:
         actual = bytes(sectors[index_by_file[(edit.image, at // 512 * 512)]][at % 512]
@@ -317,5 +396,9 @@ def inspect_sectors(profile: DeviceProfile, sectors: list[bytes], action="inspec
                 changed_indices=changed, changed_sectors=len(changed),
                 changed_bytes=sum(sum(a != b for a, b in zip(sectors[i], after[i])) for i in changed),
                 hardware_validation=profile.data["hardware_validation"], full_backup=False,
-                guard_volatile=sorted(volatile_guards))
+                guard_volatile=sorted(volatile_guards),
+                guard_compatibility=recognized_guards,
+                guard_compatibility_sha256=hashlib.sha256(json.dumps(
+                    compatible_guards, sort_keys=True, separators=(",", ":"),
+                    ensure_ascii=False).encode()).hexdigest() if compatible_guards else None)
     return plan, [bytes(s) for s in after]

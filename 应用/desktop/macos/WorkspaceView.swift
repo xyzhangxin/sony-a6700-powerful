@@ -4,6 +4,7 @@ import AppKit
 struct WorkspaceView: View {
     @ObservedObject var model: PreviewModel
     let physical: Bool
+    var onOpenMarket: (() -> Void)? = nil
     @State private var action = "unlock"
     @State private var hideReceipt = false
     private var features: [FeatureRow] { model.state?.features ?? [] }
@@ -79,26 +80,99 @@ struct WorkspaceView: View {
                                         .font(.system(size: 10)).foregroundColor(UI.amber)
                                 }
                             }
-                            Spacer(minLength: 4)
-                            Text(feature.isAvailable ? feature.stateText : "暂未开放").font(.system(size: 10, weight: .medium))
-                                .foregroundColor(feature.state == "enabled" ? UI.accent : UI.muted)
+                            Spacer(minLength: 8)
                             if feature.update_available == true {
                                 Button(feature.id == "ftp" ? "更新 FTP" : "更新 FL2／FL3") {
                                     model.send(feature.id == "ftp" ? "update_ftp" : "update_fl23")
                                 }
-                                .buttonStyle(.bordered).tint(UI.accent)
+                                .buttonStyle(.bordered).tint(UI.accent).controlSize(.small)
                                 .accessibilityHint("仅更新当前功能，保留其他功能和设置")
                             }
+                            if feature.id == "custom_shutter_sound" && onOpenMarket != nil {
+                                marketShortcutButton(disabled: model.isBusy)
+                            }
+                            featureStatusLabel(
+                                feature.isAvailable ? feature.stateText : "暂未开放",
+                                color: feature.state == "enabled" ? UI.accent : UI.muted
+                            )
                         }.padding(.leading, 6)
-                    }.toggleStyle(.checkbox).disabled(!feature.isAvailable).opacity(feature.isAvailable ? 1 : 0.55).padding(.horizontal, 16).padding(.vertical, 12)
+                    }.toggleStyle(.checkbox).disabled(!feature.isAvailable).opacity(feature.isAvailable ? 1 : 0.55).padding(.horizontal, 16).padding(.vertical, 10)
                         .accessibilityLabel("选择功能：" + feature.title)
                         .accessibilityHint(feature.stateText + "。" + feature.explanation)
+                    if feature.id == "sound" && !features.contains(where: { $0.id == "custom_shutter_sound" }) {
+                        Divider().padding(.leading, 50)
+                        customSoundFeatureRow
+                    }
                     if feature.id != features.last?.id { Divider().padding(.leading, 50) }
                 }
             }
         }.background(.white).cornerRadius(12)
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(UI.line))
             .disabled(model.isBusy)
+    }
+
+    private var customSoundFeatureRow: some View {
+        let custom = model.state?.custom_sound
+        let state = custom?.state ?? "disabled"
+        let stateLabel: String = {
+            switch state {
+            case "enabled": return "已解锁"
+            case "partial": return "部分改动"
+            case "error": return "校验失败"
+            default: return "未安装"
+            }
+        }()
+        let explanation = (custom?.reason?.isEmpty == false)
+            ? (custom?.reason ?? "")
+            : "十槽自定义快门声功能与「电子快门声音」独立；App 内固件安装／卸载将在后续版本开放。"
+        return HStack(spacing: 12) {
+            Toggle(isOn: .constant(false)) { EmptyView() }
+                .toggleStyle(.checkbox).labelsHidden().disabled(true).opacity(0.45)
+                .help("App 内自定义快门声固件安装／卸载将在后续版本开放")
+                .accessibilityLabel("自定义快门声（当前仅支持检查状态与市场导入）")
+            Image(systemName: "waveform.path.ecg").font(.system(size: 17)).foregroundColor(UI.accent)
+                .frame(width: 32, height: 34).background(UI.accent.opacity(0.045)).cornerRadius(8)
+                .opacity(state == "enabled" ? 1 : 0.65)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(custom?.name ?? "自定义快门声").font(.system(size: 13, weight: .semibold))
+                    Text("仅检查状态")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(UI.muted)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.black.opacity(0.045)).cornerRadius(4)
+                }
+                Text(explanation).font(.system(size: 10)).foregroundColor(UI.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("需要：电子快门声音").font(.system(size: 10)).foregroundColor(UI.amber)
+            }
+            Spacer(minLength: 8)
+            marketShortcutButton(disabled: model.isBusy || onOpenMarket == nil)
+            featureStatusLabel(
+                stateLabel,
+                color: state == "enabled" ? UI.accent : (state == "partial" || state == "error") ? UI.amber : UI.muted
+            )
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+    }
+
+    private func marketShortcutButton(disabled: Bool) -> some View {
+        Button {
+            onOpenMarket?()
+        } label: {
+            Label("去快门声市场", systemImage: "waveform")
+        }
+        .buttonStyle(.bordered).tint(UI.accent).controlSize(.small)
+        .disabled(disabled)
+        .accessibilityHint("前往快门声市场查看状态、读取相机槽位或导入音频")
+    }
+
+    private func featureStatusLabel(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundColor(color)
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(minWidth: 48, alignment: .trailing)
     }
     private var actionPanel: some View {
         Panel {

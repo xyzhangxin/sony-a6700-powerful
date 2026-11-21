@@ -1,0 +1,1721 @@
+{
+  "schema": "a6700.custom-sound-binding/1",
+  "loader_version": "ten-slot-stability-volume-20261118",
+  "host_sha256": "799c133ff8fdf5ff0f095fcdec92f6c0ea03c68e0112a8288836ac244d7a2d0a",
+  "module_bytes": 999424,
+  "previous_boot_id": "c61a8b84-9a52-4942-ac58-cd09709dcfb2",
+  "fields": [
+    {
+      "name": "host.runtime.state",
+      "symbol": "host",
+      "symbol_offset": 300176,
+      "field_offset": 0,
+      "a1_offset": 300176,
+      "bytes": 4,
+      "payload_offset": 0
+    },
+    {
+      "name": "host.runtime.ownership",
+      "symbol": "host",
+      "symbol_offset": 300176,
+      "field_offset": 768,
+      "a1_offset": 300944,
+      "bytes": 8,
+      "payload_offset": 4
+    },
+    {
+      "name": "host.runtime.playback.route",
+      "symbol": "host",
+      "symbol_offset": 300176,
+      "field_offset": 328,
+      "a1_offset": 300504,
+      "bytes": 4,
+      "payload_offset": 12
+    },
+    {
+      "name": "host.runtime.playback.slot",
+      "symbol": "host",
+      "symbol_offset": 300176,
+      "field_offset": 332,
+      "a1_offset": 300508,
+      "bytes": 4,
+      "payload_offset": 16
+    },
+    {
+      "name": "host.runtime.playback.initialized",
+      "symbol": "host",
+      "symbol_offset": 300176,
+      "field_offset": 336,
+      "a1_offset": 300512,
+      "bytes": 4,
+      "payload_offset": 20
+    },
+    {
+      "name": "host.runtime.playback.gate_held",
+      "symbol": "host",
+      "symbol_offset": 300176,
+      "field_offset": 340,
+      "a1_offset": 300516,
+      "bytes": 4,
+      "payload_offset": 24
+    },
+    {
+      "name": "host.runtime.playback.unresolved",
+      "symbol": "host",
+      "symbol_offset": 300176,
+      "field_offset": 344,
+      "a1_offset": 300520,
+      "bytes": 4,
+      "payload_offset": 28
+    },
+    {
+      "name": "host.report.status",
+      "symbol": "host",
+      "symbol_offset": 300176,
+      "field_offset": 1456,
+      "a1_offset": 301632,
+      "bytes": 4,
+      "payload_offset": 32
+    },
+    {
+      "name": "host.report.state",
+      "symbol": "host",
+      "symbol_offset": 300176,
+      "field_offset": 1460,
+      "a1_offset": 301636,
+      "bytes": 4,
+      "payload_offset": 36
+    },
+    {
+      "name": "host.report.startup_ready",
+      "symbol": "host",
+      "symbol_offset": 300176,
+      "field_offset": 1464,
+      "a1_offset": 301640,
+      "bytes": 4,
+      "payload_offset": 40
+    },
+    {
+      "name": "host.report.selection",
+      "symbol": "host",
+      "symbol_offset": 300176,
+      "field_offset": 1472,
+      "a1_offset": 301648,
+      "bytes": 4,
+      "payload_offset": 44
+    },
+    {
+      "name": "host.report.owned",
+      "symbol": "host",
+      "symbol_offset": 300176,
+      "field_offset": 1476,
+      "a1_offset": 301652,
+      "bytes": 4,
+      "payload_offset": 48
+    },
+    {
+      "name": "host.report.bindings_ready",
+      "symbol": "host",
+      "symbol_offset": 300176,
+      "field_offset": 1480,
+      "a1_offset": 301656,
+      "bytes": 4,
+      "payload_offset": 52
+    },
+    {
+      "name": "host.a6700_prepared",
+      "symbol": "host",
+      "symbol_offset": 300176,
+      "field_offset": 1496,
+      "a1_offset": 301672,
+      "bytes": 4,
+      "payload_offset": 56
+    },
+    {
+      "name": "host.initialized",
+      "symbol": "host",
+      "symbol_offset": 300176,
+      "field_offset": 1500,
+      "a1_offset": 301676,
+      "bytes": 4,
+      "payload_offset": 60
+    },
+    {
+      "name": "capability_scheduler.active",
+      "symbol": "capability_scheduler",
+      "symbol_offset": 857120,
+      "field_offset": 912,
+      "a1_offset": 858032,
+      "bytes": 4,
+      "payload_offset": 64
+    },
+    {
+      "name": "capability_scheduler.last_status",
+      "symbol": "capability_scheduler",
+      "symbol_offset": 857120,
+      "field_offset": 916,
+      "a1_offset": 858036,
+      "bytes": 4,
+      "payload_offset": 68
+    },
+    {
+      "name": "capability_scheduler.job.task_id",
+      "symbol": "capability_scheduler",
+      "symbol_offset": 857120,
+      "field_offset": 32,
+      "a1_offset": 857152,
+      "bytes": 4,
+      "payload_offset": 72
+    },
+    {
+      "name": "capability_scheduler.job.magic",
+      "symbol": "capability_scheduler",
+      "symbol_offset": 857120,
+      "field_offset": 848,
+      "a1_offset": 857968,
+      "bytes": 4,
+      "payload_offset": 76
+    },
+    {
+      "name": "capability_scheduler.job.generation",
+      "symbol": "capability_scheduler",
+      "symbol_offset": 857120,
+      "field_offset": 856,
+      "a1_offset": 857976,
+      "bytes": 4,
+      "payload_offset": 80
+    },
+    {
+      "name": "capability_scheduler.job.operation",
+      "symbol": "capability_scheduler",
+      "symbol_offset": 857120,
+      "field_offset": 860,
+      "a1_offset": 857980,
+      "bytes": 4,
+      "payload_offset": 84
+    },
+    {
+      "name": "capability_scheduler.job.session",
+      "symbol": "capability_scheduler",
+      "symbol_offset": 857120,
+      "field_offset": 864,
+      "a1_offset": 857984,
+      "bytes": 8,
+      "payload_offset": 88
+    },
+    {
+      "name": "capability_session.worker.phase",
+      "symbol": "capability_session",
+      "symbol_offset": 331912,
+      "field_offset": 0,
+      "a1_offset": 331912,
+      "bytes": 4,
+      "payload_offset": 96
+    },
+    {
+      "name": "capability_session.worker.status",
+      "symbol": "capability_session",
+      "symbol_offset": 331912,
+      "field_offset": 156,
+      "a1_offset": 332068,
+      "bytes": 4,
+      "payload_offset": 100
+    },
+    {
+      "name": "capability_session.worker.request.operation",
+      "symbol": "capability_session",
+      "symbol_offset": 331912,
+      "field_offset": 4,
+      "a1_offset": 331916,
+      "bytes": 4,
+      "payload_offset": 104
+    },
+    {
+      "name": "capability_session.worker.request.session_generation",
+      "symbol": "capability_session",
+      "symbol_offset": 331912,
+      "field_offset": 8,
+      "a1_offset": 331920,
+      "bytes": 4,
+      "payload_offset": 108
+    },
+    {
+      "name": "capability_session.worker.request.candidate_generation",
+      "symbol": "capability_session",
+      "symbol_offset": 331912,
+      "field_offset": 12,
+      "a1_offset": 331924,
+      "bytes": 4,
+      "payload_offset": 112
+    },
+    {
+      "name": "capability_session.worker.selection",
+      "symbol": "capability_session",
+      "symbol_offset": 331912,
+      "field_offset": 20,
+      "a1_offset": 331932,
+      "bytes": 4,
+      "payload_offset": 116
+    },
+    {
+      "name": "capability_session.worker.active_generation",
+      "symbol": "capability_session",
+      "symbol_offset": 331912,
+      "field_offset": 152,
+      "a1_offset": 332064,
+      "bytes": 4,
+      "payload_offset": 120
+    },
+    {
+      "name": "capability_session.abandoned",
+      "symbol": "capability_session",
+      "symbol_offset": 331912,
+      "field_offset": 525056,
+      "a1_offset": 856968,
+      "bytes": 4,
+      "payload_offset": 124
+    },
+    {
+      "name": "capability_session.initialized",
+      "symbol": "capability_session",
+      "symbol_offset": 331912,
+      "field_offset": 525060,
+      "a1_offset": 856972,
+      "bytes": 4,
+      "payload_offset": 128
+    },
+    {
+      "name": "capability_session.executing_bound",
+      "symbol": "capability_session",
+      "symbol_offset": 331912,
+      "field_offset": 525084,
+      "a1_offset": 856996,
+      "bytes": 4,
+      "payload_offset": 132
+    },
+    {
+      "name": "capability_menu.pending",
+      "symbol": "capability_menu",
+      "symbol_offset": 859008,
+      "field_offset": 44,
+      "a1_offset": 859052,
+      "bytes": 4,
+      "payload_offset": 136
+    },
+    {
+      "name": "capability_menu.pending_value",
+      "symbol": "capability_menu",
+      "symbol_offset": 859008,
+      "field_offset": 48,
+      "a1_offset": 859056,
+      "bytes": 4,
+      "payload_offset": 140
+    },
+    {
+      "name": "capability_menu.ticket",
+      "symbol": "capability_menu",
+      "symbol_offset": 859008,
+      "field_offset": 52,
+      "a1_offset": 859060,
+      "bytes": 4,
+      "payload_offset": 144
+    },
+    {
+      "name": "capability_queue.last_ticket",
+      "symbol": "capability_queue",
+      "symbol_offset": 861952,
+      "field_offset": 104,
+      "a1_offset": 862056,
+      "bytes": 4,
+      "payload_offset": 148
+    },
+    {
+      "name": "capability_queue.last_operation",
+      "symbol": "capability_queue",
+      "symbol_offset": 861952,
+      "field_offset": 108,
+      "a1_offset": 862060,
+      "bytes": 4,
+      "payload_offset": 152
+    },
+    {
+      "name": "capability_queue.last_value",
+      "symbol": "capability_queue",
+      "symbol_offset": 861952,
+      "field_offset": 112,
+      "a1_offset": 862064,
+      "bytes": 4,
+      "payload_offset": 156
+    },
+    {
+      "name": "capability_completed_ticket",
+      "symbol": "capability_completed_ticket",
+      "symbol_offset": 857112,
+      "field_offset": 0,
+      "a1_offset": 857112,
+      "bytes": 4,
+      "payload_offset": 160
+    },
+    {
+      "name": "ui.users",
+      "symbol": "ui",
+      "symbol_offset": 328816,
+      "field_offset": 40,
+      "a1_offset": 328856,
+      "bytes": 4,
+      "payload_offset": 164
+    },
+    {
+      "name": "ui.lock",
+      "symbol": "ui",
+      "symbol_offset": 328816,
+      "field_offset": 44,
+      "a1_offset": 328860,
+      "bytes": 4,
+      "payload_offset": 168
+    },
+    {
+      "name": "ui.configured",
+      "symbol": "ui",
+      "symbol_offset": 328816,
+      "field_offset": 48,
+      "a1_offset": 328864,
+      "bytes": 4,
+      "payload_offset": 172
+    },
+    {
+      "name": "ui.api",
+      "symbol": "ui",
+      "symbol_offset": 328816,
+      "field_offset": 24,
+      "a1_offset": 328840,
+      "bytes": 8,
+      "payload_offset": 176
+    },
+    {
+      "name": "refresh_pending",
+      "symbol": "refresh_pending",
+      "symbol_offset": 328872,
+      "field_offset": 0,
+      "a1_offset": 328872,
+      "bytes": 1,
+      "payload_offset": 184
+    },
+    {
+      "name": "refresh_trace[0]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 0,
+      "a1_offset": 328880,
+      "bytes": 8,
+      "payload_offset": 185
+    },
+    {
+      "name": "refresh_trace[1]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 8,
+      "a1_offset": 328888,
+      "bytes": 8,
+      "payload_offset": 193
+    },
+    {
+      "name": "refresh_trace[2]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 16,
+      "a1_offset": 328896,
+      "bytes": 8,
+      "payload_offset": 201
+    },
+    {
+      "name": "refresh_trace[3]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 24,
+      "a1_offset": 328904,
+      "bytes": 8,
+      "payload_offset": 209
+    },
+    {
+      "name": "refresh_trace[4]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 32,
+      "a1_offset": 328912,
+      "bytes": 8,
+      "payload_offset": 217
+    },
+    {
+      "name": "refresh_trace[5]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 40,
+      "a1_offset": 328920,
+      "bytes": 8,
+      "payload_offset": 225
+    },
+    {
+      "name": "refresh_trace[6]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 48,
+      "a1_offset": 328928,
+      "bytes": 8,
+      "payload_offset": 233
+    },
+    {
+      "name": "refresh_trace[7]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 56,
+      "a1_offset": 328936,
+      "bytes": 8,
+      "payload_offset": 241
+    },
+    {
+      "name": "refresh_trace[8]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 64,
+      "a1_offset": 328944,
+      "bytes": 8,
+      "payload_offset": 249
+    },
+    {
+      "name": "refresh_trace[9]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 72,
+      "a1_offset": 328952,
+      "bytes": 8,
+      "payload_offset": 257
+    },
+    {
+      "name": "refresh_trace[10]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 80,
+      "a1_offset": 328960,
+      "bytes": 8,
+      "payload_offset": 265
+    },
+    {
+      "name": "refresh_trace[11]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 88,
+      "a1_offset": 328968,
+      "bytes": 8,
+      "payload_offset": 273
+    },
+    {
+      "name": "refresh_trace[12]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 96,
+      "a1_offset": 328976,
+      "bytes": 8,
+      "payload_offset": 281
+    },
+    {
+      "name": "refresh_trace[13]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 104,
+      "a1_offset": 328984,
+      "bytes": 8,
+      "payload_offset": 289
+    },
+    {
+      "name": "refresh_trace[14]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 112,
+      "a1_offset": 328992,
+      "bytes": 8,
+      "payload_offset": 297
+    },
+    {
+      "name": "refresh_trace[15]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 120,
+      "a1_offset": 329000,
+      "bytes": 8,
+      "payload_offset": 305
+    },
+    {
+      "name": "refresh_trace[16]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 128,
+      "a1_offset": 329008,
+      "bytes": 8,
+      "payload_offset": 313
+    },
+    {
+      "name": "refresh_trace[17]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 136,
+      "a1_offset": 329016,
+      "bytes": 8,
+      "payload_offset": 321
+    },
+    {
+      "name": "refresh_trace[18]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 144,
+      "a1_offset": 329024,
+      "bytes": 8,
+      "payload_offset": 329
+    },
+    {
+      "name": "refresh_trace[19]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 152,
+      "a1_offset": 329032,
+      "bytes": 8,
+      "payload_offset": 337
+    },
+    {
+      "name": "refresh_trace[20]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 160,
+      "a1_offset": 329040,
+      "bytes": 8,
+      "payload_offset": 345
+    },
+    {
+      "name": "refresh_trace[21]",
+      "symbol": "refresh_trace",
+      "symbol_offset": 328880,
+      "field_offset": 168,
+      "a1_offset": 329048,
+      "bytes": 8,
+      "payload_offset": 353
+    },
+    {
+      "name": "dmm.bound",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17488,
+      "a1_offset": 319224,
+      "bytes": 4,
+      "payload_offset": 361
+    },
+    {
+      "name": "dmm.uncertain",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17492,
+      "a1_offset": 319228,
+      "bytes": 4,
+      "payload_offset": 365
+    },
+    {
+      "name": "dmm.copy_failed",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17496,
+      "a1_offset": 319232,
+      "bytes": 4,
+      "payload_offset": 369
+    },
+    {
+      "name": "dmm.generation",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17480,
+      "a1_offset": 319216,
+      "bytes": 4,
+      "payload_offset": 373
+    },
+    {
+      "name": "dmm.sequence",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17484,
+      "a1_offset": 319220,
+      "bytes": 2,
+      "payload_offset": 377
+    },
+    {
+      "name": "dmm.copied",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17472,
+      "a1_offset": 319208,
+      "bytes": 8,
+      "payload_offset": 379
+    },
+    {
+      "name": "dmm.table_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17464,
+      "a1_offset": 319200,
+      "bytes": 8,
+      "payload_offset": 387
+    },
+    {
+      "name": "dmm.target.handle",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 72,
+      "a1_offset": 301808,
+      "bytes": 4,
+      "payload_offset": 395
+    },
+    {
+      "name": "dmm.target.bus_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 80,
+      "a1_offset": 301816,
+      "bytes": 8,
+      "payload_offset": 399
+    },
+    {
+      "name": "dmm.target.capacity",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 88,
+      "a1_offset": 301824,
+      "bytes": 8,
+      "payload_offset": 407
+    },
+    {
+      "name": "dmm.staging.handle",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 96,
+      "a1_offset": 301832,
+      "bytes": 4,
+      "payload_offset": 415
+    },
+    {
+      "name": "dmm.staging.bus_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 104,
+      "a1_offset": 301840,
+      "bytes": 8,
+      "payload_offset": 419
+    },
+    {
+      "name": "dmm.staging.capacity",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 112,
+      "a1_offset": 301848,
+      "bytes": 8,
+      "payload_offset": 427
+    },
+    {
+      "name": "dmm.retained[0].allocation.handle",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17504,
+      "a1_offset": 319240,
+      "bytes": 4,
+      "payload_offset": 435
+    },
+    {
+      "name": "dmm.retained[0].allocation.bus_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17512,
+      "a1_offset": 319248,
+      "bytes": 8,
+      "payload_offset": 439
+    },
+    {
+      "name": "dmm.retained[0].allocation.capacity",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17520,
+      "a1_offset": 319256,
+      "bytes": 8,
+      "payload_offset": 447
+    },
+    {
+      "name": "dmm.retained[0].table_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17528,
+      "a1_offset": 319264,
+      "bytes": 8,
+      "payload_offset": 455
+    },
+    {
+      "name": "dmm.retained[0].generation",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17536,
+      "a1_offset": 319272,
+      "bytes": 4,
+      "payload_offset": 463
+    },
+    {
+      "name": "dmm.retained[1].allocation.handle",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17544,
+      "a1_offset": 319280,
+      "bytes": 4,
+      "payload_offset": 467
+    },
+    {
+      "name": "dmm.retained[1].allocation.bus_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17552,
+      "a1_offset": 319288,
+      "bytes": 8,
+      "payload_offset": 471
+    },
+    {
+      "name": "dmm.retained[1].allocation.capacity",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17560,
+      "a1_offset": 319296,
+      "bytes": 8,
+      "payload_offset": 479
+    },
+    {
+      "name": "dmm.retained[1].table_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17568,
+      "a1_offset": 319304,
+      "bytes": 8,
+      "payload_offset": 487
+    },
+    {
+      "name": "dmm.retained[1].generation",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17576,
+      "a1_offset": 319312,
+      "bytes": 4,
+      "payload_offset": 495
+    },
+    {
+      "name": "dmm.retained[2].allocation.handle",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17584,
+      "a1_offset": 319320,
+      "bytes": 4,
+      "payload_offset": 499
+    },
+    {
+      "name": "dmm.retained[2].allocation.bus_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17592,
+      "a1_offset": 319328,
+      "bytes": 8,
+      "payload_offset": 503
+    },
+    {
+      "name": "dmm.retained[2].allocation.capacity",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17600,
+      "a1_offset": 319336,
+      "bytes": 8,
+      "payload_offset": 511
+    },
+    {
+      "name": "dmm.retained[2].table_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17608,
+      "a1_offset": 319344,
+      "bytes": 8,
+      "payload_offset": 519
+    },
+    {
+      "name": "dmm.retained[2].generation",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17616,
+      "a1_offset": 319352,
+      "bytes": 4,
+      "payload_offset": 527
+    },
+    {
+      "name": "dmm.retained[3].allocation.handle",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17624,
+      "a1_offset": 319360,
+      "bytes": 4,
+      "payload_offset": 531
+    },
+    {
+      "name": "dmm.retained[3].allocation.bus_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17632,
+      "a1_offset": 319368,
+      "bytes": 8,
+      "payload_offset": 535
+    },
+    {
+      "name": "dmm.retained[3].allocation.capacity",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17640,
+      "a1_offset": 319376,
+      "bytes": 8,
+      "payload_offset": 543
+    },
+    {
+      "name": "dmm.retained[3].table_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17648,
+      "a1_offset": 319384,
+      "bytes": 8,
+      "payload_offset": 551
+    },
+    {
+      "name": "dmm.retained[3].generation",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17656,
+      "a1_offset": 319392,
+      "bytes": 4,
+      "payload_offset": 559
+    },
+    {
+      "name": "dmm.retained[4].allocation.handle",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17664,
+      "a1_offset": 319400,
+      "bytes": 4,
+      "payload_offset": 563
+    },
+    {
+      "name": "dmm.retained[4].allocation.bus_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17672,
+      "a1_offset": 319408,
+      "bytes": 8,
+      "payload_offset": 567
+    },
+    {
+      "name": "dmm.retained[4].allocation.capacity",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17680,
+      "a1_offset": 319416,
+      "bytes": 8,
+      "payload_offset": 575
+    },
+    {
+      "name": "dmm.retained[4].table_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17688,
+      "a1_offset": 319424,
+      "bytes": 8,
+      "payload_offset": 583
+    },
+    {
+      "name": "dmm.retained[4].generation",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17696,
+      "a1_offset": 319432,
+      "bytes": 4,
+      "payload_offset": 591
+    },
+    {
+      "name": "dmm.retained[5].allocation.handle",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17704,
+      "a1_offset": 319440,
+      "bytes": 4,
+      "payload_offset": 595
+    },
+    {
+      "name": "dmm.retained[5].allocation.bus_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17712,
+      "a1_offset": 319448,
+      "bytes": 8,
+      "payload_offset": 599
+    },
+    {
+      "name": "dmm.retained[5].allocation.capacity",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17720,
+      "a1_offset": 319456,
+      "bytes": 8,
+      "payload_offset": 607
+    },
+    {
+      "name": "dmm.retained[5].table_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17728,
+      "a1_offset": 319464,
+      "bytes": 8,
+      "payload_offset": 615
+    },
+    {
+      "name": "dmm.retained[5].generation",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17736,
+      "a1_offset": 319472,
+      "bytes": 4,
+      "payload_offset": 623
+    },
+    {
+      "name": "dmm.retained[6].allocation.handle",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17744,
+      "a1_offset": 319480,
+      "bytes": 4,
+      "payload_offset": 627
+    },
+    {
+      "name": "dmm.retained[6].allocation.bus_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17752,
+      "a1_offset": 319488,
+      "bytes": 8,
+      "payload_offset": 631
+    },
+    {
+      "name": "dmm.retained[6].allocation.capacity",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17760,
+      "a1_offset": 319496,
+      "bytes": 8,
+      "payload_offset": 639
+    },
+    {
+      "name": "dmm.retained[6].table_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17768,
+      "a1_offset": 319504,
+      "bytes": 8,
+      "payload_offset": 647
+    },
+    {
+      "name": "dmm.retained[6].generation",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17776,
+      "a1_offset": 319512,
+      "bytes": 4,
+      "payload_offset": 655
+    },
+    {
+      "name": "dmm.retained[7].allocation.handle",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17784,
+      "a1_offset": 319520,
+      "bytes": 4,
+      "payload_offset": 659
+    },
+    {
+      "name": "dmm.retained[7].allocation.bus_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17792,
+      "a1_offset": 319528,
+      "bytes": 8,
+      "payload_offset": 663
+    },
+    {
+      "name": "dmm.retained[7].allocation.capacity",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17800,
+      "a1_offset": 319536,
+      "bytes": 8,
+      "payload_offset": 671
+    },
+    {
+      "name": "dmm.retained[7].table_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17808,
+      "a1_offset": 319544,
+      "bytes": 8,
+      "payload_offset": 679
+    },
+    {
+      "name": "dmm.retained[7].generation",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17816,
+      "a1_offset": 319552,
+      "bytes": 4,
+      "payload_offset": 687
+    },
+    {
+      "name": "dmm.retained[8].allocation.handle",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17824,
+      "a1_offset": 319560,
+      "bytes": 4,
+      "payload_offset": 691
+    },
+    {
+      "name": "dmm.retained[8].allocation.bus_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17832,
+      "a1_offset": 319568,
+      "bytes": 8,
+      "payload_offset": 695
+    },
+    {
+      "name": "dmm.retained[8].allocation.capacity",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17840,
+      "a1_offset": 319576,
+      "bytes": 8,
+      "payload_offset": 703
+    },
+    {
+      "name": "dmm.retained[8].table_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17848,
+      "a1_offset": 319584,
+      "bytes": 8,
+      "payload_offset": 711
+    },
+    {
+      "name": "dmm.retained[8].generation",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17856,
+      "a1_offset": 319592,
+      "bytes": 4,
+      "payload_offset": 719
+    },
+    {
+      "name": "dmm.retained[9].allocation.handle",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17864,
+      "a1_offset": 319600,
+      "bytes": 4,
+      "payload_offset": 723
+    },
+    {
+      "name": "dmm.retained[9].allocation.bus_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17872,
+      "a1_offset": 319608,
+      "bytes": 8,
+      "payload_offset": 727
+    },
+    {
+      "name": "dmm.retained[9].allocation.capacity",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17880,
+      "a1_offset": 319616,
+      "bytes": 8,
+      "payload_offset": 735
+    },
+    {
+      "name": "dmm.retained[9].table_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17888,
+      "a1_offset": 319624,
+      "bytes": 8,
+      "payload_offset": 743
+    },
+    {
+      "name": "dmm.retained[9].generation",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17896,
+      "a1_offset": 319632,
+      "bytes": 4,
+      "payload_offset": 751
+    },
+    {
+      "name": "dmm.arena.parent.handle",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17904,
+      "a1_offset": 319640,
+      "bytes": 4,
+      "payload_offset": 755
+    },
+    {
+      "name": "dmm.arena.parent.bus_address",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17912,
+      "a1_offset": 319648,
+      "bytes": 8,
+      "payload_offset": 759
+    },
+    {
+      "name": "dmm.arena.parent.capacity",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17920,
+      "a1_offset": 319656,
+      "bytes": 8,
+      "payload_offset": 767
+    },
+    {
+      "name": "dmm.arena.canonical_base",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17928,
+      "a1_offset": 319664,
+      "bytes": 8,
+      "payload_offset": 775
+    },
+    {
+      "name": "dmm.arena.used",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17936,
+      "a1_offset": 319672,
+      "bytes": 4,
+      "payload_offset": 783
+    },
+    {
+      "name": "dmm.arena.next_token",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17940,
+      "a1_offset": 319676,
+      "bytes": 4,
+      "payload_offset": 787
+    },
+    {
+      "name": "dmm.arena.blocked",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17988,
+      "a1_offset": 319724,
+      "bytes": 4,
+      "payload_offset": 791
+    },
+    {
+      "name": "dmm.arena.tokens[0]",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17944,
+      "a1_offset": 319680,
+      "bytes": 4,
+      "payload_offset": 795
+    },
+    {
+      "name": "dmm.arena.tokens[1]",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17948,
+      "a1_offset": 319684,
+      "bytes": 4,
+      "payload_offset": 799
+    },
+    {
+      "name": "dmm.arena.tokens[2]",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17952,
+      "a1_offset": 319688,
+      "bytes": 4,
+      "payload_offset": 803
+    },
+    {
+      "name": "dmm.arena.tokens[3]",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17956,
+      "a1_offset": 319692,
+      "bytes": 4,
+      "payload_offset": 807
+    },
+    {
+      "name": "dmm.arena.tokens[4]",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17960,
+      "a1_offset": 319696,
+      "bytes": 4,
+      "payload_offset": 811
+    },
+    {
+      "name": "dmm.arena.tokens[5]",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17964,
+      "a1_offset": 319700,
+      "bytes": 4,
+      "payload_offset": 815
+    },
+    {
+      "name": "dmm.arena.tokens[6]",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17968,
+      "a1_offset": 319704,
+      "bytes": 4,
+      "payload_offset": 819
+    },
+    {
+      "name": "dmm.arena.tokens[7]",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17972,
+      "a1_offset": 319708,
+      "bytes": 4,
+      "payload_offset": 823
+    },
+    {
+      "name": "dmm.arena.tokens[8]",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17976,
+      "a1_offset": 319712,
+      "bytes": 4,
+      "payload_offset": 827
+    },
+    {
+      "name": "dmm.arena.tokens[9]",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17980,
+      "a1_offset": 319716,
+      "bytes": 4,
+      "payload_offset": 831
+    },
+    {
+      "name": "dmm.arena.tokens[10]",
+      "symbol": "dmm",
+      "symbol_offset": 301736,
+      "field_offset": 17984,
+      "a1_offset": 319720,
+      "bytes": 4,
+      "payload_offset": 835
+    },
+    {
+      "name": "adf.unresolved",
+      "symbol": "adf",
+      "symbol_offset": 301680,
+      "field_offset": 8,
+      "a1_offset": 301688,
+      "bytes": 4,
+      "payload_offset": 839
+    },
+    {
+      "name": "retained",
+      "symbol": "retained",
+      "symbol_offset": 864812,
+      "field_offset": 0,
+      "a1_offset": 864812,
+      "bytes": 4,
+      "payload_offset": 843
+    },
+    {
+      "name": "image_base",
+      "symbol": "image_base",
+      "symbol_offset": 864816,
+      "field_offset": 0,
+      "a1_offset": 864816,
+      "bytes": 8,
+      "payload_offset": 847
+    },
+    {
+      "name": "image_bytes",
+      "symbol": "image_bytes",
+      "symbol_offset": 864824,
+      "field_offset": 0,
+      "a1_offset": 864824,
+      "bytes": 8,
+      "payload_offset": 855
+    },
+    {
+      "name": "image_lock",
+      "symbol": "image_lock",
+      "symbol_offset": 864832,
+      "field_offset": 0,
+      "a1_offset": 864832,
+      "bytes": 4,
+      "payload_offset": 863
+    }
+  ],
+  "spans": [
+    {
+      "rva": 26266848,
+      "before_hex": "e00314aa4dffff97",
+      "after_hex": "e00314aa47dc7994",
+      "pointers": []
+    },
+    {
+      "rva": 26752136,
+      "before_hex": "21c017914d9bf797",
+      "after_hex": "21c0179169027894",
+      "pointers": []
+    },
+    {
+      "rva": 26758776,
+      "before_hex": "80600191d194f797",
+      "after_hex": "80600191e9fb7794",
+      "pointers": []
+    },
+    {
+      "rva": 36547544,
+      "before_hex": "84200091800440f9",
+      "after_hex": "12a15214800440f9",
+      "pointers": []
+    },
+    {
+      "rva": 36547736,
+      "before_hex": "fd030091f35301a9",
+      "after_hex": "eda05214f35301a9",
+      "pointers": []
+    },
+    {
+      "rva": 36563472,
+      "before_hex": "c0035fd6fd7bbda9",
+      "after_hex": "c0035fd67b915214",
+      "pointers": []
+    },
+    {
+      "rva": 36563608,
+      "before_hex": "fd7bbca9fd030091",
+      "after_hex": "75915214fd030091",
+      "pointers": []
+    },
+    {
+      "rva": 36563880,
+      "before_hex": "40003fd6737a40f9",
+      "after_hex": "40003fd63e915214",
+      "pointers": []
+    },
+    {
+      "rva": 36564136,
+      "before_hex": "947a40f9a0ce1fb8",
+      "after_hex": "07915214a0ce1fb8",
+      "pointers": []
+    },
+    {
+      "rva": 43972216,
+      "before_hex": "e003022a89b2e397",
+      "after_hex": "e003022ae5513694",
+      "pointers": []
+    },
+    {
+      "rva": 58200064,
+      "before_hex": "34ea0402ffffffffffffffff35ea0402ffffffff20080000c5010000c5010000a70200002b0400000101000000000000000001000000000000000000000000000b000000000000000012780300000000ffffffff611d00000b2000000000000058183502000000008c3078030000000094307803000000009830780300000000000000000000000000000000000000000000000000000000000000000000000000000000000000004429000020080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "after_hex": "34ea0402ffffffffffffffff35ea0402ffffffff20080000c5010000c5010000a70200002b0400000101000000000000000001000000000000000000000000000b000000000000000012780300000000ffffffff611d00000b200000000000005818350200000000ec53000000000000c8540000000000009c55000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004429000020080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "pointers": [
+        {
+          "offset": 72,
+          "before": "app",
+          "after": "app"
+        },
+        {
+          "offset": 96,
+          "before": "app",
+          "after": "app"
+        },
+        {
+          "offset": 104,
+          "before": "app",
+          "after": "module"
+        },
+        {
+          "offset": 112,
+          "before": "app",
+          "after": "module"
+        },
+        {
+          "offset": 120,
+          "before": "app",
+          "after": "module"
+        }
+      ]
+    },
+    {
+      "rva": 58200576,
+      "before_hex": "d82300004a8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000008331000284310002ffffffffffffffff5818350200000000000000009a0600004429000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009c30780300000000000000000000000044290000000000000000000000000000d92300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff5818350200000000010000009a0600004429000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009c30780300000000000000000000000044290000000000000000000000000000da2300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff5818350200000000020000009a0600004429000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009c30780300000000000000000000000044290000000000000000000000000000db2300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000",
+      "after_hex": "d82300004a8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000008331000284310002ffffffffffffffff5818350200000000000000009a0600004429000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007c56000000000000000000000000000044290000000000000000000000000000d92300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff5818350200000000010000009a060000442900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ac62000000000000000000000000000044290000000000000000000000000000da2300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff5818350200000000020000009a0600004429000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008463000000000000000000000000000044290000000000000000000000000000db2300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000",
+      "pointers": [
+        {
+          "offset": 64,
+          "before": "app",
+          "after": "app"
+        },
+        {
+          "offset": 128,
+          "before": "app",
+          "after": "module"
+        },
+        {
+          "offset": 224,
+          "before": "app",
+          "after": "app"
+        },
+        {
+          "offset": 288,
+          "before": "app",
+          "after": "module"
+        },
+        {
+          "offset": 384,
+          "before": "app",
+          "after": "app"
+        },
+        {
+          "offset": 448,
+          "before": "app",
+          "after": "module"
+        }
+      ]
+    },
+    {
+      "rva": 58201088,
+      "before_hex": "000001000000000000000000000000001c3100021d310002ffffffffffffffff5818350200000000030000009a0600004429000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009c30780300000000000000000000000044290000000000000000000000000000dc2300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff5818350200000000040000009a0600004429000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009c30780300000000000000000000000044290000000000000000000000000000dd2300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff5818350200000000050000009a0600004429000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009c30780300000000000000000000000044290000000000000000000000000000de2300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff",
+      "after_hex": "000001000000000000000000000000001c3100021d310002ffffffffffffffff5818350200000000030000009a0600004429000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005c64000000000000000000000000000044290000000000000000000000000000dc2300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff5818350200000000040000009a0600004429000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003465000000000000000000000000000044290000000000000000000000000000dd2300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff5818350200000000050000009a0600004429000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c66000000000000000000000000000044290000000000000000000000000000de2300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff",
+      "pointers": [
+        {
+          "offset": 32,
+          "before": "app",
+          "after": "app"
+        },
+        {
+          "offset": 96,
+          "before": "app",
+          "after": "module"
+        },
+        {
+          "offset": 192,
+          "before": "app",
+          "after": "app"
+        },
+        {
+          "offset": 256,
+          "before": "app",
+          "after": "module"
+        },
+        {
+          "offset": 352,
+          "before": "app",
+          "after": "app"
+        },
+        {
+          "offset": 416,
+          "before": "app",
+          "after": "module"
+        }
+      ]
+    },
+    {
+      "rva": 58201600,
+      "before_hex": "5818350200000000060000009a0600004429000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009c30780300000000000000000000000044290000000000000000000000000000df2300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff5818350200000000070000009a0600004429000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009c30780300000000000000000000000044290000000000000000000000000000e02300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff5818350200000000080000009a0600004429000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009c30780300000000000000000000000044290000000000000000000000000000e12300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff5818350200000000090000009a06000044290000000000000000000000000000",
+      "after_hex": "5818350200000000060000009a060000442900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000e466000000000000000000000000000044290000000000000000000000000000df2300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff5818350200000000070000009a060000442900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000bc67000000000000000000000000000044290000000000000000000000000000e02300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff5818350200000000080000009a0600004429000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009468000000000000000000000000000044290000000000000000000000000000e12300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff5818350200000000090000009a06000044290000000000000000000000000000",
+      "pointers": [
+        {
+          "offset": 0,
+          "before": "app",
+          "after": "app"
+        },
+        {
+          "offset": 64,
+          "before": "app",
+          "after": "module"
+        },
+        {
+          "offset": 160,
+          "before": "app",
+          "after": "app"
+        },
+        {
+          "offset": 224,
+          "before": "app",
+          "after": "module"
+        },
+        {
+          "offset": 320,
+          "before": "app",
+          "after": "app"
+        },
+        {
+          "offset": 384,
+          "before": "app",
+          "after": "module"
+        },
+        {
+          "offset": 480,
+          "before": "app",
+          "after": "app"
+        }
+      ]
+    },
+    {
+      "rva": 58202112,
+      "before_hex": "00000000000000000000000000000000000000000000000000000000000000009c30780300000000000000000000000044290000000000000000000000000000e22300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff58183502000000000a0000009a0600004429000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009c30780300000000000000000000000044290000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "after_hex": "00000000000000000000000000000000000000000000000000000000000000006c69000000000000000000000000000044290000000000000000000000000000e22300004b8f0002ffffffffffffffffffffffff2b0400000101000000000000000001000000000000000000000000001c3100021d310002ffffffffffffffff58183502000000000a0000009a060000442900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000446a000000000000000000000000000044290000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "pointers": [
+        {
+          "offset": 32,
+          "before": "app",
+          "after": "module"
+        },
+        {
+          "offset": 128,
+          "before": "app",
+          "after": "app"
+        },
+        {
+          "offset": 192,
+          "before": "app",
+          "after": "module"
+        }
+      ]
+    },
+    {
+      "rva": 58208256,
+      "before_hex": "f07a84523f00106b81000054e0ffffd000000091c0035fd6fd7bbda97f6ead17107b84523000104b1f060071c8000054e0ffffd000000891111480d20002119bc0035fd623b600d0e35ead17107b84523000104b1f06007168000054e07a8452c0035fd6fd7bb4a90a5fad17107b84523000104b1f06007168000054e003102ac0035fd6fd7bbca9856ead1700008052c0035fd6c0035fd6c0035fd620008052c0035fd6000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "after_hex": "f07a84523f00106b81000054e0ffffd000000091c0035fd6fd7bbda97f6ead17107b84523000104b1f2a0071c8000054e0ffffd000000891111480d20002119bc0035fd684200091e55ead17107b84523000104b1f2a007168040054fd7bcca8e07a8452c0035fd61f2003d5107b84523000104b1f2a007168000054e003102ac0035fd6fd7bbca9856ead1700008052c0035fd6c0035fd6c0035fd620008052c0035fd6f07a84521f00106b81000054e2ffffd042000091c76ead17737a40f9bc6ead17f07a84521f00106b81000054e0ffffd000000091fe6ead17947a40f9f36ead173f00026bfd030091ec5ead170000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "pointers": []
+    },
+    {
+      "rva": 58211840,
+      "before_hex": "00000000000000000000000000000000",
+      "after_hex": "5000005800021fd65057000000000000",
+      "pointers": [
+        {
+          "offset": 8,
+          "before": "absolute",
+          "after": "module"
+        }
+      ]
+    },
+    {
+      "rva": 58211856,
+      "before_hex": "00000000000000000000000000000000",
+      "after_hex": "5000005800021fd6643c000000000000",
+      "pointers": [
+        {
+          "offset": 8,
+          "before": "absolute",
+          "after": "module"
+        }
+      ]
+    },
+    {
+      "rva": 58211872,
+      "before_hex": "00000000000000000000000000000000",
+      "after_hex": "5000005800021fd62840000000000000",
+      "pointers": [
+        {
+          "offset": 8,
+          "before": "absolute",
+          "after": "module"
+        }
+      ]
+    },
+    {
+      "rva": 58211888,
+      "before_hex": "00000000000000000000000000000000",
+      "after_hex": "5000005800021fd63843000000000000",
+      "pointers": [
+        {
+          "offset": 8,
+          "before": "absolute",
+          "after": "module"
+        }
+      ]
+    }
+  ],
+  "entries": [
+    [
+      "row",
+      36563476,
+      "7b915214"
+    ],
+    [
+      "leaf",
+      36547544,
+      "12a15214"
+    ],
+    [
+      "parent",
+      36547736,
+      "eda05214"
+    ],
+    [
+      "ordinal",
+      36563608,
+      "75915214"
+    ],
+    [
+      "sound_options_count",
+      72121056,
+      "08000000"
+    ],
+    [
+      "sound_options_eighth_entry",
+      72121232,
+      "d72300000000000000107803000000000000000000000000"
+    ]
+  ],
+  "scalar_offset": 5120,
+  "spans_offset": 7680,
+  "span_bytes": 3216,
+  "entries_offset": 14336,
+  "entry_bytes": 44,
+  "files": {
+    "probe.elf": "3990de1a7a662bdedf4bb5fa89ecd6a3dcf64c53f34398e0601cae355e2dbe96"
+  },
+  "source_files": {
+    "probe.c": "910012d1c30e1fae1084d08b9f102132c0aa3720c7b56d145aa57989c0255a02",
+    "host-probe-profile.h": "16b2a7b47715109363698706625fec28411cc919ebc80adbf324ee2da618031d",
+    "boot-state-profile.h": "a9b33a3bfe7cdbb4711cb2c26e2dfaf4bffe97a12978f6c3322ba19a35fed328",
+    "fl23_a1_loader.c": "54b64a0acfd953a96defe86d9ed377876fa6078f7a053fa9718281b9f76a4856",
+    "sha256.h": "85dc96693857e6f4b9f9035e5c5b02b80a49ab44082f0c19dc46cd5c0400238e"
+  },
+  "validation": {
+    "native_cases": 14,
+    "hardware_observation": "evidence/fl23-root-custom-sound-runtime-inspect-20261118-232006-d2376d97",
+    "hardware_result_sha256": "d0c74db52711b77d42037864e3b8386cbac6415d419eb07325584770564d1ecc"
+  },
+  "receipts": {
+    "4": "464c3233413152320200000000020000413152454144593100020000000000000002200000000000a85d050000000000010000000200000001000000000000008425d36290bcb25af2ac31081754bd8a9a800df5d9cb745bbf81f6420db4a6f6e65fd595052be5d0e98ce8000dfcb94f90a2f8309de70ef140375052009b0ef3a817dcc199b3bf4e5991f84ee7a952ded1fa4e3989b5e7955aab99b255c9d99d01e14ff496f5230e8d45645febbc0a9e378b2f34ed86e5cb5f6db53c70449f2d01e14ff496f5230e8d45645febbc0a9e378b2f34ed86e5cb5f6db53c70449f2d01e14ff496f5230e8d45645febbc0a9e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000081310d73",
+    "5": "464c323341315232020000000002000041315245414459310002000000000000000220000000000000d8130000000000010000000200000001000000000000008425d36290bcb25af2ac31081754bd8a9a800df5d9cb745bbf81f6420db4a6f6e65fd595052be5d0e98ce8000dfcb94f90a2f8309de70ef140375052009b0ef3a817dcc199b3bf4e5991f84ee7a952ded1fa4e3989b5e7955aab99b255c9d99d778a6ebf9dcaab3d5a3ecdae1df51b26a14873d7b9ed316ae02ab744d7e17fe4778a6ebf9dcaab3d5a3ecdae1df51b26a14873d7b9ed316ae02ab744d7e17fe4778a6ebf9dcaab3d5a3ecdae1df51b2600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ae8d8c29",
+    "6": "464c3233413152320200000000020000413152454144593100020000000000000002200000000000581d060000000000010000000200000001000000000000008425d36290bcb25af2ac31081754bd8a9a800df5d9cb745bbf81f6420db4a6f6e65fd595052be5d0e98ce8000dfcb94f90a2f8309de70ef140375052009b0ef3a817dcc199b3bf4e5991f84ee7a952ded1fa4e3989b5e7955aab99b255c9d99debf803ceb83edf005288a9c848345578e13710b82b024a4b9f4644aa1d296565ebf803ceb83edf005288a9c848345578e13710b82b024a4b9f4644aa1d296565ebf803ceb83edf005288a9c848345578000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000610ca4a",
+    "7": "464c323341315232020000000002000041315245414459310002000000000000000220000000000030d8130000000000010000000200000001000000000000008425d36290bcb25af2ac31081754bd8a9a800df5d9cb745bbf81f6420db4a6f6e65fd595052be5d0e98ce8000dfcb94f90a2f8309de70ef140375052009b0ef3a817dcc199b3bf4e5991f84ee7a952ded1fa4e3989b5e7955aab99b255c9d99d529aad0a54d18192e942756a77b914027aa0cda06f5297f2ba5e7bac7cbbdb90529aad0a54d18192e942756a77b914027aa0cda06f5297f2ba5e7bac7cbbdb90529aad0a54d18192e942756a77b9140200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000eaa57cd3"
+  }
+}

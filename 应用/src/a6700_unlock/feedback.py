@@ -1,18 +1,19 @@
 """Structured feedback upload following services/cloud/docs/客户端接入.md.
 
-The cloud accepts a small allowlisted JSON object, never the diagnostic ZIP,
-raw logs, firmware, paths, credentials, or arbitrary exception text.
+The feedback record is an allowlisted JSON object. A separate private ZIP
+endpoint accepts the generated report after that record is acknowledged.
 """
 from datetime import datetime, timezone
 import hashlib
 import http.client
+import io
 import json
 import os
-import stat
 from pathlib import Path
 import platform
 import re
 import secrets
+import stat
 import sys
 import time
 import urllib.error
@@ -168,19 +169,26 @@ def _error_code(raw):
         return 'unknown'
 
 
-def _request_with_retries(opener, request, attempts=3, timeout=15):
-    """Retry only transport failures with identical bytes and credentials."""
+def _request_with_retries(opener, request, attempts=3, timeout=15, *, retry_storage=False):
+    """Retry transport failures and, for ZIPs, transient cloud storage failures."""
     last_error = None
     for attempt in range(attempts):
         try:
             with opener(request, timeout=timeout) as response:
                 return response.status, response.read()
-        except urllib.error.HTTPError:
-            raise
+        except urllib.error.HTTPError as exc:
+            if not retry_storage or attempt + 1 == attempts or exc.code != 503:
+                raise
+            with exc:
+                raw = exc.read()
+            if _error_code(raw) not in ('storage_unavailable', 'service_unavailable'):
+                raise urllib.error.HTTPError(exc.url, exc.code, exc.reason, exc.headers,
+                                             io.BytesIO(raw)) from exc
+            last_error = exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             last_error = exc
-            if attempt + 1 < attempts:
-                time.sleep(0.5 * (attempt + 1))
+        if attempt + 1 < attempts:
+            time.sleep(0.5 * (attempt + 1))
     raise last_error
 
 
@@ -317,13 +325,14 @@ def upload_artifact(result, state_dir=None, api_base=API_BASE, opener=None, *, r
                  'User-Agent': _user_agent(), 'Accept': 'application/json'})
     opener = opener or urllib.request.urlopen
     try:
-        status, response_body = _request_with_retries(opener, request)
+        status, response_body = _request_with_retries(opener, request, retry_storage=True)
         data = json.loads(response_body)
         if status in (200, 201) and data.get('status') == 'received':
             return dict(status='received', bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
         return dict(status='error', error='ZIP 附件返回内容未确认，已保留在本机。')
     except urllib.error.HTTPError as exc:
-        code = _error_code(exc.read())
+        with exc:
+            code = _error_code(exc.read())
         if exc.code == 404:
             return dict(status='unavailable', error='云端尚未提供 ZIP 附件接口，ZIP 已保留在本机。')
         return dict(status='error', error_code=code,

@@ -1,8 +1,9 @@
-"""Signed update indexes and a local, content-addressed adapter cache.
+"""Signed update indexes and local content-addressed update caches.
 
 Network download and camera activation are deliberately absent. Callers supply
 index/artifact bytes and a pinned trust store; this module verifies and stores
-them without treating a server response as proof of correctness.
+them without treating a server response as proof of correctness. Adapter sets
+and data-only audio bundles use the same trust root but separate validators.
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ import re
 import stat
 import uuid
 
+from .audio_packages import validate_audio_bundle
 from .capability_packages import validate_adapter_set
 from .host_io import open_exclusive, sync_directory
 from .operations import make_directory
@@ -26,6 +28,7 @@ MAX_ENVELOPE = 262144
 MAX_PAYLOAD = 250000
 MAX_ARTIFACTS = 256
 MAX_ADAPTER_BYTES = 4 * 1024 * 1024
+MAX_AUDIO_BUNDLE_BYTES = 68 * 1024 * 1024
 _KEY_ID = re.compile(r"[a-z0-9_.-]{1,64}\Z")
 _VERSION = re.compile(r"\d{1,4}\.\d{1,4}\.\d{1,4}(?:(?:\.dev|-rc\.)\d{1,5})?\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -131,12 +134,17 @@ def _artifact(value):
     if _integer(row["bytes"], 1073741824) == 0:
         raise UpdateError("空附件不被接受")
     _digest(row["sha256"])
-    if row["kind"] not in ("app", "package", "adapter-set"):
+    if row["kind"] not in ("app", "package", "adapter-set", "audio-bundle"):
         raise UpdateError("未知附件类型")
-    if row["platform"] not in ("macos", "windows", "linux", "camera"):
+    if row["platform"] not in ("macos", "windows", "linux", "camera", "any"):
         raise UpdateError("未知附件平台")
-    if row["arch"] not in ("arm64", "x64"):
+    if row["arch"] not in ("arm64", "x64", "any"):
         raise UpdateError("未知附件架构")
+    if row["kind"] == "audio-bundle":
+        if row["platform"] != "any" or row["arch"] != "any":
+            raise UpdateError("音频数据包必须为平台无关附件")
+    elif row["platform"] == "any" or row["arch"] == "any":
+        raise UpdateError("该附件不允许使用平台无关标识")
     _integer(row["min_core_api"], 100000)
     return row
 
@@ -234,18 +242,25 @@ class LocalUpdateCache:
     def _store_artifact(self, artifact, data):
         if len(data) != artifact["bytes"] or hashlib.sha256(data).hexdigest() != artifact["sha256"]:
             raise UpdateError("附件长度或 SHA-256 与签名索引不一致")
-        if len(data) > MAX_ADAPTER_BYTES:
-            raise UpdateError("适配集附件超过本地上限")
-        adapter = _json(data, MAX_ADAPTER_BYTES)
-        validate_adapter_set(adapter)
+        if artifact["kind"] == "adapter-set":
+            if len(data) > MAX_ADAPTER_BYTES:
+                raise UpdateError("适配集附件超过本地上限")
+            value = _json(data, MAX_ADAPTER_BYTES)
+            validate_adapter_set(value)
+        elif artifact["kind"] == "audio-bundle":
+            if len(data) > MAX_AUDIO_BUNDLE_BYTES:
+                raise UpdateError("音频包附件超过本地上限")
+            value = validate_audio_bundle(data)
+        else:
+            raise UpdateError("该附件类型不由本地功能包缓存管理")
         path = self.artifacts / artifact["sha256"]
         if path.exists():
             if not _regular_file(path) or path.read_bytes() != data:
                 raise UpdateError("缓存附件已损坏；不会覆盖")
-            return adapter
+            return value
         make_directory(path.parent)
         _write_exclusive(path, data)
-        return adapter
+        return value
 
     def activate_index(self, index, trusted_keys, now, artifact_bytes):
         """Activate only a newer valid index, after all adapter bytes are durable."""
@@ -268,10 +283,11 @@ class LocalUpdateCache:
         if sum(artifact["kind"] == "adapter-set" for artifact in index["artifacts"]) != 1:
             raise UpdateError("更新索引必须精确对应一个适配集")
         for artifact in index["artifacts"]:
-            if artifact["kind"] == "adapter-set":
-                if artifact["id"] not in artifact_bytes:
-                    raise UpdateError("适配集附件尚未下载完整")
-                self._store_artifact(artifact, artifact_bytes[artifact["id"]])
+            if artifact["kind"] not in ("adapter-set", "audio-bundle"):
+                continue
+            if artifact["id"] not in artifact_bytes:
+                raise UpdateError("缓存附件尚未下载完整：" + artifact["id"])
+            self._store_artifact(artifact, artifact_bytes[artifact["id"]])
         _atomic_replace(self.indexes / (index["channel"] + ".json"), index["raw_envelope"])
         return dict(status="activated", sequence=index["sequence"])
 
@@ -304,3 +320,32 @@ class LocalUpdateCache:
         return dict(adapter_set=adapter, sequence=index["sequence"],
                     status="cached-expired" if expired else "active",
                     artifact=artifact)
+
+    def active_audio_bundles(self, channel, trusted_keys, now, *, for_write=True):
+        try:
+            index = self._current(channel, trusted_keys, now)
+        except FileNotFoundError as exc:
+            raise UpdateError("本机没有已激活的更新索引") from exc
+        bundles = []
+        package_ids = []
+        for artifact in index["artifacts"]:
+            if artifact["kind"] != "audio-bundle":
+                continue
+            path = self.artifacts / artifact["sha256"]
+            if not _regular_file(path):
+                raise UpdateError("已激活音频包附件缺失")
+            data = path.read_bytes()
+            if (len(data) != artifact["bytes"]
+                    or hashlib.sha256(data).hexdigest() != artifact["sha256"]):
+                raise UpdateError("已激活音频包附件校验失败")
+            bundle = validate_audio_bundle(data)
+            package_id = bundle["manifest"]["package_id"]
+            if package_id in package_ids:
+                raise UpdateError("音频市场包 ID 重复")
+            package_ids.append(package_id)
+            if for_write and artifact["sha256"] in index["revoked"]:
+                raise UpdateError("当前音频包已撤回，停止新导入；保留诊断和本地资料")
+            bundles.append(dict(bundle=bundle, artifact=artifact))
+        expired = index["expires_at"] <= now
+        return dict(bundles=bundles, sequence=index["sequence"],
+                    status="cached-expired" if expired else "active")

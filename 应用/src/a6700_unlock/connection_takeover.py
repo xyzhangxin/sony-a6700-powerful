@@ -22,14 +22,18 @@ from .operations import default_state_dir, host_lock_path, make_directory, save_
 
 
 def lock_busy(path):
-    if os.name=='nt':
+    if os.name == 'nt':
         import msvcrt
         try:
             with Path(path).open('rb') as handle:
-                try:msvcrt.locking(handle.fileno(),msvcrt.LK_NBLCK,1)
-                except OSError:return True
-                else:msvcrt.locking(handle.fileno(),msvcrt.LK_UNLCK,1)
-        except FileNotFoundError:pass
+                try:
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                except OSError:
+                    return True
+                else:
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        except FileNotFoundError:
+            pass
         return False
     import fcntl
     try:
@@ -46,7 +50,8 @@ def lock_busy(path):
 
 
 def process_identity(pid):
-    if sys.platform=='win32':return None
+    if sys.platform == 'win32':
+        return None
     if type(pid) is not int or pid <= 1 or pid in (os.getpid(), os.getppid()):
         return None
     try:
@@ -88,7 +93,8 @@ def unique_owner(path):
 
 def known_active_task(path, owner):
     """Optional local tool registration; normal users need no debug service."""
-    if sys.platform=='win32':return False
+    if sys.platform == 'win32':
+        return False
     registration = Path(path).parent / 'bench.json'
     try:
         info_stat = registration.lstat()
@@ -132,7 +138,7 @@ class TakeoverManager:
             return dict(base, detail='此操作记录目录仍被其他任务使用，请等待该任务完成。')
         if not lock_busy(path):
             return dict(base, detail='占用已释放，可直接重新连接。')
-        if sys.platform=='win32':
+        if sys.platform == 'win32':
             return dict(base, detail='相机连接正被其他本机工具占用。请在原工具中结束任务并退出连接，再重新检查；Windows 版不自动结束无法核实的占用进程。')
         owner = unique_owner(path)
         if owner is None:

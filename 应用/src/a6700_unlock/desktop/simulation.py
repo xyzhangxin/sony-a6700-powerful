@@ -45,7 +45,10 @@ def fixture():
     edits = [dict(id=f'demo-{feature}-{image}', image=image, offset=offset,
                   disabled='00', enabled='01', known_values=['00', '01'],
                   feature=feature, purpose='synthetic preview field')
-             for image in ('app', 'wbi') for feature, offset in [('ftp', 10), ('shutter', 20), ('exposure', 30), ('sound', 40), ('pixel_shift', 50), ('dynamic_active', 60), ('fl23', 70), ('creative_look_names', 80)]]
+             for image in ('app', 'wbi') for feature, offset in [
+                 ('ftp', 10), ('shutter', 20), ('exposure', 30), ('sound', 40),
+                 ('pixel_shift', 50), ('dynamic_active', 60), ('fl23', 70),
+                 ('creative_look_names', 80), ('custom_shutter_sound', 90)]]
     catalog = Catalog.from_dict(dict(schema_version=1, catalog_id='synthetic-desktop-preview',
         bundle_version='preview', model='Synthetic A6700', firmware='preview', sector_size=512,
         scope='offline-known-snapshot-only', device_write_supported=False,
@@ -156,6 +159,13 @@ class SimulationService:
     def perform(self, action, progress=lambda _: None, backup_id=None, features=None):
         if action not in ('inspect', 'unlock', 'close', 'backup', 'restore'):
             raise ValueError('Unsupported preview operation')
+        capability_resolution = None
+        effective_features = features
+        if features is not None:
+            from ..capability_packages import resolve_capability_selection
+            capability_resolution = resolve_capability_selection(self.adapter_set, features, action)
+            if action == 'unlock':
+                effective_features = capability_resolution['resolved_features']
         # This service is never shared by two operations: the desktop controller
         # serializes commands. Only in-memory device data can be changed here.
         if action == 'backup':
@@ -164,13 +174,12 @@ class SimulationService:
         elif action == 'restore':
             source = load_backup(find_backup(self.backup_dir, backup_id), self.profile)
             result = _restore_session(self.profile, self.backend, source,
-                                      self.directory, progress, features=features)
+                                      self.directory, progress, features=effective_features)
         else:
             result = _execute_session(self.profile, self.backend, action,
-                                      self.directory, progress, features=features)
-        if features is not None:
-            from ..capability_packages import resolve_capability_selection
-            result['capability_resolution'] = resolve_capability_selection(self.adapter_set, features, action)
+                                      self.directory, progress, features=effective_features)
+        if capability_resolution is not None:
+            result['capability_resolution'] = capability_resolution
         result['simulation'] = True
         result['simulated_write_attempted'] = result['write_attempted']
         result['simulated_settings_write_attempted'] = result.get('settings_write_attempted', False)

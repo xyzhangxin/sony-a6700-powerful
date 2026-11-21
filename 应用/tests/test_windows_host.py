@@ -60,8 +60,20 @@ class WindowsHostTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         script = (root/'scripts/build_windows_app.py').read_text(encoding='utf-8')
         self.assertIn("'--hidden-import','plistlib'", script)
+        self.assertIn("默认音频", script)
+        for mod in ('audio_market', 'market_views'):
+            self.assertIn(f"'--hidden-import','{mod}'", script)
         for package in ('cryptography', 'cffi', 'pycparser'):
             self.assertIn(f"'--collect-all','{package}'", script)
+
+    def test_windows_bundled_default_wavs_and_smoke_contract(self):
+        root = Path(__file__).resolve().parents[1]
+        wav_dir = root/'desktop/macos/默认音频'
+        for name in ('coin.wav', 'slap.wav', 'duck.wav', 'beep.wav'):
+            self.assertTrue((wav_dir/name).is_file(), name)
+        smoke_text = (root/'desktop/windows/smoke.py').read_text(encoding='utf-8')
+        self.assertIn('feature-status-right-aligned-and-market-button-left', smoke_text)
+        self.assertIn('custom-shutter-sound-market-seven-defaults-trim-dedup-and-demo-install', smoke_text)
 
     def test_failed_record_flush_blocks_writer_after_directory_setup(self):
         from test_operations import sparse_fixture, Backend
@@ -82,6 +94,20 @@ class WindowsHostTests(unittest.TestCase):
             self.assertEqual(backend.writes, 0)
             self.assertFalse(result['write_attempted'])
             self.assertEqual(result['status'], 'error')
+
+    def test_doctor_accepts_win32_platform(self):
+        from a6700_unlock.doctor import diagnose
+        from a6700_unlock.catalog import load_catalog
+        from a6700_unlock.device_profile import load_device_profile
+        import a6700_unlock.usb.legacy
+        profile = load_device_profile(load_catalog())
+        with patch('a6700_unlock.doctor.sys.platform', 'win32'), \
+             patch('a6700_unlock.doctor.find_spec', return_value=object()), \
+             patch('a6700_unlock.usb.legacy.check_libusb_library', return_value=True):
+            report = diagnose(profile)
+        plat = next(item for item in report['checks'] if item['id'] == 'platform')
+        self.assertTrue(plat['ok'], plat)
+        self.assertTrue(report['ready'], report)
 
 
 if __name__ == '__main__':

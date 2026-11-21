@@ -16,6 +16,7 @@ FAILURES = {
 }
 ACTIONS = {'inspect', 'unlock', 'close', 'update_fl23', 'update_ftp', 'restore'}
 CHECK_IDS = {'python', 'platform', 'pyusb', 'capture-compiler', 'libusb', 'payload-integrity'}
+SUPERBLOCK_DIFFERENCES = {'magic_mismatch', 'runtime_fields_only', 'other_fields_changed'}
 COMPATIBILITY_DETAILS = {
     'structure': '相机固件结构与本版本的适配记录不一致',
     'target-content': '相机功能所在区域的内容与本版本的适配记录不一致',
@@ -31,6 +32,10 @@ STAGES = (
     ('正在认证相机 USB 服务模式', 'authenticate', 'connect'),
     ('正在准备相机服务暂存目录', 'mount', 'connect'),
     ('正在挂载', 'mount', 'connect'),
+    ('首次接管需要 macOS 授权', 'request_macos_authorization', 'connect'),
+    ('请在 macOS 弹窗授权接管 USB', 'request_macos_authorization', 'connect'),
+    ('正在使用本机已授权的接管组件', 'claim_interface', 'connect'),
+    ('正在使用本机已安装的固定接管组件', 'claim_interface', 'connect'),
     ('正在接管相机 MSC 接口', 'claim_interface', 'connect'),
     ('正在检查关闭前', 'check_settings', 'prepare_settings'),
     ('正在读取', 'read_targets', 'inspect'),
@@ -102,26 +107,49 @@ class FailureTrace:
                     self.add(step, phase, 'passed' if step in ('readback_passed', 'plan_ready') else 'started')
                 return
 
-    def report(self, snapshot):
+    def report(self, snapshot, outcome=None):
         result = operation_failure(snapshot)
         if result and self.identity == snapshot.get('operation_id'):
             result['events'] = list(self.events)
             if self.events and self.events[-1]['status'] in ('started', 'passed') and self.events[-1]['phase'] != 'environment':
                 result['stage_id'] = self.events[-1]['phase']
             elapsed = min(86400000, max(0, int((time.monotonic() - self.started) * 1000)))
-            outcome = snapshot['result']
-            for field, phase in (('write_attempted', 'execute'), ('verified', 'verify')):
-                if type(outcome.get(field)) is bool:
-                    step = field + ('_yes' if outcome[field] else '_no')
+            summary = snapshot['result']
+            flags = (('write_attempted', 'execute'), ('settings_write_attempted', 'prepare_settings'),
+                     ('verified', 'verify'), ('rolled_back', 'verify'))
+            for field, phase in flags:
+                value = (outcome or {}).get(field, summary.get(field))
+                if type(value) is bool:
+                    step = field + ('_yes' if value else '_no')
                     result['events'].append(dict(step_id=step, phase=phase, status='observed', source='core', elapsed_ms=elapsed))
-            categories = outcome.get('compatibility_checks', ())
+            categories = summary.get('compatibility_checks', ())
             for category in COMPATIBILITY_DETAILS:
                 if category in categories:
                     result['stage_id'] = 'inspect'
                     result['events'].append(dict(step_id='compatibility_' + category,
                                                  phase='inspect', status='failed',
                                                  source='core', elapsed_ms=elapsed))
-            cleanup = outcome.get('cleanup_status')
+            plan = (outcome or {}).get('plan')
+            if isinstance(plan, dict):
+                checks = (issue for issue in plan.get('issues', ())
+                          if issue.get('kind') == 'sector-guard-mismatch')
+                for count, issue in enumerate(checks):
+                    if count == 16:
+                        result['events'].append(dict(step_id='check_mismatch_more', phase='inspect',
+                                                     status='observed', source='core', elapsed_ms=elapsed))
+                        break
+                    index, role = issue.get('index'), issue.get('role')
+                    if valid_check_index(index) and role in ('guard', 'target'):
+                        result['events'].append(dict(step_id=f'check_{role}_{index}', phase='inspect',
+                                                     status='failed', source='core', elapsed_ms=elapsed))
+                    difference = issue.get('superblock_difference')
+                    if difference in SUPERBLOCK_DIFFERENCES:
+                        result['events'].append(dict(step_id='superblock_' + difference, phase='inspect',
+                                                     status='observed', source='core', elapsed_ms=elapsed))
+                    if issue.get('known_ftp_variant') is True and valid_check_index(index):
+                        result['events'].append(dict(step_id=f'check_known_ftp_variant_{index}', phase='inspect',
+                                                     status='observed', source='core', elapsed_ms=elapsed))
+            cleanup = (outcome or {}).get('cleanup_status') or summary.get('cleanup_status')
             if cleanup in ('stop-sent', 'msc-observed', 'unconfirmed'):
                 result['events'].append(dict(step_id='exit_' + cleanup, phase='exit',
                                              status='unknown' if cleanup == 'unconfirmed' else 'observed', source='core', elapsed_ms=elapsed))
@@ -147,6 +175,8 @@ def operation_failure(snapshot):
         code = 'readback_failed'
     elif re.search(r'timeout|timed out|超时', message, re.I):
         code = 'usb_timeout'
+    elif re.search(r'need exactly one Sony MSC camera|未找到唯一 Sony MSC 相机', message, re.I):
+        code = 'device_missing'
     elif re.search(r'permission|access denied|权限|授权', message, re.I):
         code = 'permission_denied'
     elif re.search(r'no Sony|未发现|未找到|没有找到', message, re.I):
@@ -172,30 +202,30 @@ def operation_failure(snapshot):
     return report
 
 
-def build_failure_archive(report, snapshot, outcome, known_edits=()):
-    """Serialize only bounded fields from the completed operation in memory."""
+def valid_check_index(value):
+    return type(value) is int and 0 <= value <= 65535
+
+
+def failure_details(report, outcome, snapshot, known_edits=()):
+    """Use the same allowlist for the ZIP and the desktop's offline export."""
     outcome = outcome or {}
-    result = {
-        'operation_id': report['operation_id'], 'action': report['action'],
-        'status': report['transaction_status'], 'stage': report['stage_id'],
-        'error_code': report['error_code'], 'events': report['events'],
-    }
+    result = {key: report[key] for key in ('operation_id', 'action', 'error_code', 'events')}
+    result.update(status=report['transaction_status'], stage=report['stage_id'])
     if report.get('camera_status_code'):
         result['camera_status_code'] = report['camera_status_code']
     for key in ('write_attempted', 'settings_write_attempted', 'verified', 'rolled_back'):
-        value = outcome.get(key, snapshot.get('result', {}).get(key))
+        value = outcome.get(key, (snapshot.get('result') or {}).get(key))
         if type(value) is bool:
             result[key] = value
     cleanup = outcome.get('cleanup_status')
     if cleanup in ('stop-sent', 'msc-observed', 'unconfirmed'):
         result['cleanup_status'] = cleanup
     for key in ('selected_features', 'completed_features', 'remaining_features'):
-        value = outcome.get(key, [])
+        value = outcome.get(key, (outcome.get('plan') or {}).get(key))
         if isinstance(value, list):
-            result[key] = sorted({name for name in value if isinstance(name, str) and name in FEATURES})
-    digest = snapshot.get('adapter_set_sha256')
-    if isinstance(digest, str) and re.fullmatch('[0-9a-f]{64}', digest):
-        result['adapter_set_sha256'] = digest
+            result[key] = sorted({item for item in value if isinstance(item, str) and item in FEATURES})
+    if report.get('package_set_sha256'):
+        result['adapter_set_sha256'] = report['package_set_sha256']
 
     files = {'result.json': result}
     plan = outcome.get('plan')
@@ -205,8 +235,13 @@ def build_failure_archive(report, snapshot, outcome, known_edits=()):
             kind = row.get('kind')
             if kind == 'sector-guard-mismatch' and row.get('role') in ('guard', 'target'):
                 issue = {'kind': kind, 'role': row['role']}
-                if type(row.get('index')) is int and 0 <= row['index'] <= 65535:
+                if valid_check_index(row.get('index')):
                     issue['check_index'] = row['index']
+                difference = row.get('superblock_difference')
+                if difference in SUPERBLOCK_DIFFERENCES:
+                    issue['superblock_difference'] = difference
+                if row.get('known_ftp_variant') is True:
+                    issue['known_ftp_variant'] = True
                 issues.append(issue)
             elif kind == 'unknown-field':
                 issue = {'kind': kind}
@@ -224,11 +259,27 @@ def build_failure_archive(report, snapshot, outcome, known_edits=()):
         safe_plan = dict(issues=issues, features=feature_rows(plan.get('features')))
         if type(plan.get('compatible')) is bool:
             safe_plan['compatible'] = plan['compatible']
+        # The adapter and profile digests identify shipped definitions, rather
+        # than hashing unknown camera contents into a support report.
+        profile = plan.get('profile_sha256')
+        if isinstance(profile, str) and re.fullmatch(r'[0-9a-f]{64}', profile):
+            safe_plan['profile_sha256'] = profile
+        recognized = plan.get('guard_compatibility', [])
+        known_indices = sorted({row['index'] for row in recognized
+                                if valid_check_index(row.get('index'))})
+        if known_indices:
+            safe_plan['recognized_guard_indices'] = known_indices
         files['plan.json'] = safe_plan
-    manifest = {'schema_version': 1, 'kind': 'operation-failure-diagnostics',
-                'operation_id': result['operation_id'], 'files': list(files)}
+    return files
+
+
+def build_failure_archive(report, files):
+    """Make the failure ZIP from this operation's allowlisted data."""
+    manifest = dict(schema_version=1, kind='operation-failure-diagnostics',
+                    operation_id=report['operation_id'], files=list(files))
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, 'w') as archive:
         for name, data in {'report.json': manifest, **files}.items():
+            # A fixed ZIP timestamp keeps retry bytes and their digest stable.
             archive.writestr(zipfile.ZipInfo(name), json.dumps(data, ensure_ascii=False, separators=(',', ':')))
     return buffer.getvalue()

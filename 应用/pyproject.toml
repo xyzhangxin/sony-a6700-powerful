@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "a6700-unlock"
-version = "0.4.3"
+version = "0.5.0"
 description = "A6700 bundle unlock/close framework with sparse USB preflight and verification"
 requires-python = ">=3.10"
 dependencies = []
@@ -14,15 +14,16 @@ license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"]
 
 [project.optional-dependencies]
 usb = ["pyusb==1.2.1"]
-test = ["unicorn==2.1.4", "pyelftools==0.33"]
+test = ["unicorn==2.1.4", "pyelftools==0.33", "cryptography==46.0.3"]
 updates = ["cryptography==46.0.3"]
 windows = ["libusb-package==1.0.30.0", "PySide6-Essentials==6.10.3"]
 
 [project.scripts]
 a6700-unlock = "a6700_unlock.cli:main"
+a6700-msc = "a6700_unlock.msc_tool:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-a6700_unlock = ["data/*.json", "data/legal/*.txt", "data/legal/*.md", "data/native/*.json", "data/native/*.elf", "data/fl23/*", "data/fl23/runtime/*.json", "data/fl23/runtime/*/*", "data/fl23/variants/*/*.bin", "data/fl23/variants/*/runtime/*.json", "data/fl23/variants/*/runtime/*/*", "native/*.c", "native/*.h", "native/*.m", "usb/reference/sony_pmca/*.txt"]
+a6700_unlock = ["data/*.json", "data/legal/*.txt", "data/legal/*.md", "data/native/custom-sound-binding/*", "native/custom-sound-binding/*", "data/native/*.json", "data/native/*.elf", "data/native/*.c", "data/native/*.h", "data/ftp-migration/*.json", "data/ftp-migration/native/*", "data/custom-sound/*.json", "data/custom-sound/*.elf", "data/custom-sound/capability/*.json", "data/custom-sound/capability/root-input/*.json", "data/custom-sound/capability/menu-ui/*.json", "data/custom-sound/capability/menu-ui/*/*.json", "data/custom-sound/capability/menu-ui/*/*.c", "data/custom-sound/capability/menu-ui/*/*.h", "data/custom-sound/capability/menu-ui/*/*.elf", "data/diagnostics/*", "data/fl23/*", "data/fl23/combined/*", "data/fl23/runtime/*.json", "data/fl23/runtime/*/*", "data/fl23/variants/*/*.bin", "data/fl23/variants/*/runtime/*.json", "data/fl23/variants/*/runtime/*/*", "native/*.c", "native/*.h", "native/*.m", "usb/reference/sony_pmca/*.txt"]

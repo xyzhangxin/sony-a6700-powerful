@@ -2,8 +2,6 @@
 import hashlib
 import importlib.util
 import json
-import os
-import shutil
 from pathlib import Path
 import struct
 import sys
@@ -18,46 +16,9 @@ from a6700_unlock.device_protocol import DeviceError,request,response
 import test_native as native
 
 ROOT=Path(__file__).resolve().parents[1]
-FIXTURE_SOURCES=('scripts/build_fl23.py','src/a6700_unlock/native/transaction.c',
-    'src/a6700_unlock/native/fl23_files.c','src/a6700_unlock/native/fl23_sha256.h',
-    'tests/test_fl23_package.py','tests/test_native.py')
 spec=importlib.util.spec_from_file_location('build_fl23',ROOT/'scripts/build_fl23.py')
 builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
 sha=lambda data:hashlib.sha256(data).hexdigest()
-
-
-def load_variant_fixture(destination, recipe, carriers):
-    fixture=os.environ.get('POWERFUL6700_TEST_NATIVE_FIXTURE')
-    if not fixture:return False
-    folder=Path(fixture)/'variants'
-    metadata=json.loads((folder/'test-fixture.json').read_bytes())
-    expected=dict(recipe=recipe,carriers={str(k):sha(v) for k,v in carriers.items()},
-                  sources={name:sha((ROOT/name).read_bytes()) for name in FIXTURE_SOURCES})
-    if any(metadata.get(k)!=v for k,v in expected.items()):
-        raise ValueError('Variant fixture does not match current sources or synthetic carriers')
-    for name,digest in metadata['package_sha256'].items():
-        path=Path(name)
-        if path.is_absolute() or '..' in path.parts or sha((folder/'package'/path).read_bytes())!=digest:
-            raise ValueError('Variant fixture package hash/path differs')
-    shutil.copytree(folder/'package',destination)
-    return True
-
-
-def load_revision_fixture(destination, recipe, carriers, legacy):
-    fixture=os.environ.get('POWERFUL6700_TEST_NATIVE_FIXTURE')
-    if not fixture:return False
-    folder=Path(fixture)/'revisions'
-    metadata=json.loads((folder/'test-fixture.json').read_bytes())
-    expected=dict(recipe=recipe,carriers={str(k):sha(v) for k,v in carriers.items()},legacy=legacy,
-                  sources={name:sha((ROOT/name).read_bytes()) for name in FIXTURE_SOURCES})
-    if any(metadata.get(k)!=v for k,v in expected.items()):
-        raise ValueError('Revision fixture does not match current sources or synthetic carriers')
-    for name,digest in metadata['package_sha256'].items():
-        path=Path(name)
-        if path.is_absolute() or '..' in path.parts or sha((folder/'package'/path).read_bytes())!=digest:
-            raise ValueError('Revision fixture package hash/path differs')
-    shutil.copytree(folder/'package',destination)
-    return True
 
 
 def synthetic():
@@ -262,7 +223,6 @@ class UninstallTests(unittest.TestCase):
         self.events=[];r=self.perform()
         self.assertEqual(r['status'],'no-op');self.assertFalse(r['write_attempted'])
         self.assertEqual(self.events,[])
-
     def test_new_options_keep_full_cleanup_of_old_retained_cp_and_off_file(self):
         from a6700_unlock.fl23_package import perform_options
         import a6700_unlock.fl23_package as module
@@ -413,24 +373,8 @@ class FileNativeTests(unittest.TestCase):
         cls.carrier=b'FL23 synthetic file '+bytes(range(256))*4
         (p/'recipe.json').write_text(json.dumps(recipe));(p/'carrier.bin').write_bytes(cls.carrier)
         cls.out=p/'out'
-        fixture=os.environ.get('POWERFUL6700_TEST_NATIVE_FIXTURE')
-        if fixture:
-            # Test-only cross-compiled artifact. Reject stale source/recipe or
-            # changed binary; this path is never used by the application.
-            folder=Path(fixture);metadata=json.loads((folder/'test-fixture.json').read_bytes())
-            expected=dict(recipe=recipe,carrier_sha256=sha(cls.carrier),
-                          sources={name:sha((ROOT/name).read_bytes()) for name in FIXTURE_SOURCES})
-            if any(metadata.get(k)!=v for k,v in expected.items()):
-                raise ValueError('Synthetic native fixture does not match current test sources')
-            for name,digest in metadata['package_sha256'].items():
-                if Path(name).name!=name or sha((folder/'package'/name).read_bytes())!=digest:
-                    raise ValueError('Synthetic native fixture package hash differs')
-            shutil.copytree(folder/'package',cls.out)
-            cls.binary=(cls.out/'files.elf').read_bytes()
-        else:
-            builder.build(p/'recipe.json',p/'carrier.bin',ROOT/'src/a6700_unlock/native/fl23_sha256.h',destination=cls.out)
-            cls.binary=(cls.out/'files.elf').read_bytes()
-        cls.profile=Profile(recipe)
+        builder.build(p/'recipe.json',p/'carrier.bin',ROOT/'src/a6700_unlock/native/fl23_sha256.h',destination=cls.out)
+        cls.binary=(cls.out/'files.elf').read_bytes();cls.profile=Profile(recipe)
     @classmethod
     def tearDownClass(cls):cls.temp.cleanup()
     def run_job(self,fs,op=0,offset=0,data=b'',length=0,fail=None,flags=0):
@@ -500,21 +444,20 @@ class FileVariantNativeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.temp=tempfile.TemporaryDirectory();p=Path(cls.temp.name);cls.recipe=synthetic()
-        cls.carriers={f:bytes([f])*n for f,n in ((1,1100),(2,1300),(3,1500))}
+        cls.carriers={f:bytes([f])*n for f,n in ((1,1100),(2,1300),(3,1500),(4,1200),(5,1400),(6,1600),(7,1800))}
         (p/'recipe.json').write_text(json.dumps(cls.recipe));(p/'carrier.bin').write_bytes(cls.carriers[1])
         cls.out=p/'out';variants=cls.out/'variants'
-        if not load_variant_fixture(cls.out,cls.recipe,cls.carriers):
-            for f in (2,3):
-                folder=variants/str(f);(folder/'runtime').mkdir(parents=True)
-                (folder/'carrier.bin').write_bytes(cls.carriers[f]);(folder/'runtime/manifest.json').write_text('{"files":{}}')
-            builder.build(p/'recipe.json',p/'carrier.bin',ROOT/'src/a6700_unlock/native/fl23_sha256.h',destination=cls.out,variants_path=variants)
+        for f in range(2,8):
+            folder=variants/str(f);(folder/'runtime').mkdir(parents=True)
+            (folder/'carrier.bin').write_bytes(cls.carriers[f]);(folder/'runtime/manifest.json').write_text('{"files":{}}')
+        builder.build(p/'recipe.json',p/'carrier.bin',ROOT/'src/a6700_unlock/native/fl23_sha256.h',destination=cls.out,variants_path=variants)
         cls.binary=(cls.out/'files.elf').read_bytes()
     @classmethod
     def tearDownClass(cls):cls.temp.cleanup()
     run_job=FileNativeTests.run_job
     def test_all_variants_are_identified_and_atomic_switch_preserves_live_until_commit(self):
-        for old in (1,2,3):
-            for new in (1,2,3):
+        for old in (1,2,3,4,7):
+            for new in (1,2,3,4,7):
                 fs={'/setting/fl23':bytearray(self.carriers[old])}
                 status,detail,data,_=self.run_job(fs,length=len(self.carriers[old]))
                 self.assertEqual((status,detail>>8,data),(0,old,self.carriers[old]))
@@ -531,68 +474,84 @@ class FileVariantNativeTests(unittest.TestCase):
         fs['/setting/fl23']=bytearray(b'unknown')
         self.assertEqual(self.run_job(fs,3,flags=2)[0],1)
     def test_cleanup_accepts_known_mixed_variants_but_preserves_unknown_before_unlink(self):
-        fs={path:bytearray(self.carriers[f]) for path,f in zip(('/setting/fl23','/setting/fl23.new','/setting/fl23.off'),(1,2,3))}
+        fs={path:bytearray(self.carriers[f]) for path,f in zip(('/setting/fl23','/setting/fl23.new','/setting/fl23.off'),(1,2,7))}
         self.assertEqual(self.run_job(fs,5)[:2],(0,7))
         fs['/setting/fl23.off'][0]=99
         status,_,_,vm=self.run_job(fs,6)
         self.assertEqual(status,1);self.assertFalse(vm.unlinked);self.assertEqual(len(fs),3)
-        fs['/setting/fl23.off']=bytearray(self.carriers[3])
+        fs['/setting/fl23.off']=bytearray(self.carriers[7])
         self.assertEqual(self.run_job(fs,6)[:2],(0,0));self.assertEqual(fs,{})
     def test_read_and_append_bounds_follow_actual_and_requested_variant(self):
         fs={'/setting/fl23':bytearray(self.carriers[1])}
         self.assertEqual(self.run_job(fs,offset=1099,length=2)[0],2)
         self.assertEqual(self.run_job(fs,1,flags=2)[0],0)
         self.assertEqual(self.run_job(fs,2,offset=1300,data=b'x',flags=2)[0],2)
-        self.assertEqual(self.run_job(fs,1,flags=4)[0],2)
+        self.assertEqual(self.run_job(fs,1,flags=8)[0],2)
 
 
 @unittest.skipUnless(native.AVAILABLE,'native emulator unavailable')
 class FileRevisionNativeTests(unittest.TestCase):
+    LEGACY_SPECS=((257,1,1,1150),(259,3,1,1250),(513,1,2,1350),(514,2,2,1450),(515,3,2,1550),
+                  (772,4,3,1650),(773,5,3,1750),(774,6,3,1850),(775,7,3,1950),
+                  (1028,4,4,2050),(1029,5,4,2150),(1030,6,4,2250),(1031,7,4,2350))
     @classmethod
     def setUpClass(cls):
         cls.temp=tempfile.TemporaryDirectory();p=Path(cls.temp.name);cls.recipe=synthetic()
-        cls.carriers={f:bytes([f])*n for f,n in ((1,1100),(2,1300),(3,1500),(5,1700),(7,1900))}
+        cls.carriers={f:bytes([f])*(1100+200*f) for f in range(1,8)}
+        cls.carriers.update({ident:bytes([(ident&0xff)^0x40])*size for ident,_,_,size in cls.LEGACY_SPECS})
         (p/'recipe.json').write_text(json.dumps(cls.recipe));(p/'carrier.bin').write_bytes(cls.carriers[1])
         cls.out=p/'out';variants=cls.out/'variants'
-        legacy={str(f):dict(flags=f&3,revision=1,bytes=len(cls.carriers[f]),sha256=sha(cls.carriers[f])) for f in (5,7)}
+        for f in range(2,8):
+            folder=variants/str(f);(folder/'runtime').mkdir(parents=True)
+            (folder/'carrier.bin').write_bytes(cls.carriers[f]);(folder/'runtime/manifest.json').write_text('{"files":{}}')
+        legacy={str(ident):dict(flags=flags,revision=rev,bytes=len(cls.carriers[ident]),sha256=sha(cls.carriers[ident]))
+                for ident,flags,rev,_ in cls.LEGACY_SPECS}
         (p/'legacy.json').write_text(json.dumps(legacy))
-        if not load_revision_fixture(cls.out,cls.recipe,cls.carriers,legacy):
-            for f in (2,3):
-                folder=variants/str(f);(folder/'runtime').mkdir(parents=True)
-                (folder/'carrier.bin').write_bytes(cls.carriers[f]);(folder/'runtime/manifest.json').write_text('{"files":{}}')
-            builder.build(p/'recipe.json',p/'carrier.bin',ROOT/'src/a6700_unlock/native/fl23_sha256.h',
-                destination=cls.out,variants_path=variants,legacy_path=p/'legacy.json')
+        builder.build(p/'recipe.json',p/'carrier.bin',ROOT/'src/a6700_unlock/native/fl23_sha256.h',
+            destination=cls.out,variants_path=variants,legacy_path=p/'legacy.json')
         cls.binary=(cls.out/'files.elf').read_bytes()
     @classmethod
     def tearDownClass(cls):cls.temp.cleanup()
     run_job=FileNativeTests.run_job
     def test_actual_legacy_files_are_identified_and_atomically_upgraded(self):
-        for old in (5,7):
-            new=old&3;fs={'/setting/fl23':bytearray(self.carriers[old])}
-            status,detail,data,_=self.run_job(fs,length=len(self.carriers[old]))
-            self.assertEqual((status,detail>>8,data),(0,old,self.carriers[old]))
-            self.assertEqual(self.run_job(fs,1,flags=new)[0],0)
-            self.assertEqual(self.run_job(fs,2,flags=new,data=self.carriers[new])[0],0)
-            self.assertEqual(fs['/setting/fl23'],self.carriers[old])
-            self.assertEqual(self.run_job(fs,3,flags=new)[0],0)
-            self.assertEqual(self.run_job(fs,length=len(self.carriers[new]))[:3],(0,1|(new<<8),self.carriers[new]))
+        for ident,flags,_,_ in self.LEGACY_SPECS:
+            fs={'/setting/fl23':bytearray(self.carriers[ident])}
+            status,detail,data,_=self.run_job(fs,length=len(self.carriers[ident]))
+            self.assertEqual((status,detail>>8,data),(0,ident,self.carriers[ident]))
+            self.assertEqual(self.run_job(fs,1,flags=flags)[0],0)
+            self.assertEqual(self.run_job(fs,2,flags=flags,data=self.carriers[flags])[0],0)
+            self.assertEqual(fs['/setting/fl23'],self.carriers[ident])
+            self.assertEqual(self.run_job(fs,3,flags=flags)[0],0)
+            self.assertEqual(self.run_job(fs,length=len(self.carriers[flags]))[:3],(0,1|(flags<<8),self.carriers[flags]))
     def test_legacy_and_current_files_can_be_fully_removed_but_unknown_files_remain(self):
-        for old in (5,7):
-            fs={'/setting/fl23':bytearray(self.carriers[old]),'/setting/fl23.off':bytearray(self.carriers[old&3])}
+        for ident,flags,_,_ in self.LEGACY_SPECS:
+            fs={'/setting/fl23':bytearray(self.carriers[ident]),'/setting/fl23.off':bytearray(self.carriers[flags])}
             self.assertEqual(self.run_job(fs,6)[0],0);self.assertEqual(fs,{})
-            fs={'/setting/fl23':bytearray(self.carriers[old]),'/setting/fl23.off':bytearray(b'unknown')}
+            fs={'/setting/fl23':bytearray(self.carriers[ident]),'/setting/fl23.off':bytearray(b'unknown')}
             self.assertEqual(self.run_job(fs,6)[0],1);self.assertEqual(len(fs),2)
     def test_old_file_ids_are_not_exposed_as_feature_bits(self):
         p=Package(self.out)
-        for ident,flags in ((5,1),(7,3),(1,1),(3,3)):
+        for ident,flags,rev,_ in self.LEGACY_SPECS:
             self.assertEqual(p.file_specs[ident]['flags'],flags)
-            self.assertEqual(p.file_specs[ident]['revision'],1 if ident&4 else 2)
-        nonce=bytes(range(16));backend=SimpleNamespace()
+            self.assertEqual(p.file_specs[ident]['revision'],rev)
+        for f in range(1,8):
+            self.assertEqual(p.file_specs[f]['flags'],f)
+            self.assertEqual(p.file_specs[f]['revision'],5)
+        backend=SimpleNamespace()
         def invoke(binary,cfg):
-            return struct.pack('<4sI16s5I',b'A67F',1,cfg[8:24],0,0,1|(7<<8),0,0)
+            return struct.pack('<4sI16s5I',b'A67F',1,cfg[8:24],0,0,1|(515<<8),0,0)
         with tempfile.TemporaryDirectory() as directory:
             result=Session(p,backend,invoke,Path(directory)).file()
-        self.assertEqual((result['flags'],result['file_id'],result['revision']),(3,7,1))
+        self.assertEqual((result['flags'],result['file_id'],result['revision']),(3,515,2))
+    def test_real_bundled_package_loads_all_seven_variants_and_menu_ui(self):
+        from a6700_unlock.fl23_package import availability, custom_sound_availability
+        self.assertEqual(availability(),(True,True))
+        self.assertTrue(custom_sound_availability())
+        p=Package()
+        self.assertEqual(set(p.carriers),{1,2,3,4,5,6,7})
+        self.assertEqual(p.manifest['carrier_revision'],5)
+        self.assertIsNotNone(p.menu_ui)
+        self.assertEqual(p.menu_ui['manifest']['sector_count'],23)
 
 
 class RevisionUpdateTests(unittest.TestCase):
@@ -666,41 +625,125 @@ class RevisionUpdateTests(unittest.TestCase):
         self.assertEqual(state['blocks'][2:],before[2:])
 
 
+class CustomSoundPackageOptionsTests(unittest.TestCase):
+    def run_flow(self, *, check_conflicts=False):
+        import contextlib
+        import a6700_unlock.fl23_package as module
+        from a6700_unlock.custom_sound_capability_package import load_custom_sound_menu_ui_assets
+        recipe=synthetic();entries=[]
+        for index,device in enumerate((0,1,0,2)):
+            entry=dict(index=index,device=device,device_offset=512*(index+1),unmanaged_sha256=sha(bytes(512)),
+                edits=[dict(offset=4,disabled='00000000',enabled='01010101')])
+            if index<2:entry['boot_entry']=True
+            entries.append(entry)
+        recipe['entries']=entries
+        spec=dict(key=123,bytes=2,before_sha256=sha(b'\0\0'),after_sha256=sha(b'\1\0'),
+                  edits=[dict(offset=0,disabled='00',enabled='01')])
+        recipe['cp_units']=[spec]
+        real_menu=load_custom_sound_menu_ui_assets()
+        package=SimpleNamespace(recipe=recipe,profile=Profile(recipe),manifest=dict(carrier_revision=3),
+            carriers={i:bytes([i])*1100 for i in range(1,8)},menu_ui=real_menu)
+        before_blocks=[]
+        for _ in entries:
+            raw=bytearray(512);before_blocks.append(bytes(raw))
+        state=dict(
+            file_id=0,present=False,mask=0,blocks=list(before_blocks),unit=b'\0\0',
+            menu_state='disabled',menu_calls=[],wipes=0,events=[],upload=b'',upload_flags=0,
+        )
+        class Channel:
+            def __init__(self):self.calls=[]
+            def send(self,cmd,data):
+                self.calls.append((cmd,data))
+                if data==struct.pack('<HHH',0x603,3,0x2a4):
+                    return (0,b'')
+                raise AssertionError('unexpected channel command: '+data.hex())
+        backend=SimpleNamespace(channel=Channel())
+        class Fake:
+            def __init__(self,p,b,i,d):self.package=p;self.backend=b;self.directory=Path(d)
+            def blocks(self,old=None,new=None):
+                if old is None:return list(state['blocks'])
+                if old!=state['blocks']:raise DeviceError('stale preimage')
+                state['blocks']=list(new);return []
+            def cp_unit(self,row,value=None):
+                if value is not None:state['unit']=bytes(value);return b''
+                return state['unit']
+            def units(self):return [state['unit']]
+            def selection(self):return 0
+            def ap_values(self):return {}
+            def file(self,op=0,offset=0,data=b'',length=0,flags=1):
+                if op==5:return dict(present=state['present'],mask=state['mask'],flags=state['file_id'],file_id=state['file_id'],revision=3,data=b'')
+                if op==6:
+                    state.update(file_id=0,present=False,mask=0);state['events'].append(('file-clear',));return dict(present=False,mask=0,flags=0,file_id=0,revision=3,data=b'')
+                if op==1:state['upload']=b'';state['upload_flags']=flags or 1
+                elif op==2:state['upload']+=data
+                elif op==3:
+                    expected_flags=flags or state['upload_flags']
+                    assert state['upload']==package.carriers[expected_flags]
+                    state.update(file_id=expected_flags,present=True,mask=1)
+                    state['events'].append(('file-commit',expected_flags))
+                ident=state['file_id']
+                return dict(present=state['present'],flags=ident,file_id=ident,revision=3,
+                    mask=state['mask'],owned_mask=state['mask'],
+                    data=package.carriers[ident][offset:offset+length] if length and ident else b'')
+            def inspect_menu_ui(self):
+                return dict(state=state['menu_state'],parts=[])
+            def apply_menu_ui(self,action,progress=lambda _:None):
+                state['menu_calls'].append(action)
+                state['menu_state']='enabled' if action=='unlock' else 'disabled'
+                return 23
+            def wipe_csnd(self):
+                state['wipes']+=1
+                state['events'].append(('csnd-wipe',))
+                return dict(status=0)
+        @contextlib.contextmanager
+        def files(*_):yield None
+        with tempfile.TemporaryDirectory() as tmp,mock.patch.object(module,'Session',Fake),mock.patch.object(module,'service_files',files):
+            blocked_carriers = {flags: sha(package.carriers[flags]) for flags in (5, 7)}
+            r1=module.perform_options(package,backend,'unlock',Path(tmp),lambda _:None,['fl23','creative_look_names'])
+            self.assertEqual(r1['status'],'completed');self.assertEqual(state['file_id'],3);self.assertEqual(state['wipes'],0)
+            if check_conflicts:
+                events_before = list(state['events'])
+                with mock.patch.object(module, '_INCOMPATIBLE_MENU_CARRIERS', blocked_carriers):
+                    for action, preflight in (('unlock', {}), ('inspect', {'validate_unlock': True})):
+                        result=module.perform_options(package,backend,action,Path(tmp),lambda _:None,
+                                                      ['custom_shutter_sound'],**preflight)
+                        self.assertEqual(result['status'],'error')
+                        self.assertEqual(result['after_flags'],7)
+                        self.assertFalse(result['write_attempted'])
+                        self.assertTrue(result['service_restore_verified'])
+                        self.assertEqual(state['file_id'],3)
+                        self.assertEqual(state['events'],events_before)
+                        self.assertEqual(state['menu_state'],'disabled')
+            # Seed the previously installed flags=7 state using the synthetic
+            # package, then reject reusing that carrier while testing closure.
+            r2=module.perform_options(package,backend,'unlock',Path(tmp),lambda _:None,['custom_shutter_sound'])
+            self.assertEqual(r2['status'],'completed');self.assertEqual(state['file_id'],7)
+            self.assertEqual(state['menu_calls'],['unlock']);self.assertEqual(state['menu_state'],'enabled')
+            with mock.patch.object(module, '_INCOMPATIBLE_MENU_CARRIERS', blocked_carriers if check_conflicts else {}):
+                if check_conflicts:
+                    observed=module.perform_options(package,backend,'inspect',Path(tmp),lambda _:None)
+                    self.assertEqual(observed['status'],'inspected')
+                    for action, preflight in (('close', {}), ('inspect', {'validate_close': True})):
+                        result=module.perform_options(package,backend,action,Path(tmp),lambda _:None,
+                                                      ['creative_look_names'],**preflight)
+                        self.assertEqual(result['status'],'error')
+                        self.assertEqual(result['after_flags'],5)
+                        self.assertFalse(result['write_attempted'])
+                        self.assertEqual(state['file_id'],7)
+                        self.assertEqual(state['wipes'],0)
+                r3=module.perform_options(package,backend,'close',Path(tmp),lambda _:None,['custom_shutter_sound'])
+            self.assertEqual(r3['status'],'completed');self.assertEqual(state['file_id'],3)
+            self.assertEqual(state['menu_calls'],['unlock','close']);self.assertEqual(state['wipes'],1)
+            self.assertEqual({f['id']:f['state'] for f in r3['final_features']},
+                             {'fl23':'enabled','creative_look_names':'enabled','custom_shutter_sound':'disabled'})
+            r4=module.perform_options(package,backend,'close',Path(tmp),lambda _:None,['fl23','creative_look_names'])
+            self.assertEqual(r4['status'],'completed');self.assertEqual(state['file_id'],0);self.assertFalse(state['present'])
+            self.assertEqual(state['wipes'],1)
+    def test_unified_custom_sound_lifecycle_preserves_fl23_names_and_wipes_csnd_on_close(self):
+        self.run_flow()
 
-if __name__=='__main__':
-    if len(sys.argv)==3 and sys.argv[1]=='--export-native-fixture':
-        # Produce on an LLVM host, then run the same actual ARM64 VM tests on
-        # Windows without installing a compiler. Contains synthetic data only.
-        destination=Path(sys.argv[2]);destination.mkdir(parents=True,exist_ok=False)
-        FileNativeTests.setUpClass()
-        try:
-            binary=FileNativeTests.binary
-            shutil.copytree(FileNativeTests.out,destination/'package')
-            metadata=dict(recipe=FileNativeTests.recipe,carrier_sha256=sha(FileNativeTests.carrier),
-                package_sha256={p.name:sha(p.read_bytes()) for p in FileNativeTests.out.iterdir() if p.is_file()},sources={n:sha((ROOT/n).read_bytes()) for n in FIXTURE_SOURCES})
-            (destination/'test-fixture.json').write_text(json.dumps(metadata,indent=2)+'\n',encoding='utf-8')
-        finally:FileNativeTests.tearDownClass()
-        FileVariantNativeTests.setUpClass()
-        try:
-            folder=destination/'variants';folder.mkdir()
-            shutil.copytree(FileVariantNativeTests.out,folder/'package')
-            metadata=dict(recipe=FileVariantNativeTests.recipe,
-                carriers={str(k):sha(v) for k,v in FileVariantNativeTests.carriers.items()},
-                package_sha256={p.relative_to(FileVariantNativeTests.out).as_posix():sha(p.read_bytes())
-                    for p in FileVariantNativeTests.out.rglob('*') if p.is_file()},
-                sources={n:sha((ROOT/n).read_bytes()) for n in FIXTURE_SOURCES})
-            (folder/'test-fixture.json').write_text(json.dumps(metadata,indent=2)+'\n',encoding='utf-8')
-        finally:FileVariantNativeTests.tearDownClass()
-        FileRevisionNativeTests.setUpClass()
-        try:
-            folder=destination/'revisions';folder.mkdir()
-            shutil.copytree(FileRevisionNativeTests.out,folder/'package')
-            legacy={str(f):dict(flags=f&3,revision=1,bytes=len(FileRevisionNativeTests.carriers[f]),sha256=sha(FileRevisionNativeTests.carriers[f])) for f in (5,7)}
-            metadata=dict(recipe=FileRevisionNativeTests.recipe,
-                carriers={str(k):sha(v) for k,v in FileRevisionNativeTests.carriers.items()},legacy=legacy,
-                package_sha256={p.relative_to(FileRevisionNativeTests.out).as_posix():sha(p.read_bytes())
-                    for p in FileRevisionNativeTests.out.rglob('*') if p.is_file()},
-                sources={n:sha((ROOT/n).read_bytes()) for n in FIXTURE_SOURCES})
-            (folder/'test-fixture.json').write_text(json.dumps(metadata,indent=2)+'\n',encoding='utf-8')
-        finally:FileRevisionNativeTests.tearDownClass()
-    else:unittest.main()
+    def test_known_incompatible_carriers_block_writes_but_allow_closing_custom_sound(self):
+        self.run_flow(check_conflicts=True)
+
+
+if __name__=='__main__':unittest.main()

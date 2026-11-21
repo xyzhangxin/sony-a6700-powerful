@@ -1,0 +1,20 @@
+{
+  "profile_sha256": "02c6e09ac3a736e98a29487d1aa883444d1e21861271af2ff004f5a1da3b2a7c",
+  "source_sha256": "53cd3393c07dfdb7a219cf73906862ac389df9d853a90d762deec777c0e37e82",
+  "hardware_validation": "pending",
+  "syscalls": {
+    "fsync": 82,
+    "pread64": 67,
+    "pwrite64": 68
+  },
+  "payloads": {
+    "reader": {
+      "sha256": "aa48927b5158d7cf94b0f540441dd6fdc820a479fbe413f5994e69186fe3ac43",
+      "bytes": 35184
+    },
+    "writer": {
+      "sha256": "ac2a94cb948f3f47e12c37e4017604162d1aebe38a9c128aab0e0788192c8cde",
+      "bytes": 35280
+    }
+  }
+}

@@ -28,10 +28,13 @@ static int s2_clean_refusal(const u8 *raw,const u8 *nonce,const u64 *pub){
     s2_d(raw+4)!=1||!s2_same(raw+8,nonce,16)||s2_d(raw+24)!=11||s2_d(raw+28)!=40||s2_q(raw+32)||s2_d(raw+40)!=S2_CORE_BYTES-44)return 0;
  const u8 *body=raw+44,*h=raw+300,*e=h+S2_SNAPSHOT_BYTES;
  u64 pid=s2_q(body+8),tid=s2_q(body+16),child=s2_q(body+24),waited=s2_q(body+32),status=s2_q(body+40);
+ u64 audit_status=s2_q(h+14*8);
  if(!child||child>=0x80000000ULL||waited!=child||!status||(status&255)||s2_q(body+48)!=S2_SNAPSHOT_BYTES+12288||s2_q(body+64)||
     s2_q(body+72)!=pid||s2_q(body+80)!=tid||pid!=pub[10]||tid!=pub[11]||child!=pub[12]||waited!=pub[13]||status!=pub[14]||
     s2_q(h)!=0x0000000141333246ULL||s2_q(h+8)!=pid||s2_q(h+16)!=tid||s2_q(h+24)!=child||
-    !s2_same(h+208,nonce,16)||s2_q(h+7*8)!=s2_q(h+11*8)||s2_q(e)!=0x315550333246ULL||s2_q(e+8)!=11||s2_q(e+40))return 0;
+    !s2_same(h+208,nonce,16)||s2_q(h+9*8)!=s2_q(h+11*8)||s2_q(h+11*8)>s2_q(h+7*8)||s2_q(h+7*8)>s2_q(h+4*8)||
+    ((!audit_status||audit_status>=11)&&s2_q(h+7*8)!=s2_q(h+11*8))||
+    s2_q(e)!=0x315550333246ULL||s2_q(e+8)!=11||s2_q(e+40))return 0;
  /* The unpublished owner and all native containers were fully destroyed. */
  if(s2_q(e+64+9*8)!=7||s2_q(e+64+14*8)!=7||s2_q(e+64+15*8))return 0;
  return 1;
@@ -42,11 +45,25 @@ static int s2_no_write(const u8 *raw,const u8 *nonce,const u64 *pub){
  return s2_q(h+14*8)==15&&s2_q(e+56)==1&&s2_q(c)==0x31544d4333324646ULL&&
         s2_q(c+8)==1&&s2_q(c+16)==1&&!s2_q(c+24)&&!s2_q(c+32)&&s2_zero(c+304,96);
 }
-static int s2_retry(const u8 *raw,const u8 *nonce,const u64 *pub){
+static int s2_preflight_transient(const u64 *t,const u64 *pf,const u64 *pub,const u8 *raw){
+ if(!t||!pf||!pub||raw)return 0;
+ if(t[0]!=1||t[1]!=5||t[16]!=1||t[19]!=1||t[28])return 0;
+ if(pf[15]||pub[0]||pub[2]||pub[4]||pub[6]||pub[7]||pub[9]||pub[15])return 0;
+ /* Two-pass Backup/CP data churn (error=9) or bounded read transient != width
+  * with clean DMA release (error=10, unresolved==0) before any core load. */
+ if((t[2]==9||t[2]==10)&&!pf[0]&&!pf[1])return 1;
+ /* Preflight phase-2 CP DMA busy (error=6, unresolved==0) or double-read
+  * code/vector drift (error=9) before any core module is loaded. */
+ return t[2]==11&&pf[0]==1&&(pf[1]==6||pf[1]==9);
+}
+static int s2_retry(const u64 *t,const u64 *pf,const u64 *pub,const u8 *raw,const u8 *nonce){
+ if(s2_preflight_transient(t,pf,pub,raw))return 1;
  if(!s2_clean_refusal(raw,nonce,pub))return 0;
  const u8 *h=raw+300,*e=h+S2_SNAPSHOT_BYTES,*c=e+640;
  u64 audit_status=s2_q(h+14*8),life=s2_q(e+56);
- if((audit_status==7||audit_status==11||audit_status==13)&&!life&&s2_zero(c,S2_COMMIT_BYTES))return 1;
+ if((audit_status==5||audit_status==7||audit_status==8||audit_status==9||
+     audit_status==10||audit_status==11||audit_status==13)&&
+    !life&&s2_zero(c,S2_COMMIT_BYTES))return 1;
  if(!s2_no_write(raw,nonce,pub))return 0;
  long rc=(long)s2_q(c+112),error=(long)s2_q(c+128+18*8);
  if(rc==-16||rc==-110||(rc==2&&error==-110))return 1;
@@ -94,11 +111,23 @@ long fl23_a1_stage_entry(struct a1_boot_context *c){
   * worker; a process gate starts the unchanged preflight, never a bypass of
   * its IO, fresh all-thread snapshot, object or byte guards. */
 #if S2_PROCESS_OBSERVE
- long observed=s2_process_observe((u8*)c,c->pid,S2_INITIAL_DELAY_NS,S2_PROCESS_GATE);
+ #if S2_PROCESS_GATE
+ static const u64 gate_backoff[7]={2000000000ULL,5000000000ULL,10000000000ULL,15000000000ULL,20000000000ULL,30000000000ULL,30000000000ULL};
+ long observed=-110;
+ for(u32 seg=0;seg<8;seg++){
+  observed=s2_process_observe((u8*)c,c->pid,S2_INITIAL_DELAY_NS,1);
+  if(observed!=-110||seg==7)break;
+  if(!s2_sleep((long)gate_backoff[seg]))return -4;
+ }
  if(observed)return observed;
+ #else
+ long observed=s2_process_observe((u8*)c,c->pid,S2_INITIAL_DELAY_NS,0);
+ if(observed)return observed;
+ #endif
 #else
  if(!s2_sleep(S2_INITIAL_DELAY_NS))return -4;
 #endif
+ static const u64 retry_backoff[11]={500000000ULL,1000000000ULL,2000000000ULL,5000000000ULL,8000000000ULL,10000000000ULL,15000000000ULL,20000000000ULL,25000000000ULL,30000000000ULL,30000000000ULL};
  for(u32 attempt=1;attempt<=S2_MAX_ATTEMPTS;attempt++){
   struct a1_loaded m;long rc=fl23_a1_load(s1_package,sizeof(s1_package),s1_digest,&m);
   c->reserved[6]=m.mapping;c->reserved[7]=m.bytes;c->reserved[8]=rc;
@@ -125,7 +154,7 @@ long fl23_a1_stage_entry(struct a1_boot_context *c){
      s2_d(raw+24)!=pub[9]||s2_d(raw+28)!=40||s2_q(raw+32)||s2_d(raw+40)!=S2_CORE_BYTES-44||pub[15]!=S2_CORE_BYTES)){
    s2_evidence(c,attempt,-115,pf,pub,0,0);return -115;
   }
-  u32 retry=rc&&attempt<S2_MAX_ATTEMPTS&&s2_retry(raw,config+8,pub);
+  u32 retry=rc&&attempt<S2_MAX_ATTEMPTS&&s2_retry(t,pf,pub,raw,config+8);
   s2_evidence(c,attempt,rc,pf,pub,raw,retry);
   /* Preserve the existing worker's report allocation only after its thread
    * joined, core was released, child reaped and an intact NO_WRITE report
@@ -140,7 +169,8 @@ long fl23_a1_stage_entry(struct a1_boot_context *c){
   if(freed)return freed;
   c->reserved[6]=c->reserved[7]=0;
   if(!retry)return rc;
-  if(!s2_sleep(500000000))return -4;
+  u32 idx=attempt-1;if(idx>=sizeof(retry_backoff)/sizeof(retry_backoff[0]))idx=sizeof(retry_backoff)/sizeof(retry_backoff[0])-1;
+  if(!s2_sleep((long)retry_backoff[idx]))return -4;
  }
  return -11;
 }

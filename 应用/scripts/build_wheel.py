@@ -19,9 +19,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
-    if hasattr(sys.stdout, "reconfigure"):
-        # 仓库路径含中文；Windows 控制台默认 ANSI 代码页无法输出。
-        sys.stdout.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=ROOT / "dist")
     parser.add_argument("--offline", action="store_true", help="使用已有构建依赖；禁止索引和构建隔离下载")
@@ -58,16 +55,31 @@ def main():
                              "data/native/manifest.json", "native/mac_capture.m",
                              "usb/reference/sony_pmca/LICENSE.txt", "usb/reference/sony_pmca/LICENSE-python-sha1.txt",
                              "data/fl23/manifest.json", "data/fl23/recipe.json", "data/fl23/carrier.bin",
+                             "data/fl23/combined/boot-abi.h", "data/fl23/combined/stage.ld",
+                             "data/fl23/combined/startup-observer.h", "data/fl23/combined/wrapper.c",
                              "data/fl23/reader.elf", "data/fl23/writer.elf", "data/fl23/files.elf",
-                             "data/fl23/runtime/manifest.json"):
+                             "data/fl23/runtime/manifest.json", "data/fl23/variants/2/carrier.bin",
+                             "data/fl23/variants/2/runtime/manifest.json", "data/fl23/variants/3/carrier.bin",
+                             "data/fl23/variants/3/runtime/manifest.json",
+                             *(item for flag in range(4, 8) for item in (
+                                 f"data/fl23/variants/{flag}/carrier.bin",
+                                 f"data/fl23/variants/{flag}/runtime/manifest.json")),
+                             "data/diagnostics/manifest.json", "data/diagnostics/boot_log.elf",
+                             "data/diagnostics/cp_exception.elf", "data/diagnostics/runtime.elf",
+                             "data/diagnostics/operation_control.elf",
+                             "data/custom-sound/manifest.json",
+                             "data/custom-sound/custom-sound-writer.elf",
+                             "data/custom-sound/capability/manifest.json",
+                             "data/custom-sound/capability/menu-ui/manifest.json",
+                             "data/native/custom-sound-binding/manifest.json",
+                             "data/native/custom-sound-binding/probe.elf"):
                 if "a6700_unlock/" + required not in names:
                     raise RuntimeError("Missing device runtime resource: " + required)
             if not any(n.endswith(".dist-info/licenses/LICENSE") for n in names):
                 raise RuntimeError("Distribution GPL license missing")
             if any(Path(n).suffix in (".bin", ".raw", ".so", ".plain", ".ext2")
                    and n not in {"a6700_unlock/data/fl23/carrier.bin",
-                                 "a6700_unlock/data/fl23/variants/2/carrier.bin",
-                                 "a6700_unlock/data/fl23/variants/3/carrier.bin"} for n in names):
+                                 *(f"a6700_unlock/data/fl23/variants/{flag}/carrier.bin" for flag in range(2, 8))} for n in names):
                 raise RuntimeError("Unexpected firmware/backup binary in the wheel")
         args.output_dir.mkdir(parents=True, exist_ok=True)
         destination = args.output_dir / wheel.name

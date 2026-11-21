@@ -26,14 +26,15 @@ static long po_clock(u64 *out){
 static long po_stat(u64 tid,struct po_sample *s){
  char path[80]="/proc/self/task/";u32 len=16;len+=po_decimal(path+len,tid);
  const char suffix[]="/stat";for(u32 i=0;i<sizeof(suffix);i++)path[len+i]=suffix[i];
- long fd=a1_sc(56,-100,(long)path,0x80000,0,0,0);if(fd==-2){s->critical|=0x8000;return 0;}if(fd<0)return fd;
+ long fd=a1_sc(56,-100,(long)path,0x80000,0,0,0);if(fd==-2||fd==-3){s->critical|=0x8000;return 0;}if(fd<0)return fd;
  u8 buf[768];long n=a1_sc(63,fd,(long)buf,sizeof(buf),0,0,0),closed=a1_sc(57,fd,0,0,0,0,0);
- if(closed)return closed;if(n<=0)return n<0?n:-74;if(n>=sizeof(buf))return -7;
+ if(closed)return closed;if(n==0||n==-2||n==-3){s->critical|=0x8000;return 0;}if(n<0)return n;if(n>=sizeof(buf))return -7;
  const u8 *p=buf,*end=buf+n;u64 id=0;
  if(!po_number(&p,end,&id)||id!=tid||end-p<6||p[0]!=' '||p[1]!='(')return -74;
  const u8 *name=p+2,*right=0;for(const u8 *q=name;q<end;q++)if(*q==')')right=q;
  if(!right||end-right<5||right[1]!=' '||right[3]!=' ')return -74;
- u8 state=right[2];if(state!='R'&&state!='S'&&state!='D')return -16;
+ u8 state=right[2];if(state=='Z'||state=='X'||state=='x'){s->critical|=0x8000;return 0;}
+ if(state!='R'&&state!='S'&&state!='D')return -16;
  u64 utime=0,stime=0,start=0;p=right+4;
  for(u32 field=4;field<=22;field++){
   while(p<end&&*p==' ')p++;u32 negative=p<end&&*p=='-';if(negative)p++;
@@ -74,12 +75,12 @@ done:
  for(u32 i=0;i<count;i++){
   if(ids[i]==own){own_seen++;continue;}rc=po_stat(ids[i],s);if(rc)return rc;
  }
- if(own_seen!=1||!s->count)return -74;s->hash^=po_hash(s->count);return 0;
+ if(own_seen!=1||(!s->count&&!(s->critical&0x8000)))return -74;s->hash^=po_hash(s->count);return 0;
 }
 static long s2_process_observe(u8 *page,u64 pid,u64 delay,u32 gate){
  if(!page||gate>1||delay<250000000ULL||delay>300000000000ULL||gate&&delay!=60000000000ULL||a1_sc(172,0,0,0,0,0,0)!=(long)pid)return -22;
  long tid=a1_sc(178,0,0,0,0,0,0);if(tid<=0||tid>=0x80000000L)return -22;
- u64 *h=(void*)(page+2048);for(u32 i=0;i<248;i++)h[i]=0;h[0]=PO_MAGIC;h[1]=gate?3:1;h[3]=1;
+ u64 *h=(void*)(page+2048);for(u32 i=0;i<248;i++)h[i]=0;h[0]=PO_MAGIC;h[1]=gate?4:1;h[3]=1;
  u64 now=0;long rc=po_clock(&now);if(rc)goto done;h[4]=now;
  if(now>~0ULL-delay){rc=-22;goto done;}u64 deadline=now+delay,interval=(delay+PO_RECORDS-1)/PO_RECORDS;
  struct po_sample previous={0};u32 quiet=0;
@@ -87,18 +88,19 @@ static long s2_process_observe(u8 *page,u64 pid,u64 delay,u32 gate){
   rc=po_clock(&now);if(rc)goto done;if(now>=deadline)break;
   struct po_sample s={0};rc=po_census((u64)tid,&s);if(rc)goto done;
   u64 *r=h+8+i*4;r[0]=now-h[4];r[1]=s.hash;r[2]=s.count|(u64)s.running<<16|(u64)s.blocked<<32|(u64)s.critical<<48;r[3]=s.cpu;h[2]=i+1;
-  /* Kernel thread identity/start-tick cohort, all four actual backend names,
-   * no D-state task and sleeping critical workers. CPU ticks may increase
-   * during normal polling (observed every ~3s); they are not an idle latch.
-   * This qualifies an ATTEMPT of the original preflight only. Later task
-   * creation remains possible; the real publisher still snapshots afresh. */
+  /* Kernel thread identity/start-tick cohort, required core backend names
+   * (BackupProxy + OPTION_INSTALLE), no exiting/churning thread (0x8000),
+   * no D-state task, and sleeping OPTION_INSTALLE (BackupProxy also sleeping
+   * at exit). Non-core network threads may be absent (Airplane mode) or
+   * poll cleanly if task hash/count stays constant. This qualifies an ATTEMPT
+   * of the original preflight only; the real publisher still snapshots afresh. */
   int stable=gate?
-   i&&(s.critical&~16u)==15&&(previous.critical&~16u)==15&&!s.blocked&&!previous.blocked&&s.hash==previous.hash&&s.count==previous.count:
+   i&&(s.critical&0x8045u)==5u&&(previous.critical&0x8045u)==5u&&(quiet?!(s.critical&previous.critical&16u):!((s.critical|previous.critical)&16u))&&!s.blocked&&!previous.blocked&&s.hash==previous.hash&&s.count==previous.count:
    i&&s.critical&1&&!(s.critical&0x80f0)&&!s.blocked&&s.hash==previous.hash&&s.cpu==previous.cpu&&s.critical==previous.critical;
   if(stable)quiet++;
   else quiet=0;
-  if(quiet>=(gate?10u:5u)&&(!gate||s.critical==15)&&!h[6])h[6]=now;h[7]=quiet;previous=s;
-  if(gate&&quiet>=10&&s.critical==15){rc=po_clock(&now);if(!rc&&now>=deadline)rc=-110;goto done;}
+  if(quiet>=(gate?10u:5u)&&(!gate||(s.critical&0x8055u)==5u)&&!h[6])h[6]=now;h[7]=quiet;previous=s;
+  if(gate&&quiet>=10&&(s.critical&0x8055u)==5u){rc=po_clock(&now);if(!rc&&now>=deadline)rc=-110;goto done;}
   rc=po_clock(&now);if(rc)goto done;u64 next=h[4]+(i+1)*interval;if(next>deadline)next=deadline;
   if(now<next&&!s2_sleep((long)(next-now))){rc=-4;goto done;}
  }

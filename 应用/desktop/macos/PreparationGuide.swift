@@ -5,6 +5,77 @@ private let guideInk = UI.ink
 private let guideOrange = Color(red: 1.0, green: 0.63, blue: 0.24)
 private let guidePanel = Color(red: 0.10, green: 0.15, blue: 0.20)
 
+extension PreparationRow {
+    static let defaultSteps: [PreparationRow] = [
+        PreparationRow(
+            id: "ftp_stopped",
+            title: "FTP：仅已有菜单时处理",
+            instruction: "首次解锁通常没有 FTP 菜单，这是正常情况，可直接继续。仅当机身已有此菜单且 FTP 开启时，停止传输并将 FTP 功能设为关；此前运行过 FTP 时，关闭后重启相机以释放介质占用。",
+            confirmed: false,
+            confirmation_label: "已有 FTP 菜单，已关闭并完成准备",
+            skip_label: "没有 FTP 菜单，直接继续",
+            menu_guides: [
+                MenuGuideRow(
+                    id: "ftp-off",
+                    title: "FTP功能",
+                    path: ["MENU", "网络", "传输/远程", "FTP传输功能", "FTP功能"],
+                    target: "关",
+                    choices: ["关", "开"],
+                    source_url: "",
+                    source_note: "仅已解锁机身；依据项目菜单与实机记录，不属于 A6700 原厂公开菜单。位置以机身为准。"
+                )
+            ]
+        ),
+        PreparationRow(
+            id: "camera_msc",
+            title: "设置 USB 海量存储模式",
+            instruction: "先断开 USB，在相机菜单中选择海量存储器(MSC)。若保留连接时选择，则接线后选择影像传输(MSC)。不要选择 MTP、电脑遥控或 USB 流式传输。",
+            confirmed: false,
+            confirmation_label: "已设置 MSC 模式",
+            skip_label: "",
+            menu_guides: [
+                MenuGuideRow(
+                    id: "usb-msc",
+                    title: "USB连接模式",
+                    path: ["MENU", "设置", "USB", "USB连接模式"],
+                    target: "海量存储器(MSC)",
+                    choices: ["连接时选择", "USB流式传输", "海量存储器(MSC)", "MTP", "电脑遥控"],
+                    source_url: "https://helpguide.sony.net/ilc/2320/v1/zh-cn/contents/0601_usb_connection.html",
+                    source_note: "菜单名称及选项依据 Sony A6700 简体中文帮助指南。"
+                )
+            ]
+        ),
+        PreparationRow(
+            id: "power_awake",
+            title: "关闭自动关机，确认电量",
+            instruction: "在接线前将自动关机开始时间设为关，并确认电量充足或供电可靠。不要把自动关机温度当作这个项目；操作完成后可恢复原来的省电设置。",
+            confirmed: false,
+            confirmation_label: "已关闭自动关机，电量或供电可靠",
+            skip_label: "",
+            menu_guides: [
+                MenuGuideRow(
+                    id: "power-save-off",
+                    title: "自动关机开始时间",
+                    path: ["MENU", "设置", "电源设置选项", "自动关机开始时间"],
+                    target: "关",
+                    choices: ["关", "30分钟", "5分钟", "2分钟", "1分钟", "10秒"],
+                    source_url: "https://helpguide.sony.net/ilc/2320/v1/zh-cn/contents/0601B_power_save_start_time.html",
+                    source_note: "Sony 帮助指南说明 USB 供电或连接电脑时会停用自动关机；仍提前设为关，以覆盖连接切换阶段。"
+                )
+            ]
+        ),
+        PreparationRow(
+            id: "usb_connection",
+            title: "最后连接 USB 数据线",
+            instruction: "完成上面的菜单设置后，使用可传数据的 USB 线连接相机与电脑，只连接一台目标相机。若弹出连接方式选择，选择影像传输(MSC)。日常功能管理不接 Pico 或测试板；操作期间保持相机开机。",
+            confirmed: false,
+            confirmation_label: "已连接唯一相机，保持开机与唤醒",
+            skip_label: "",
+            menu_guides: []
+        )
+    ]
+}
+
 /// Four preparation declarations with an always-visible, cropped preview of
 /// the relevant camera-screen corner. The preview is an owned illustration,
 /// not a firmware screenshot; it never changes device or preparation state.

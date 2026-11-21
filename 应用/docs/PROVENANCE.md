@@ -1,5 +1,7 @@
 # 来源与发布边界
 
+2026-11-12 的 FTP 回放守卫兼容定义来自对 SonyCameraTool 1.0.0 发布包中 `camera_pipeline/camera_tool_targets.pyc` 的静态解析。包及模块 SHA-256、项目链接和六处字段定义保存在 `data/guard-compatibility.json`。完整扇区哈希使用已核实原始 App 离线推导，发行材料保存字段定义与哈希；原厂完整扇区保留于内部证据。该静态分析未执行第三方程序，也未验证反馈机身实际内容。
+
 运行框架更新：正式包现包含独立化的 USB 模块及原参考模块／许可、macOS helper 源码和固定适配的 ARM64 读写 ELF。`usb/legacy.py` 从归集版本适配为包内相对导入，并修正多组 bulk 端点选择，增加短写拒绝、分段响应收齐、分阶段诊断和退出状态观察；归档原件仍在 `verified/`。`native/transaction.c` 为本项目新集成执行器，不是未改动的历史载荷。原生源码、设备适配和产物哈希见 `data/native/manifest.json`。
 
 自有代码已按维护者选择采用 GPL-3.0-only（仅第 3 版），见 `LICENSE` 与 `NOTICE`。第三方归属已集中列于 `THIRD_PARTY_NOTICES.md`，原 MIT 声明逐字保留。0.4.0及以前版本已有公开发行；0.4.1本地候选等待维护者审核。源码包与 wheel 均携带许可证；发布 wheel 时同时提供同版本源码包，保留原生源码、适配数据与构建脚本。

@@ -1,0 +1,9 @@
+Requires clang with AArch64 target and aarch64-elf-ld. Run in assets/.
+For boot_log and cp_exception, copy NAME.c to probe.c first (preserve the original ELF STT_FILE basename):
+clang -target aarch64-none-elf -O2 -mgeneral-regs-only -mstrict-align -fPIC -ffreestanding -fno-builtin -fno-stack-protector -c probe.c -o NAME.o
+aarch64-elf-ld -shared -Bsymbolic -z defs -z noexecstack --build-id=none -o NAME.elf NAME.o
+For runtime, copy runtime.c to reader.c first:
+clang -target aarch64-unknown-elf -fPIC -O2 -ffreestanding -fno-builtin -fno-stack-protector -c reader.c -o runtime.o
+aarch64-elf-ld -shared -Bsymbolic -z noexecstack -o runtime.elf runtime.o
+Payload SHA-256 values are in native-verification.json. Original shared helper declarations can remain unused; executed syscalls are bounded by the native verification.
+For operation_control, copy operation_control.c to probe.c and use the same two compile/link commands; operation_logger.c is the exact module source already embedded in operation_control.c.

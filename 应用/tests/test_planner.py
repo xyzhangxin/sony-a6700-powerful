@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 import tempfile
-import time
 import unittest
 from unittest.mock import patch
 
@@ -173,10 +172,7 @@ class PlannerTests(unittest.TestCase):
 
     def test_symlink_and_fifo_refused_without_opening(self):
         alias = self.directory / "alias"
-        try:
-            alias.symlink_to(self.paths["app"])
-        except OSError:
-            self.skipTest("creating symlinks needs Windows developer mode")
+        alias.symlink_to(self.paths["app"])
         with self.assertRaises(InputError):
             with LocalImage(alias, 1536):
                 self.fail("symlink accepted")
@@ -189,9 +185,6 @@ class PlannerTests(unittest.TestCase):
 
     def test_input_mutation_and_path_replacement_detected(self):
         with LocalImage(self.paths["app"], 1536) as image:
-            # Cross one NTFS timestamp tick: mutation inside the same tick as
-            # the open would legitimately keep identical mtime values.
-            time.sleep(0.02)
             with self.paths["app"].open("r+b") as f:
                 f.seek(100)
                 f.write(b"x")
@@ -201,15 +194,13 @@ class PlannerTests(unittest.TestCase):
         with LocalImage(self.paths["app"], 1536) as image:
             replacement = self.directory / "replacement"
             replacement.write_bytes(self.originals["app"])
-            try:
+            if os.name == "nt":
+                with self.assertRaises(PermissionError):
+                    replacement.replace(self.paths["app"])
+            else:
                 replacement.replace(self.paths["app"])
-            except PermissionError:
-                # Windows refuses to replace a file we hold open with a
-                # mapping: the swap cannot happen, which enforces the same
-                # no-replacement guarantee the identity guard checks below.
-                return
-            with self.assertRaises(InputError):
-                image.assert_unchanged()
+                with self.assertRaises(InputError):
+                    image.assert_unchanged()
 
     def test_v2_extension_skips_v1_and_adds_only_new_feature(self):
         installed = self.apply_to_copy(analyze(self.catalog, self.paths, "unlock"))
@@ -246,7 +237,7 @@ class PlannerTests(unittest.TestCase):
         with patch("a6700_unlock.cli.load_catalog", return_value=self.catalog):
             with patch("sys.stdout", new_callable=io.StringIO):
                 self.assertEqual(main(args), 0)
-            self.assertEqual(json.loads(output.read_text(encoding='utf-8'))["status"], "ready")
+            self.assertEqual(json.loads(output.read_text())["status"], "ready")
             first = output.read_bytes()
             with patch("sys.stderr", new_callable=io.StringIO):
                 self.assertEqual(main(args), 2)

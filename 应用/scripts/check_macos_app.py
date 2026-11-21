@@ -63,7 +63,7 @@ def check_worker(resources, physical):
                 assert state['simulation'] and not state['device_access'] and not state['write_attempted']
                 assert state['result']['status']=='completed',state['result']
                 assert state['result']['aftercare']['simulation']
-                assert len(state['result']['aftercare']['features'])==6
+                assert len(state['result']['aftercare']['features'])==7
                 assert not state['compatible'] and not state['ready']
                 send('restart_preparation');state_until(lambda s:s['phase']=='preparation')
                 send('prepare_and_inspect',acknowledged=True,prepared=True)
@@ -73,9 +73,29 @@ def check_worker(resources, physical):
                 state=state_until(lambda s:not s['busy'] and s['result'] is not None)
                 assert state['result']['status']=='restored',state['result']
                 assert state['result']['success'] and state['backups']
+                send('restart_preparation');state_until(lambda s:s['phase']=='preparation')
+                send('prepare_and_inspect',acknowledged=True,prepared=True)
+                state_until(lambda s:not s['busy'] and s['phase']=='home')
+                send('select',mode='missing');state_until(lambda s:all(row['selected'] for row in s['features'] if row.get('available',True)))
+                send('unlock');state=state_until(lambda s:not s['busy'] and s['result'] is not None)
+                assert state['result']['status']=='completed',state['result']
+                send('restart_preparation');state_until(lambda s:s['phase']=='preparation')
+                send('prepare_and_inspect',acknowledged=True,prepared=True)
+                state_until(lambda s:not s['busy'] and s['phase']=='home')
+                send('select',mode='enabled');state_until(lambda s:all(row['selected'] for row in s['features'] if row.get('available',True)))
+                send('close');state=state_until(lambda s:not s['busy'] and s['result'] is not None)
+                assert state['result']['status']=='completed',state['result']
+                assert not any(row['state']=='enabled' for row in state['features']),state['features']
                 send('restart_preparation')
                 state=state_until(lambda s:s['phase']=='preparation')
                 assert not state['ready'] and not state['compatible'] and not state['features']
+            else:
+                assert state['usage'] == {'enabled': True, 'queued': 0}, state['usage']
+                assert state['automatic_failure_feedback'] is True, state
+                assert (resources / 'helpers/app-update-installer').is_file()
+                assert (resources / 'app-update-public-key.txt').is_file()
+                for wav in ('coin.wav', 'slap.wav', 'duck.wav', 'beep.wav'):
+                    assert (resources / '默认音频' / wav).is_file(), wav
             return dict(mode='physical-environment-only' if physical else 'simulation-merged-preparation-backup-restore',
                         ready=state['environment']['ready'],device_access=state['device_access'],
                         write_attempted=state['write_attempted'])

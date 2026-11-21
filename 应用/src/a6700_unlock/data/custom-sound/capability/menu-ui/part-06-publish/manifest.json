@@ -1,0 +1,79 @@
+{
+  "devices": [
+    "/dev/nflasha15",
+    "/dev/nflasha5",
+    "/dev/nflasha8"
+  ],
+  "entries": [
+    {
+      "index": 0,
+      "device": 0,
+      "device_offset": 234256896,
+      "absolute_sector": 2284349,
+      "role": "page-count+page-entry",
+      "mask_hex": "0000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000031e000000000000000000000000",
+      "unmanaged_sha256": "6fcfe2231cacb2d7820a522f8621c0ec1557574e73632bbc5ba0612c0202dc00",
+      "before_sha256": "6d37e8348ea287ce19005d226fa370f1824e68d96ca8bcafdcfa0b06c938db0f",
+      "after_sha256": "f8bf6f377e02ab39aeaa8ebb368140fc338b9a2e597bdf9b3b030a8e4d31a19b",
+      "edits": [
+        {
+          "offset": 224,
+          "disabled": "07",
+          "enabled": "08"
+        },
+        {
+          "offset": 400,
+          "disabled": "0000",
+          "enabled": "d723"
+        },
+        {
+          "offset": 409,
+          "disabled": "00000000",
+          "enabled": "60de777f"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "device": 1,
+      "device_offset": 71871488,
+      "absolute_sector": 408662,
+      "role": "page-count+page-entry",
+      "mask_hex": "0000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000031e000000000000000000000000",
+      "unmanaged_sha256": "efc16bc096fb5c07d212481bacb6e68fc9887b4ef11ce0a707bed76f8c2d1b4d",
+      "before_sha256": "f07b6594acb053d1fcbc41ac86642ef6a5c805c36653d772fa3ec8ea030501d1",
+      "after_sha256": "ba7a4ce205364935a2a867819177e6601e45a7cbf04b626f6062fc73700744ff",
+      "edits": [
+        {
+          "offset": 224,
+          "disabled": "07",
+          "enabled": "08"
+        },
+        {
+          "offset": 400,
+          "disabled": "0000",
+          "enabled": "d723"
+        },
+        {
+          "offset": 409,
+          "disabled": "00000000",
+          "enabled": "60de777f"
+        }
+      ]
+    }
+  ],
+  "sector_count": 2,
+  "before_sha256": "a9a24e56a2b9d7a5b08e1ed350fa6b6e84c9f308dd5080bc08b0d260f9277995",
+  "after_sha256": "836c4e6f63d729921c18126cfc60bf96d5c98d4c44b260196b5be26ec47446d6",
+  "part": "part-06-publish",
+  "row_address": "0x3781000",
+  "camera_access": false,
+  "installable": true,
+  "profile_sha256": "5497ca510fa5fb4365f4b6d05036b10732c5a138824c7fa08e8075faa458565b",
+  "files": {
+    "profile.h": "a00921107c6dfb7f53c4b77cf2c4ac5a4246c575954cde4c630340c5796e8470",
+    "transaction.c": "53cd3393c07dfdb7a219cf73906862ac389df9d853a90d762deec777c0e37e82",
+    "reader.elf": "f531ad3671bc72512bf983bb80139dfbe432e4bb26c6939f6e6821085ae708bf",
+    "writer.elf": "5e9c0d3503a2c4a286f3d72a529709a4815af2649b5f3749fef223e476f189a4"
+  }
+}

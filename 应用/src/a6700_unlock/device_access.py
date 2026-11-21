@@ -50,12 +50,15 @@ class UsbDeviceAccess:
         # Existing backends return themselves; preserve that contract.
         return self.backend if result is None else result
 
-    def release_access(self):
+    def release_access(self, *, send_stop=True):
         """Close only a successfully opened transport; never retry authentication."""
         backend, self.backend = self.backend, None
         entered, self.entered = self.entered, False
         self.prepared = False
         if backend is not None and entered:
-            backend.__exit__(None, None, None)
+            if send_stop:
+                backend.__exit__(None, None, None)
+            else:
+                backend.abandon_transport()
         return dict(cleanup_status=getattr(backend, "cleanup_status", None) if backend is not None else None,
                     cleanup_warning=getattr(backend, "cleanup_warning", None) if backend is not None else None)

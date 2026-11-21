@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "kind": "ftp-migration-to-public-042",
+  "profile_sha256": "02c6e09ac3a736e98a29487d1aa883444d1e21861271af2ff004f5a1da3b2a7c",
+  "catalog_sha256": "9e8662a03783d2a783fb29b72d945c7b7bbdefd329d17013585ec4f70a427c90",
+  "generic_profile_sha256": "c2860f5a1687d0190ac74d9500b971fa8301ff12784c7c567cee0d5c20a056fb",
+  "selected_features": [
+    "ftp",
+    "ftp-custom-key-matrix",
+    "ftp-third-party-repair"
+  ],
+  "repair_bytes": 7,
+  "matrix_bytes": 134,
+  "files": {
+    "catalog.json": "3521f67928f0217f835e21a80d39ac287cde6204bb4053e9c3b31914b2650866",
+    "generic-catalog.json": "8ab4a7c7875a71e1be90b1d6d12a36adab274734150a7cac836afc19ab1c5d6d",
+    "generic-guard-volatile.json": "597970dc942c69a36ce468962925dc90290f39161aca117ae20bb41f5ca1aad7",
+    "generic-profile.json": "e795a2e42d54320b198c61e5baeb927d3ae9572d52265277ad9ddcc8928c8dc4",
+    "native/manifest.json": "ba59db7d4c97452e2e63e71beede1ae36f3e492c4118a7f505947e30559a22b3",
+    "native/profile.h": "ed08745bef79b771bdf1ebea8b1eb1ccff1222144b614d32b9b45b8b22db2221",
+    "native/reader.elf": "aa48927b5158d7cf94b0f540441dd6fdc820a479fbe413f5994e69186fe3ac43",
+    "native/transaction.c": "53cd3393c07dfdb7a219cf73906862ac389df9d853a90d762deec777c0e37e82",
+    "native/writer.elf": "ac2a94cb948f3f47e12c37e4017604162d1aebe38a9c128aab0e0788192c8cde",
+    "profile.json": "25704af9574f00c3a694bdea792b08cfe7a951301b89da8b065edeeb1586a577"
+  }
+}

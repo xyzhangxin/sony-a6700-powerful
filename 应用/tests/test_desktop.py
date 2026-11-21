@@ -170,19 +170,19 @@ class DesktopTests(unittest.TestCase):
         self.assertIsNotNone(state['inspect_summary'])
         self.assertEqual(state['inspect_summary']['read_sectors'], len(self.controller.service.profile.entries))
         self.assertEqual({row['id']: row['selected'] for row in state['features']},
-                         {'ftp': True, 'shutter': True, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True, 'creative_look_names': True})
+                         {'ftp': True, 'shutter': True, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True, 'creative_look_names': True, 'custom_shutter_sound': True})
         state = self.controller.acknowledge_check()
         self.assertIsNone(state['inspect_summary'])
         self.assertEqual(state['phase'], 'home')
         self.inspect('enabled')
         self.controller.acknowledge_check()
         self.assertEqual({row['id']: row['selected'] for row in self.controller.snapshot()['features']},
-                         {'ftp': False, 'shutter': False, 'exposure': False, 'sound': False, 'pixel_shift': False, 'dynamic_active': False, 'fl23': False, 'creative_look_names': False})
+                         {'ftp': False, 'shutter': False, 'exposure': False, 'sound': False, 'pixel_shift': False, 'dynamic_active': False, 'fl23': False, 'creative_look_names': False, 'custom_shutter_sound': False})
 
     def test_close_unlock_and_repeat_reuse_real_transaction_and_planner(self):
         state = self.inspect()
         self.assertEqual({row['id']: row['selected'] for row in state['features']},
-                         {'ftp': False, 'shutter': False, 'exposure': False, 'sound': False, 'pixel_shift': False, 'dynamic_active': False, 'fl23': False, 'creative_look_names': False})
+                         {'ftp': False, 'shutter': False, 'exposure': False, 'sound': False, 'pixel_shift': False, 'dynamic_active': False, 'fl23': False, 'creative_look_names': False, 'custom_shutter_sound': False})
         self.controller.acknowledge_check()
         self.controller.select_features('all')
         self.assertEqual(self.controller.operate('close')['result']['status'], 'completed')
@@ -196,9 +196,9 @@ class DesktopTests(unittest.TestCase):
 
     def test_partial_state_only_completes_missing_synthetic_fields(self):
         state = self.inspect('partial')
-        self.assertEqual({f['id']: f['state'] for f in state['features']}, {'ftp': 'enabled', 'shutter': 'disabled', 'exposure': 'disabled', 'sound': 'disabled', 'pixel_shift': 'disabled', 'dynamic_active': 'disabled', 'fl23': 'disabled', 'creative_look_names': 'disabled'})
+        self.assertEqual({f['id']: f['state'] for f in state['features']}, {'ftp': 'enabled', 'shutter': 'disabled', 'exposure': 'disabled', 'sound': 'disabled', 'pixel_shift': 'disabled', 'dynamic_active': 'disabled', 'fl23': 'disabled', 'creative_look_names': 'disabled', 'custom_shutter_sound': 'disabled'})
         self.controller.operate('unlock')
-        self.assertEqual(self.controller.last_report['plan']['changed_bytes'], 10)
+        self.assertEqual(self.controller.last_report['plan']['changed_bytes'], 12)
 
     def test_success_stays_on_result_and_requires_fresh_preparation_and_inspection(self):
         self.inspect('original')
@@ -234,8 +234,8 @@ class DesktopTests(unittest.TestCase):
         self.controller.select_features('all')
         guide = self.controller.operate('unlock')['result']['aftercare']
         checks = {row['id']: row for row in guide['features']}
-        self.assertEqual(set(checks), {'ftp', 'shutter', 'exposure', 'sound', 'fl23', 'creative_look_names'})
-        self.assertEqual(list(checks), ['ftp', 'shutter', 'exposure', 'sound', 'fl23', 'creative_look_names'])
+        self.assertEqual(set(checks), {'ftp', 'shutter', 'exposure', 'sound', 'fl23', 'creative_look_names', 'custom_shutter_sound'})
+        self.assertEqual(list(checks), ['ftp', 'shutter', 'exposure', 'sound', 'fl23', 'creative_look_names', 'custom_shutter_sound'])
         self.assertIn('未重复写入', checks['ftp']['outcome'])
         self.assertIn('回读通过', checks['sound']['outcome'])
         self.resume()
@@ -332,7 +332,7 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(state['result']['status'], 'restored')
         self.assertTrue(state['result']['success'])
         self.assertEqual({row['id']: row['state'] for row in state['features']},
-                         {'ftp': 'disabled', 'shutter': 'disabled', 'exposure': 'disabled', 'sound': 'disabled', 'pixel_shift': 'disabled', 'dynamic_active': 'disabled', 'fl23': 'disabled', 'creative_look_names': 'disabled'})
+                         {'ftp': 'disabled', 'shutter': 'disabled', 'exposure': 'disabled', 'sound': 'disabled', 'pixel_shift': 'disabled', 'dynamic_active': 'disabled', 'fl23': 'disabled', 'creative_look_names': 'disabled', 'custom_shutter_sound': 'disabled'})
         self.assertEqual(self.controller.last_report['backup_id'], backup_id)
         self.assertFalse(self.controller.last_report['device_access'])
         self.assertFalse(self.controller.last_report['write_attempted'])
@@ -342,28 +342,28 @@ class DesktopTests(unittest.TestCase):
         self.inspect('original')
         state = self.controller.snapshot()
         self.assertEqual({row['id']: row['selected'] for row in state['features']},
-                         {'ftp': True, 'shutter': True, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True, 'creative_look_names': True})
+                         {'ftp': True, 'shutter': True, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True, 'creative_look_names': True, 'custom_shutter_sound': True})
         state = self.controller.select_features('none')
         self.assertEqual({row['id']: row['selected'] for row in state['features']},
-                         {'ftp': False, 'shutter': False, 'exposure': False, 'sound': False, 'pixel_shift': False, 'dynamic_active': False, 'fl23': False, 'creative_look_names': False})
+                         {'ftp': False, 'shutter': False, 'exposure': False, 'sound': False, 'pixel_shift': False, 'dynamic_active': False, 'fl23': False, 'creative_look_names': False, 'custom_shutter_sound': False})
         with self.assertRaises(ValueError):
             self.controller.reserve('unlock')
         state = self.controller.select_features('missing')
         self.assertEqual({row['id']: row['selected'] for row in state['features']},
-                         {'ftp': True, 'shutter': True, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True, 'creative_look_names': True})
+                         {'ftp': True, 'shutter': True, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True, 'creative_look_names': True, 'custom_shutter_sound': True})
         state = self.controller.set_feature_selection('shutter', False)
         self.assertEqual({row['id']: row['selected'] for row in state['features']},
-                         {'ftp': True, 'shutter': False, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True, 'creative_look_names': True})
+                         {'ftp': True, 'shutter': False, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True, 'creative_look_names': True, 'custom_shutter_sound': True})
         result = self.controller.operate('unlock')
         self.assertEqual(result['result']['status'], 'completed')
         self.assertEqual(result['result']['success'], True)
         self.assertEqual({row['id']: row['state'] for row in result['features']},
-                         {'ftp': 'enabled', 'shutter': 'disabled', 'exposure': 'enabled', 'sound': 'enabled', 'pixel_shift': 'disabled', 'dynamic_active': 'disabled', 'fl23': 'enabled', 'creative_look_names': 'enabled'})
-        self.assertEqual(self.controller.last_report['plan']['selected_features'], ['ftp', 'exposure', 'sound', 'fl23', 'creative_look_names'])
+                         {'ftp': 'enabled', 'shutter': 'disabled', 'exposure': 'enabled', 'sound': 'enabled', 'pixel_shift': 'disabled', 'dynamic_active': 'disabled', 'fl23': 'enabled', 'creative_look_names': 'enabled', 'custom_shutter_sound': 'enabled'})
+        self.assertEqual(self.controller.last_report['plan']['selected_features'], ['ftp', 'exposure', 'sound', 'fl23', 'creative_look_names', 'custom_shutter_sound'])
         self.resume()
         self.controller.select_features('all')
         self.assertEqual({row['id']: row['selected'] for row in self.controller.snapshot()['features']},
-                         {'ftp': True, 'shutter': True, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True, 'creative_look_names': True})
+                         {'ftp': True, 'shutter': True, 'exposure': True, 'sound': True, 'pixel_shift': False, 'dynamic_active': False, 'fl23': True, 'creative_look_names': True, 'custom_shutter_sound': True})
 
     def test_restore_selection_only_restores_selected_features(self):
         self.inspect('original')
@@ -377,7 +377,7 @@ class DesktopTests(unittest.TestCase):
         state = self.controller.operate('restore', backup_id=backup_id)
         self.assertEqual(state['result']['status'], 'restored')
         self.assertEqual({row['id']: row['state'] for row in state['features']},
-                         {'ftp': 'disabled', 'shutter': 'enabled', 'exposure': 'enabled', 'sound': 'enabled', 'pixel_shift': 'disabled', 'dynamic_active': 'disabled', 'fl23': 'enabled', 'creative_look_names': 'enabled'})
+                         {'ftp': 'disabled', 'shutter': 'enabled', 'exposure': 'enabled', 'sound': 'enabled', 'pixel_shift': 'disabled', 'dynamic_active': 'disabled', 'fl23': 'enabled', 'creative_look_names': 'enabled', 'custom_shutter_sound': 'enabled'})
         self.assertEqual(self.controller.last_report['plan']['selected_features'], ['ftp'])
 
     def test_parked_features_cannot_be_selected_or_injected(self):
@@ -419,19 +419,22 @@ class DesktopTests(unittest.TestCase):
         # The desktop client reads the worker pipe as UTF-8; Windows consoles
         # default to the ANSI code page, which cannot encode the Chinese UI.
         env['PYTHONIOENCODING'] = 'utf-8'
-        commands = [dict(command='reset', scenario='partial'), dict(command='acknowledge', value=True), dict(command='prepare')]
+        commands = [dict(command='reset', scenario='partial', api_version=1, request_id='req-reset'), dict(command='acknowledge', value=True), dict(command='prepare')]
         commands += [dict(command='confirm', id=ident, value=True) for ident in STEP_IDS]
         commands += [dict(command='real-write', backend='usb', path='/dev/nflasha5')]
         result = subprocess.run([sys.executable, '-m', 'a6700_unlock.desktop.bridge'],
             input=''.join(json.dumps(command)+'\n' for command in commands),
-            env=env, cwd=self.temp.name, capture_output=True, text=True,
-            encoding='utf-8', timeout=15)
+            env=env, cwd=self.temp.name, capture_output=True, text=True, encoding='utf-8', timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr)
         messages = [json.loads(line) for line in result.stdout.splitlines()]
         states = [event['state'] for event in messages if event['type'] == 'state']
         self.assertTrue(states[-1]['ready'])
         self.assertTrue(all(not state['device_access'] and not state['write_attempted'] for state in states))
         self.assertEqual(messages[-1]['type'], 'error')
+        self.assertTrue(all(message['api_version'] == 1 for message in messages))
+        correlated = next(message for message in messages if message.get('request_id') == 'req-reset')
+        self.assertEqual(correlated['state']['operation_id'], correlated['operation_id'])
+        self.assertEqual(correlated['state']['core_version'], a6700_unlock.__version__)
 
     def test_json_worker_remains_responsive_to_cancel_during_progress(self):
         env = dict(os.environ, PYTHONPATH=str(Path(a6700_unlock.__file__).resolve().parent.parent),
@@ -791,6 +794,69 @@ class PhysicalDesktopTests(unittest.TestCase):
         with lock_path.open('a+') as file:
             lock_file(file)
 
+    def test_disconnect_camera_releases_session_and_requires_fresh_inspection(self):
+        controller = self.physical_controller()
+        self.prepare(controller)
+        controller.reserve('inspect')
+        with self.assertRaises(ValueError):
+            controller.disconnect_camera()
+        self.assertTrue(controller.run_reserved()['connected'])
+        backend = controller.service._session_backend
+        with patch('a6700_unlock.usb.legacy.normal_mode_observed', side_effect=lambda: backend.closed):
+            state = controller.disconnect_camera()
+        self.assertTrue(backend.closed)
+        self.assertIsNone(controller.service._session_lock)
+        self.assertEqual(state['camera_disconnect']['cleanup_status'], 'msc-observed')
+        self.assertFalse(state['connected'])
+        self.assertFalse(state['compatible'])
+        self.assertEqual(state['phase'], 'preparation')
+        with self.assertRaises(ValueError):
+            controller.reserve('unlock')
+        controller.prepare_and_reserve(True, True)
+        self.assertIsNone(controller.run_reserved()['camera_disconnect'])
+
+    def test_disconnect_camera_preserves_result_when_msc_is_unconfirmed(self):
+        controller = self.physical_controller()
+        self.prepare(controller)
+        controller.operate('inspect')
+        result = controller.operate('unlock')['result']
+        self.assertTrue(result['success'])
+        with patch('a6700_unlock.usb.legacy.normal_mode_observed', return_value=False):
+            state = controller.disconnect_camera()
+        self.assertEqual(state['camera_disconnect']['cleanup_status'], 'unconfirmed')
+        self.assertTrue(state['camera_disconnect']['cleanup_warning'])
+        self.assertEqual(state['phase'], 'result')
+        self.assertEqual(state['result'], result)
+
+    def test_operation_logger_start_reuses_authenticated_backend(self):
+        controller = self.physical_controller()
+        self.prepare(controller)
+        result = controller.service.perform('inspect')
+        self.assertEqual(result['status'], 'inspected')
+        backend = self.backend
+        recorder = dict(operation_id='operation', nonce='00' * 16)
+        with patch('a6700_unlock.diagnostics.start_operation_log', return_value=recorder) as start:
+            observed = controller.service.start_operation_log('operation', lambda _: None)
+        self.assertIs(observed, recorder)
+        self.assertIs(start.call_args.kwargs['backend'], backend)
+        self.assertIs(self.backend, backend)
+        self.assertFalse(backend.closed)
+        controller.service.close_session()
+
+    def test_operation_logger_start_failure_closes_only_failed_session_and_allows_reconnect(self):
+        controller = self.physical_controller()
+        self.prepare(controller)
+        self.assertEqual(controller.service.perform('inspect')['status'], 'inspected')
+        first = self.backend
+        with patch('a6700_unlock.diagnostics.start_operation_log', side_effect=RuntimeError('synthetic start failure')):
+            with self.assertRaisesRegex(RuntimeError, 'synthetic start failure'):
+                controller.service.start_operation_log('operation', lambda _: None)
+        self.assertTrue(first.closed)
+        self.assertIsNone(controller.service._session_backend)
+        self.assertIsNone(controller.service._session_lock)
+        self.assertEqual(controller.service.perform('inspect')['status'], 'inspected')
+        self.assertIsNot(self.backend, first)
+
     def test_busy_lock_prevents_capture_and_authentication(self):
         lock_path = self.directory / 'host/.assistant.lock'
         lock_path.parent.mkdir(parents=True)
@@ -855,6 +921,134 @@ class PhysicalDesktopTests(unittest.TestCase):
         state = controller.snapshot()
         self.assertEqual(state['scenarios'], [])
         self.assertFalse(state['simulation'])
+
+    def test_custom_sound_status_is_split_in_controller_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller = DesktopController(Path(directory), environment_provider=lambda: ENV)
+            controller.reset('original')
+            self.assertIsNone(controller.snapshot()['custom_sound'])
+            controller.check_environment()
+            controller.acknowledge_notice(True)
+            controller.begin_preparation()
+            for ident in STEP_IDS:
+                controller.confirm(ident, True)
+            fresh_home = controller.operate('inspect')
+            self.assertEqual(fresh_home['custom_sound']['state'], 'disabled')
+            self.assertFalse(fresh_home['custom_sound']['installable'])
+
+            controller.reset('enabled')
+            controller.check_environment()
+            controller.acknowledge_notice(True)
+            controller.begin_preparation()
+            for ident in STEP_IDS:
+                controller.confirm(ident, True)
+            enabled_home = controller.operate('inspect')
+            self.assertEqual(enabled_home['custom_sound']['state'], 'enabled')
+            self.assertEqual(enabled_home['custom_sound']['requires'], ['sound'])
+
+            restarted = controller.restart_preparation()
+            self.assertIsNone(restarted['custom_sound'])
+
+    def test_custom_shutter_sound_unlock_resolves_sound_and_partial_close_preserves_sound(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller = DesktopController(Path(directory), environment_provider=lambda: ENV)
+            controller.reset('original')
+            controller.check_environment()
+            controller.acknowledge_notice(True)
+            controller.begin_preparation()
+            for ident in STEP_IDS:
+                controller.confirm(ident, True)
+            controller.operate('inspect')
+            controller.select_features('none')
+            controller.set_feature_selection('custom_shutter_sound', True)
+            unlocked = controller.operate('unlock')
+            self.assertEqual(unlocked['result']['status'], 'completed')
+            self.assertEqual(unlocked['features'][3]['id'], 'sound')
+            states = {r['id']: r['state'] for r in unlocked['features']}
+            self.assertEqual(states['sound'], 'enabled')
+            self.assertEqual(states['custom_shutter_sound'], 'enabled')
+
+            controller.restart_preparation()
+            controller.confirm_preparation(True)
+            controller.operate('inspect')
+            controller.select_features('none')
+            controller.set_feature_selection('custom_shutter_sound', True)
+            closed = controller.operate('close')
+            self.assertEqual(closed['result']['status'], 'completed')
+            closed_states = {r['id']: r['state'] for r in closed['features']}
+            self.assertEqual(closed_states['custom_shutter_sound'], 'disabled')
+            self.assertEqual(closed_states['sound'], 'enabled')
+
+    def test_physical_custom_sound_rows_and_standalone_sound_close_guard(self):
+        from a6700_unlock.desktop.physical import _build_custom_sound_row
+        verified = _build_custom_sound_row(
+            frozenset(),
+            dict(status='inspected', plan=dict(features=[dict(id='custom_shutter_sound', state='enabled')]),
+                 custom_sound_runtime=dict(status='verified')),
+            installable=True,
+        )
+        self.assertEqual(verified['state'], 'enabled')
+        pkg_error = _build_custom_sound_row(
+            frozenset(),
+            dict(status='inspected',
+                 plan=dict(features=[dict(id='custom_shutter_sound', state='error', reason='自定义状态异常')]),
+                 custom_sound_reason='自定义状态异常'),
+            installable=True,
+        )
+        self.assertEqual(pkg_error['state'], 'error')
+        self.assertIn('自定义状态异常', pkg_error['reason'])
+
+        controller = self.physical_controller()
+        from copy import deepcopy
+        from a6700_unlock.catalog import Catalog
+        from a6700_unlock.device_profile import DeviceProfile
+        base_profile = controller.service.profile
+        cat_data = deepcopy(base_profile.catalog.data)
+        for row in cat_data['features']:
+            if row['id'] == 'a':
+                row['id'] = 'sound'
+                row['name'] = '电子快门声音'
+        for row in cat_data['edits']:
+            if row['feature'] == 'a':
+                row['feature'] = 'sound'
+        sound_catalog = Catalog.from_dict(cat_data)
+        prof_data = deepcopy(base_profile.data)
+        prof_data['catalog_sha256'] = sound_catalog.digest
+        sound_profile = DeviceProfile.from_dict(prof_data, sound_catalog)
+        controller.service.profile = sound_profile
+        controller.service.fl23_available = True
+        controller.service.names_available = True
+        controller.service.custom_sound_available = True
+        controller.service._refresh_adapter_set()
+        self.prepare(controller)
+        inspect_calls = []
+
+        def fake_perform(backend, action, directory, progress, features=None, validate_close=False):
+            inspect_calls.append(action)
+            return dict(
+                status='inspected', verified=False, write_attempted=False,
+                run_directory=str(directory / 'pkg-inspect'),
+                plan=dict(compatible=True, features=[
+                    dict(id='fl23', name='FL2／FL3 创意外观', state='enabled', available=True),
+                    dict(id='creative_look_names', name='创意外观中文名称', state='enabled', available=True),
+                    dict(id='custom_shutter_sound', name='自定义快门声', state='enabled', available=True),
+                ]),
+                custom_sound_runtime=dict(status='verified'),
+                close_ready=True,
+            )
+
+        with patch('a6700_unlock.fl23_package.perform', side_effect=fake_perform):
+            controller.operate('inspect')
+            backend = controller.service._session_backend
+            backend._command = lambda *args, **kwargs: None
+            controller.select_features('none')
+            controller.set_feature_selection('sound', True)
+            blocked = controller.operate('close')
+        self.assertEqual(blocked['result']['status'], 'close-preparation-required')
+        self.assertFalse(blocked['result']['success'])
+        self.assertFalse(blocked['write_attempted'])
+        self.assertIn('自定义快门声', blocked['result']['error'])
+        self.assertTrue(backend.closed)
 
 
 if __name__ == '__main__':

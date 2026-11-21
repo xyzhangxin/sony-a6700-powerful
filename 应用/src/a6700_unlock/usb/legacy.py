@@ -189,6 +189,8 @@ def reset_libusb_backend():
     global _session_backend, _session_library
     _session_backend = None
     _session_library = None
+    if getattr(libusb1, "_lib_object", None) is not None:
+        libusb1._lib_object = None
 
 
 def get_libusb_backend(*, fresh=False):
@@ -201,6 +203,8 @@ def get_libusb_backend(*, fresh=False):
         # Replacing this reference lets the old backend live as long as any
         # PyUSB device still needs it. Its own finalizer closes it exactly once.
         lib = getattr(backend, "lib", None)
+        if getattr(libusb1, "_lib_object", None) is backend:
+            libusb1._lib_object = None
         _session_backend = _OwnedLibUSB(lib) if lib is not None else backend
         _session_library = library
     return _session_backend if _session_library == library else backend
@@ -557,6 +561,8 @@ class SenserChannel:
         self.sequence = 1
 
     def send(self, pfunc: int, body: bytes) -> tuple[int, bytes]:
+        if not 1 <= self.sequence <= 0xffff:
+            raise ProbeError("Senser sequence exhausted; close the session without retrying this request")
         if len(body) > SENSER_MAX_SIZE:
             raise ProbeError("this probe only sends single Senser packets")
         header = struct.pack(
@@ -634,7 +640,9 @@ def run_authentication(
             # Only wait for absence; ambiguity and other errors are immediate.
             if not str(exc).startswith("no Sony MSC device") or time.monotonic() >= deadline:
                 raise
-            time.sleep(0.25)
+            time.sleep(1.0)
+            if sys.platform == 'darwin':
+                get_libusb_backend(fresh=True)
     initial_pid = initial_device.idProduct
     print(f"initial Sony device: 0x{initial_pid:04x}")
 

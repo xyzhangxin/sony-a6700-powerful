@@ -34,7 +34,7 @@ def build_workflow(action, restart_steps, checks, changed_ids, restart_required=
         if step["id"] == "on":
             item["emits"] = "camera_power_on_confirmed"
         steps.append(item)
-    if "fl23" in changed_ids and action == "unlock":
+    if (changed_ids & {"fl23", "creative_look_names", "custom_shutter_sound"}) and action == "unlock":
         steps.append(dict(
             id="fl23_ready", type="wait_for_ready", phase="ready",
             anchor="camera_power_on_confirmed", evidence="user_attestation",

@@ -64,17 +64,28 @@ def main():
                 continue
             if path.is_file() and path.suffix in suffixes:
                 paths.append(path)
+    paths.extend(ROOT / 'desktop/macos/默认音频' / name
+                 for name in ('coin.wav', 'slap.wav', 'duck.wav', 'beep.wav'))
     for path in paths:
         if path.is_symlink() or not path.is_file():
             raise RuntimeError('Source must be a regular file: ' + str(path.relative_to(ROOT)))
-        if path.suffix == '.exe' and path != ROOT/'desktop/windows/driver/wdi-simple.exe':
+        if path.suffix == '.exe' and path != ROOT / 'desktop/windows/driver/wdi-simple.exe':
             raise RuntimeError('Unexpected Windows executable resource')
         validate_public_file(path, path.relative_to(ROOT))
-        if path.suffix == '.elf' and path.parent != ROOT / 'src/a6700_unlock/data/native':
+        migration_payload = (path.parent == ROOT/'src/a6700_unlock/data/ftp-migration/native'
+                             and path.name in ('reader.elf', 'writer.elf'))
+        binding_payload = (path.parent == ROOT/'src/a6700_unlock/data/native/custom-sound-binding'
+                           and path.name == 'probe.elf')
+        menu_ui_payload = (path.parent.parent == ROOT/'src/a6700_unlock/data/custom-sound/capability/menu-ui'
+                           and path.name in ('reader.elf', 'writer.elf'))
+        if path.suffix == '.elf' and path.parent != ROOT / 'src/a6700_unlock/data/native' and not (
+                migration_payload or binding_payload or menu_ui_payload):
             if path.parent!=ROOT/'src/a6700_unlock/data/fl23' or path.name not in ('reader.elf','writer.elf','files.elf'):
-                raise RuntimeError('Unexpected executable resource')
+                if path.parent!=ROOT/'src/a6700_unlock/data/diagnostics' or path.name not in ('boot_log.elf','cp_exception.elf','runtime.elf','operation_control.elf'):
+                        if path.parent!=ROOT/'src/a6700_unlock/data/custom-sound' or path.name!='custom-sound-writer.elf':
+                            raise RuntimeError('Unexpected executable resource')
         if path.suffix=='.bin' and path not in {ROOT/'src/a6700_unlock/data/fl23/carrier.bin',
-                ROOT/'src/a6700_unlock/data/fl23/variants/2/carrier.bin',ROOT/'src/a6700_unlock/data/fl23/variants/3/carrier.bin'}:
+                *(ROOT/'src/a6700_unlock/data/fl23/variants'/str(f)/'carrier.bin' for f in range(2,8))}:
             raise RuntimeError('Unexpected binary resource')
     args.output_dir.mkdir(parents=True, exist_ok=True)
     destination = args.output_dir / f'a6700-unlock-{__version__}-source.zip'

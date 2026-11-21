@@ -6,11 +6,12 @@ import tempfile
 from threading import Event
 import unittest
 from unittest.mock import Mock, patch
+from urllib.error import HTTPError
 import uuid
 import zipfile
 
 from a6700_unlock.desktop.controller import DesktopController
-from a6700_unlock.failure_feedback import operation_failure, FailureTrace, build_failure_archive
+from a6700_unlock.failure_feedback import build_failure_archive, failure_details, operation_failure, FailureTrace
 from a6700_unlock.feedback import auto_failure_enabled, build_feedback, set_auto_failure_enabled, upload_feedback
 
 
@@ -70,14 +71,16 @@ class AppSupportTests(unittest.TestCase):
             controller.prepare_and_reserve(True, True)
             reserved = controller.snapshot()
             issues = [
-                dict(kind='sector-guard-mismatch', role='guard', device='/private/location', offset=174735),
-                dict(kind='sector-guard-mismatch', role='target'),
+                dict(kind='sector-guard-mismatch', role='guard', index=0, device='/private/location', offset=174735,
+                     superblock_difference='runtime_fields_only', actual_sha256='f' * 64),
+                dict(kind='sector-guard-mismatch', role='target', index=67),
                 dict(kind='unknown-field', edit_id='private-field', actual='deadbeef'),
                 dict(kind='unknown-field', edit_id='repeat'),
                 dict(kind='unreviewed', actual='secret'),
             ]
             outcome = dict(status='blocked', device_access=True, write_attempted=False,
-                           verified=False, plan=dict(compatible=False, issues=issues))
+                           settings_write_attempted=False, verified=False,
+                           plan=dict(compatible=False, issues=issues, profile_sha256='a' * 64))
             trace = FailureTrace()
             with patch('a6700_unlock.failure_feedback.sys.platform', 'win32'), \
                     patch('a6700_unlock.failure_feedback.platform.win32_ver',
@@ -89,15 +92,40 @@ class AppSupportTests(unittest.TestCase):
             self.assertFalse(state['compatible'])
             self.assertFalse(state['write_attempted'])
             self.assertIn('本次未写入', state['result']['detail'])
-            diagnostic = build_feedback(trace.report(state))['diagnostic']
+            report = trace.report(state, outcome)
+            diagnostic = build_feedback(report)['diagnostic']
             self.assertEqual(diagnostic['stage_id'], 'inspect')
             self.assertEqual(diagnostic['error_code'], 'guard_mismatch')
             self.assertEqual([event['step_id'] for event in diagnostic['events'] if
                               event['step_id'].startswith(('windows_', 'compatibility_'))],
                              ['windows_10.0.19045', 'compatibility_structure',
                               'compatibility_target-content', 'compatibility_unknown-feature-state'])
-            for private in ('/private/location', '174735', 'private-field', 'deadbeef', 'secret'):
+            steps = {event['step_id'] for event in diagnostic['events']}
+            self.assertTrue({'check_guard_0', 'check_target_67', 'superblock_runtime_fields_only',
+                             'settings_write_attempted_no'} <= steps)
+            files = failure_details(report, outcome, state)
+            self.assertEqual(files['plan.json']['issues'][0], dict(
+                kind='sector-guard-mismatch', check_index=0, role='guard',
+                superblock_difference='runtime_fields_only'))
+            self.assertEqual(files['plan.json']['profile_sha256'], 'a' * 64)
+            archive = build_failure_archive(report, files)
+            self.assertEqual(archive, build_failure_archive(report, files))
+            for private in ('/private/location', '174735', 'private-field', 'deadbeef', 'secret', 'f' * 64):
                 self.assertNotIn(private, json.dumps(diagnostic))
+                self.assertNotIn(private.encode(), archive)
+
+    def test_macos_authorization_and_interface_capture_have_distinct_stages(self):
+        identity = str(uuid.uuid4())
+        trace = FailureTrace()
+        trace.begin(identity)
+        trace.progress('首次接管需要 macOS 授权')
+        trace.progress('正在接管相机 MSC 接口…')
+        snapshot = dict(simulation=False, operation_id=identity, action='inspect',
+                        result=dict(status='error', error='管理员授权后仍未找到唯一 Sony MSC 相机'))
+        report = trace.report(snapshot)
+        self.assertEqual(report['error_code'], 'device_missing')
+        self.assertEqual([event['step_id'] for event in report['events'] if event['phase'] == 'connect'],
+                         ['request_macos_authorization', 'claim_interface', 'operation_result'])
 
     def test_edited_failure_description_retains_separate_pending_identity(self):
         failure=operation_failure(dict(simulation=False,operation_id=str(uuid.uuid4()),
@@ -123,18 +151,56 @@ class AppSupportTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_feedback(failure, email='test@example.com\nprivate')
 
+    def test_failure_bridge_requires_preview_and_keeps_network_outside_camera(self):
+        from a6700_unlock.desktop import physical_bridge
+        with tempfile.TemporaryDirectory() as folder:
+            controller=DesktopController(None,mode='physical',physical_state_dir=folder)
+            controller.action='inspect';controller.phase='result'
+            controller.result=dict(status='error',error='状态：04000010 private',success=False)
+            identity=str(uuid.UUID(controller.operation_id));output=io.StringIO()
+            commands=[dict(command='upload_failure_feedback',operation_id=identity,confirmed=True),
+                      dict(command='preview_failure_feedback'),
+                      dict(command='upload_failure_feedback',operation_id=str(uuid.uuid4()),confirmed=True),
+                      dict(command='upload_failure_feedback',operation_id=identity,confirmed=True,description='synthetic'),
+                      dict(command='shutdown')]
+            with patch.object(physical_bridge,'DesktopController',return_value=controller), \
+                    patch('a6700_unlock.feedback.recover_diagnostic',return_value=None), \
+                    patch('a6700_unlock.diagnostics.load_unfinished_recorder',return_value=None), \
+                    patch('a6700_unlock.feedback.upload_feedback',return_value=dict(status='received',feedback_id='synthetic')) as upload, \
+                    patch.object(controller.service,'perform') as camera, \
+                    patch('sys.argv',['test','--state-dir',folder]), \
+                    patch('sys.stdin',io.StringIO(''.join(json.dumps(command)+'\n' for command in commands))), \
+                    patch('sys.stdout',output):
+                physical_bridge.main()
+            messages=[json.loads(line) for line in output.getvalue().splitlines()]
+            self.assertEqual(len([row for row in messages if row['type']=='error']),2)
+            self.assertEqual(len([row for row in messages if row['type']=='failure-feedback-preview']),1)
+            upload.assert_called_once();camera.assert_not_called()
+            self.assertFalse(upload.call_args.kwargs['include_artifact'])
+            self.assertTrue(upload.call_args.kwargs['failure_archive'].startswith(b'PK\x03\x04'))
+            self.assertNotIn('private',json.dumps(upload.call_args.args[0]))
+
     def test_failure_archive_is_allowlisted_and_reuses_the_same_feedback_receipt(self):
         identity = str(uuid.uuid4())
         snapshot = dict(operation_id=identity, action='inspect', result=dict(status='blocked'))
-        report = operation_failure(snapshot)
         local = dict(run_directory='/private/run', verified=False, write_attempted=False,
                      plan=dict(compatible=False, issues=[
                          dict(kind='unknown-field', edit_id='approved', offset=54321, actual='deadbeef'),
                          dict(kind='unknown-field', edit_id='/unreviewed/value', actual='badvalue'),
                          dict(kind='sector-guard-mismatch', role='target', index=128, device='/private/device'),
+                         dict(kind='sector-guard-mismatch', role='guard', index=0,
+                              superblock_difference='runtime_fields_only', actual_sha256='f' * 64),
+                         dict(kind='sector-guard-mismatch', role='guard', index=67, known_ftp_variant=True),
                      ]))
-        blob = build_failure_archive(report, snapshot, local, {'approved'})
-        self.assertEqual(blob, build_failure_archive(report, snapshot, local, {'approved'}))
+        trace = FailureTrace()
+        trace.begin(identity)
+        report = trace.report(snapshot, local)
+        steps = {event['step_id'] for event in build_feedback(report)['diagnostic']['events']}
+        self.assertTrue({'check_guard_0', 'check_guard_67', 'superblock_runtime_fields_only',
+                         'check_known_ftp_variant_67', 'write_attempted_no'} <= steps)
+        files = failure_details(report, local, snapshot, {'approved'})
+        blob = build_failure_archive(report, files)
+        self.assertEqual(blob, build_failure_archive(report, files))
         with zipfile.ZipFile(io.BytesIO(blob)) as archive:
             self.assertEqual(set(archive.namelist()), {'report.json', 'plan.json', 'result.json'})
             issues = json.loads(archive.read('plan.json'))['issues']
@@ -142,9 +208,12 @@ class AppSupportTests(unittest.TestCase):
                 dict(kind='unknown-field', check_id='approved'),
                 dict(kind='unknown-field'),
                 dict(kind='sector-guard-mismatch', role='target', check_index=128),
+                dict(kind='sector-guard-mismatch', role='guard', check_index=0,
+                     superblock_difference='runtime_fields_only'),
+                dict(kind='sector-guard-mismatch', role='guard', check_index=67, known_ftp_variant=True),
             ])
             for name in archive.namelist():
-                for private in ('/private', '/unreviewed', '54321', 'deadbeef', 'badvalue'):
+                for private in ('/private', '/unreviewed', '54321', 'deadbeef', 'badvalue', 'f' * 64):
                     self.assertNotIn(private, archive.read(name).decode())
 
         requests = []
@@ -159,16 +228,19 @@ class AppSupportTests(unittest.TestCase):
 
         def opener(request, timeout):
             requests.append(request)
+            if len(requests) == 2:
+                raise HTTPError(request.full_url, 503, 'storage', {},
+                                io.BytesIO(b'{"error":{"code":"storage_unavailable"}}'))
             return Accepted()
 
-        with tempfile.TemporaryDirectory() as folder:
+        with tempfile.TemporaryDirectory() as folder, patch('a6700_unlock.feedback.time.sleep'):
             first = upload_feedback(report, state_dir=folder, opener=opener, failure_archive=blob)
             retry = upload_feedback(report, state_dir=folder, opener=opener, failure_archive=blob)
         self.assertEqual(first['status'], 'received')
         self.assertEqual(first['feedback_id'], retry['feedback_id'])
         attachment = '/v1/feedback/' + first['feedback_id'] + '/artifact'
-        self.assertEqual([r.full_url.endswith(attachment) for r in requests], [False, True, True])
-        self.assertEqual([r.data for r in requests[1:]], [blob, blob])
+        self.assertEqual([r.full_url.endswith(attachment) for r in requests], [False, True, True, True])
+        self.assertEqual([r.data for r in requests[1:]], [blob, blob, blob])
         self.assertEqual(len({r.get_header('X-delete-token') for r in requests}), 1)
 
     def test_automatic_failure_preference_preserves_explicit_off(self):
@@ -225,35 +297,6 @@ class AppSupportTests(unittest.TestCase):
                     self.assertEqual(send.call_args.kwargs['email'], '')
                     with zipfile.ZipFile(io.BytesIO(send.call_args.kwargs['failure_archive'])) as archive:
                         self.assertIn('plan.json', archive.namelist())
-
-    def test_failure_bridge_requires_preview_and_keeps_network_outside_camera(self):
-        from a6700_unlock.desktop import physical_bridge
-        with tempfile.TemporaryDirectory() as folder:
-            controller=DesktopController(None,mode='physical',physical_state_dir=folder)
-            controller.action='inspect';controller.phase='result'
-            controller.result=dict(status='error',error='状态：04000010 private',success=False)
-            identity=str(uuid.UUID(controller.operation_id));output=io.StringIO()
-            commands=[dict(command='upload_failure_feedback',operation_id=identity,confirmed=True),
-                      dict(command='preview_failure_feedback'),
-                      dict(command='upload_failure_feedback',operation_id=str(uuid.uuid4()),confirmed=True),
-                      dict(command='upload_failure_feedback',operation_id=identity,confirmed=True,description='synthetic'),
-                      dict(command='shutdown')]
-            with patch.object(physical_bridge,'DesktopController',return_value=controller), \
-                    patch('a6700_unlock.feedback.recover_diagnostic',return_value=None), \
-                    patch('a6700_unlock.diagnostics.load_unfinished_recorder',return_value=None), \
-                    patch('a6700_unlock.feedback.upload_feedback',return_value=dict(status='received',feedback_id='synthetic')) as upload, \
-                    patch.object(controller.service,'perform') as camera, \
-                    patch('sys.argv',['test','--state-dir',folder]), \
-                    patch('sys.stdin',io.StringIO(''.join(json.dumps(command)+'\n' for command in commands))), \
-                    patch('sys.stdout',output):
-                physical_bridge.main()
-            messages=[json.loads(line) for line in output.getvalue().splitlines()]
-            self.assertEqual(len([row for row in messages if row['type']=='error']),2)
-            self.assertEqual(len([row for row in messages if row['type']=='failure-feedback-preview']),1)
-            upload.assert_called_once();camera.assert_not_called()
-            with zipfile.ZipFile(io.BytesIO(upload.call_args.kwargs['failure_archive'])) as archive:
-                self.assertEqual(set(archive.namelist()), {'report.json', 'result.json'})
-            self.assertNotIn('private',json.dumps(upload.call_args.args[0]))
 
 
 if __name__ == '__main__':

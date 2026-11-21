@@ -47,6 +47,12 @@ MENU_CHECKS = {
         close='音频信号仅保留原有“开 / 关”，两个新增选项不再显示。',
         note='试听：照片模式，MENU → 拍摄 → 快门/静音，将静音模式设为关、快门类型设为电子快门。',
         close_note='若菜单停在已移除的选项、无法上下切换或高亮异常，用触摸选回“开”或“关”。'),
+    'custom_shutter_sound': dict(
+        path='MENU → 设置 → 声音选项 → 音频信号 ／ 电子快门声（含“默认”及槽位 1–10）',
+        unlock='断电重启并等待约 40 秒加载后，音频菜单显示“默认”与槽位 1–10；可在快门声市场导入并试听 WAV。',
+        close='自定义快门声菜单 UI 已恢复并清除 `/setting/csnd` 下全部音频和设置文件；基础“电子快门声音”按你的选择保留或关闭。',
+        note='请先确保“电子快门声音”为开、静音模式为关；开机等待约 40 秒常驻加载就绪后，再检查菜单或连接快门声市场。',
+        close_note='若同时关闭所有常驻功能（FL2／FL3、中文名称、自定义快门声），请断电重启使 RAM 中旧状态完全退出。'),
 }
 
 RESTART_STEPS = [
@@ -88,7 +94,9 @@ def build_aftercare(action, report, selected, simulation):
                            outcome=('原已%s，未重复写入' % verb if unchanged
                                     else '已%s · 回读通过' % verb)))
     steps = [dict(step) for step in RESTART_STEPS]
-    startup_notice = FL23_STARTUP_NOTICE if action == 'unlock' and 'fl23' in changed_ids else None
+    startup_notice = (FL23_STARTUP_NOTICE
+                      if action == 'unlock' and (changed_ids & {'fl23', 'creative_look_names', 'custom_shutter_sound'})
+                      else None)
     restart_required = report['status'] != 'no-op'
     return dict(simulation=simulation, restart_required=restart_required,
                 steps=steps, features=checks, startup_notice=startup_notice,

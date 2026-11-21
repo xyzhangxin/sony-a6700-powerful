@@ -13,14 +13,15 @@ from a6700_unlock.desktop.physical import PhysicalService
 
 class LookOptionTests(unittest.TestCase):
     def test_all_combinations_and_partial_selection_preserve_the_other_option(self):
-        for flags, feature, action in itertools.product(range(4), FEATURE_IDS, ('unlock', 'close')):
+        for flags, feature, action in itertools.product(range(8), FEATURE_IDS, ('unlock', 'close')):
             with self.subTest(flags=flags, feature=feature, action=action):
                 before = LookOptions.from_flags(flags)
                 result = plan_options(before, [feature], action, main_selection=0)
                 after = LookOptions.from_flags(result['after_flags'])
                 self.assertEqual(getattr(after, feature), action == 'unlock')
-                other = next(key for key in FEATURE_IDS if key != feature)
-                self.assertEqual(getattr(after, other), getattr(before, other))
+                for other in FEATURE_IDS:
+                    if other != feature:
+                        self.assertEqual(getattr(after, other), getattr(before, other))
                 self.assertEqual(result['cp_action'] == 'preserve', before.fl23 == after.fl23)
                 self.assertEqual(result['shared_loader_required'], bool(after.flags))
                 self.assertFalse(result['executable'])
@@ -49,7 +50,7 @@ class LookOptionTests(unittest.TestCase):
             self.assertNotIn('localized-look-names', plan['remove_components'])
 
     def test_missing_or_inconsistent_state_cannot_become_a_plan(self):
-        for flags in (True, -1, 4, None):
+        for flags in (True, -1, 8, None):
             with self.assertRaises(ValueError): LookOptions.from_flags(flags)
         for current in (None, {'fl23': True}):
             with self.assertRaises(ValueError): plan_options(current, ['fl23'], 'unlock', main_selection=0)
@@ -67,7 +68,7 @@ class LookOptionTests(unittest.TestCase):
         for row in definitions:
             if row['id'] in FEATURE_IDS:
                 self.assertFalse(row['available'])
-                self.assertEqual(row['requires'], [])
+                self.assertEqual(row['requires'], ['sound'] if row['id'] == 'custom_shutter_sound' else [])
         self.assertTrue(all(row['state'] == 'unknown' for row in pending_rows()))
         factory = Mock(side_effect=AssertionError('must not open USB'))
         service = PhysicalService(backend_factory=factory)

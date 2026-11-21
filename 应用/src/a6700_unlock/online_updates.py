@@ -12,7 +12,7 @@ import urllib.request
 
 from . import __version__
 from .package_updates import (
-    CHANNELS, MAX_ADAPTER_BYTES, MAX_ENVELOPE, LocalUpdateCache,
+    CHANNELS, MAX_ADAPTER_BYTES, MAX_AUDIO_BUNDLE_BYTES, MAX_ENVELOPE, LocalUpdateCache,
     UpdateError, verify_index_envelope)
 
 API_BASE = "https://powerful6700-api.susukele.com"
@@ -88,12 +88,21 @@ class UpdateClient:
         return headers
 
     def _cached(self, channel, now):
+        result = {}
         try:
             active = self.cache.active_adapter_set(channel, self.trusted_keys, now,
                                                    for_write=False)
-            return dict(sequence=active["sequence"], cache_status=active["status"])
+            result.update(sequence=active["sequence"], cache_status=active["status"])
         except UpdateError:
-            return dict(cache_status="unavailable")
+            result.update(cache_status="unavailable")
+        try:
+            audio = self.cache.active_audio_bundles(channel, self.trusted_keys, now,
+                                                    for_write=False)
+            result.update(audio_cache_status=audio["status"],
+                          audio_bundles=len(audio["bundles"]))
+        except UpdateError:
+            result.update(audio_cache_status="unavailable")
+        return result
 
     def _status(self, status, channel, now, **extra):
         return dict(status=status, **self._cached(channel, now), **extra)
@@ -121,12 +130,14 @@ class UpdateClient:
             index = verify_index_envelope(response.body, self.trusted_keys, channel, now)
             artifact_bytes = {}
             for artifact in index["artifacts"]:
-                if artifact["kind"] != "adapter-set":
+                if artifact["kind"] not in ("adapter-set", "audio-bundle"):
                     continue
+                maximum = (MAX_AUDIO_BUNDLE_BYTES if artifact["kind"] == "audio-bundle"
+                           else MAX_ADAPTER_BYTES)
                 download = self.transport.get(artifact["url"], headers={
                     "User-Agent": "Powerful6700/" + __version__,
                     "Accept": "application/octet-stream"},
-                    max_bytes=MAX_ADAPTER_BYTES, timeout=20)
+                    max_bytes=maximum, timeout=20)
                 if download.status != 200:
                     return self._status("artifact-unavailable", channel, now,
                                         http_status=download.status)

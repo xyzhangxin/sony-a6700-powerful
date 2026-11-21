@@ -13,50 +13,67 @@ FEATURES = (
          description='新增独立 FL2／FL3、图标及完整说明，可保留原有名称显示。'),
     dict(id='creative_look_names', name='创意外观中文名称', requires=[],
          description='主列表和编号 1～6 显示完整名称；不要求启用 FL2／FL3。'),
+    dict(id='custom_shutter_sound', name='自定义快门声', requires=['sound'],
+         description='使用 10 槽固定编号与开机常驻加载，导入和播放自定义快门 WAV；解锁需启用「电子快门声音」。'),
 )
 FEATURE_IDS = tuple(row['id'] for row in FEATURES)
-PREPARING = '创意外观安装组件缺失或校验未通过，请使用本版完整应用。'
+PREPARING = '功能包安装组件缺失或校验未通过，请使用本版完整应用。'
 
 
-def feature_definitions(catalog, *, simulation=False, fl23_available=False, names_available=False):
+def feature_definitions(catalog, *, simulation=False, fl23_available=False,
+                        names_available=False, custom_sound_available=False):
     """Add package options without changing the bound fixed-sector catalogue."""
     rows = [dict(row) for row in catalog.data['features']]
     existing = {row['id'] for row in rows}
+    availability = {
+        'fl23': fl23_available,
+        'creative_look_names': names_available,
+        'custom_shutter_sound': custom_sound_available,
+    }
     for feature in FEATURES:
         if feature['id'] not in existing:
-            available=simulation or (fl23_available if feature['id']=='fl23' else names_available)
+            available = simulation or availability.get(feature['id'], False)
             rows.append(dict(feature, available=available,
                              **({} if available else {'unavailable_reason': PREPARING})))
     return rows
 
 
-def pending_rows(*, fl23_available=False, names_available=False):
+def pending_rows(*, fl23_available=False, names_available=False, custom_sound_available=False):
     # An old sparse inspection has no evidence about these options. In
     # particular, do not call an already modified camera "not installed".
+    availability = {
+        'fl23': fl23_available,
+        'creative_look_names': names_available,
+        'custom_shutter_sound': custom_sound_available,
+    }
     return [dict(feature, state='unknown', available=available,
                  **({} if available else {'unavailable_reason': PREPARING}))
             for feature in FEATURES
-            for available in [fl23_available if feature['id']=='fl23' else names_available]]
+            for available in [availability.get(feature['id'], False)]]
 
 
 @dataclass(frozen=True)
 class LookOptions:
     fl23: bool = False
     creative_look_names: bool = False
+    custom_shutter_sound: bool = False
 
     def __post_init__(self):
-        if type(self.fl23) is not bool or type(self.creative_look_names) is not bool:
+        if (type(self.fl23) is not bool or type(self.creative_look_names) is not bool
+                or type(self.custom_shutter_sound) is not bool):
             raise ValueError('Creative Look options must be booleans')
 
     @property
     def flags(self):
-        return int(self.fl23) | (int(self.creative_look_names) << 1)
+        return (int(self.fl23)
+                | (int(self.creative_look_names) << 1)
+                | (int(self.custom_shutter_sound) << 2))
 
     @classmethod
     def from_flags(cls, flags):
-        if type(flags) is not int or not 0 <= flags <= 3:
+        if type(flags) is not int or not 0 <= flags <= 7:
             raise ValueError('Unknown Creative Look option flags')
-        return cls(bool(flags & 1), bool(flags & 2))
+        return cls(bool(flags & 1), bool(flags & 2), bool(flags & 4))
 
     @property
     def components(self):
@@ -67,6 +84,8 @@ class LookOptions:
             components.extend(('fl23-cp-support', 'fl23-ap-model', 'fl23-icons', 'fl23-full-help'))
         if self.creative_look_names:
             components.append('localized-look-names')
+        if self.custom_shutter_sound:
+            components.extend(('custom-shutter-sound-host', 'custom-sound-ten-slot-menu'))
         return tuple(components)
 
 
@@ -93,6 +112,8 @@ Closing FL23 normalizes a selected FL2/FL3 to ST before removing its model.
                             for key in FEATURE_IDS})
     cp_action = ('preserve' if target.fl23 == current.fl23 else
                  'install' if target.fl23 else 'restore')
+    menu_ui_action = ('preserve' if target.custom_shutter_sound == current.custom_shutter_sound else
+                      'install' if target.custom_shutter_sound else 'remove')
     return dict(schema_version=1, kind='creative-look-package-plan', executable=False,
                 before_flags=current.flags, after_flags=target.flags,
                 selected_features=[key for key in FEATURE_IDS if key in selected],
@@ -100,6 +121,8 @@ Closing FL23 normalizes a selected FL2/FL3 to ST before removing its model.
                 add_components=sorted(set(target.components) - set(current.components)),
                 remove_components=sorted(set(current.components) - set(target.components)),
                 cp_action=cp_action, cp_preflight_required=cp_action != 'preserve',
+                menu_ui_action=menu_ui_action,
+                sound_dependency_required=bool(target.custom_shutter_sound),
                 main_selection_before=main_selection,
                 main_selection_after=(0 if not target.fl23 and main_selection in (17, 18)
                                       else main_selection),

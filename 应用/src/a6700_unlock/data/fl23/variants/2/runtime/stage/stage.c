@@ -29,6 +29,24 @@ static void ns_evidence(struct a1_boot_context *c,const u8 *r,long rc,long relea
  c->reserved[15]=NS_DIAG;c->reserved[16]=1;
 }
 
+#define NS_MAX_ATTEMPTS 12u
+static int ns_retry(const u64 *report,long rc,int retain){
+ if(!rc||retain||!report||report[0]!=1||report[1]!=6||!report[13])return 0;
+ const u64 *ctrl=report+24,*tx=report+40,*out=report+52,*h=report+106;
+ if(ctrl[0]!=1||ctrl[14]||tx[7]||(out[0]&&out[0]!=1))return 0;
+ if(out[4]||out[5]||out[7]||out[9])return 0;
+ /* Any fresh temporary owner allocated for enable must have been unmapped. */
+ if(report[10]&&(report[11]||!report[12]))return 0;
+ if(ctrl[1]==6&&h[0]==0x0000000141333246ULL){
+  u64 audit=h[14];
+  if(h[9]!=h[11]||h[11]>h[7]||h[7]>h[4])return 0;
+  if((audit==5||audit==7||audit==8||audit==9||audit==10||audit==11||audit==13)&&
+     ((!audit||audit>=11)?h[7]==h[11]&&h[7]==h[4]:1)&&!tx[0]&&!tx[1])return 1;
+  if(audit==15&&h[7]==h[11]&&h[7]==h[4]&&tx[0]==1&&tx[1]==1&&(rc==-16||rc==-110))return 1;
+ }
+ return 0;
+}
+
 __attribute__((section(".text.stage_entry")))
 long fl23_names_stage_entry(struct a1_boot_context *c){
  if(!c||c->version!=1||c->worker_state!=5||!c->bias||(c->bias&4095)||
@@ -37,31 +55,46 @@ long fl23_names_stage_entry(struct a1_boot_context *c){
   * keep a callback into this immutable stage in a nested module. */
  const u8 *nonce=(const u8*)c+1120+224;u32 nonzero=0;
  for(u32 i=0;i<16;i++)nonzero|=nonce[i];if(!nonzero)return -22;
- long rc=s2_process_observe((u8*)c,c->pid,60000000000ULL,1);
+ static const u64 gate_backoff[7]={2000000000ULL,5000000000ULL,10000000000ULL,15000000000ULL,20000000000ULL,30000000000ULL,30000000000ULL};
+ long rc=-110;
+ for(u32 seg=0;seg<8;seg++){
+  rc=s2_process_observe((u8*)c,c->pid,60000000000ULL,1);
+  if(rc!=-110||seg==7)break;
+  if(!s2_sleep((long)gate_backoff[seg]))return -4;
+ }
  if(rc){ns_evidence(c,0,rc,0,0);return rc;}
- struct a1_loaded m={0};rc=fl23_a1_load(ns_package,sizeof(ns_package),ns_digest,&m);
- c->reserved[6]=m.mapping;c->reserved[7]=m.bytes;c->reserved[8]=rc;
- if(rc){ns_evidence(c,0,rc,m.cleanup_error,m.state==2);return rc;}
- /* Exact 1104B ABI is separately proven and hash-bound by the builder. */
- u64 report[138]={0};
- typedef long(*entry_fn)(u64,const u8*,void*);
- rc=((entry_fn)m.entry)(NS_ACTION,nonce,report);c->reserved[9]=rc;c->reserved[11]=rc;
- const u64 *controller=report+24,*transaction=report+40;
- int valid=report[0]==1&&report[2]==c->pid&&report[8]==NS_ACTION&&
-           (!report[13]||controller[0]==1);
- /* Keep nested code and its report while a child/trace/shared report may
-  * still need it. Retaining the separate 8KB name owner alone does NOT mean
-  * retaining this temporary 1.5MB bootstrap after it has safely returned. */
- int retain=!valid||controller[14]||transaction[7]||
-            (controller[7]&&!controller[9]);
- if(!rc&&(!valid||report[1]||!report[5]||report[3]!=c->bias||
-          report[6]!=(NS_ACTION==0?report[7]:NS_ACTION==1)||report[7]>1||
-          !report[13]||controller[1]||retain))rc=-116;
- c->reserved[12]=report[5];c->reserved[13]=report[6];
- long freed=0;
- if(!retain){freed=a1_sc(215,m.mapping,m.bytes,0,0,0,0);c->reserved[14]=freed;
-  if(freed)retain=1;else c->reserved[6]=c->reserved[7]=0;}
- ns_evidence(c,(const u8*)report,rc,freed,retain);
- if(retain)return freed?freed:-115;
+ static const u64 retry_backoff[11]={500000000ULL,1000000000ULL,2000000000ULL,5000000000ULL,8000000000ULL,10000000000ULL,15000000000ULL,20000000000ULL,25000000000ULL,30000000000ULL,30000000000ULL};
+ for(u32 attempt=1;attempt<=NS_MAX_ATTEMPTS;attempt++){
+  struct a1_loaded m={0};rc=fl23_a1_load(ns_package,sizeof(ns_package),ns_digest,&m);
+  c->reserved[6]=m.mapping;c->reserved[7]=m.bytes;c->reserved[8]=rc;
+  if(rc){ns_evidence(c,0,rc,m.cleanup_error,m.state==2);return rc;}
+  /* Exact 1104B ABI is separately proven and hash-bound by the builder. */
+  u64 report[138]={0};
+  typedef long(*entry_fn)(u64,const u8*,void*);
+  rc=((entry_fn)m.entry)(NS_ACTION,nonce,report);c->reserved[9]=rc;c->reserved[11]=rc;
+  const u64 *controller=report+24,*transaction=report+40;
+  int valid=report[0]==1&&report[2]==c->pid&&report[8]==NS_ACTION&&
+            (!report[13]||controller[0]==1);
+  /* Keep nested code and its report while a child/trace/shared report may
+   * still need it. Retaining the separate 8KB name owner alone does NOT mean
+   * retaining this temporary 1.5MB bootstrap after it has safely returned. */
+  int retain=!valid||controller[14]||transaction[7]||
+             (controller[7]&&!controller[9]);
+  if(!rc&&(!valid||report[1]||!report[5]||report[3]!=c->bias||
+           report[6]!=(NS_ACTION==0?report[7]:NS_ACTION==1)||report[7]>1||
+           !report[13]||controller[1]||retain))rc=-116;
+  c->reserved[12]=report[5];c->reserved[13]=report[6];
+  long freed=0;
+  if(!retain){freed=a1_sc(215,m.mapping,m.bytes,0,0,0,0);c->reserved[14]=freed;
+   if(freed)retain=1;else c->reserved[6]=c->reserved[7]=0;}
+  ns_evidence(c,(const u8*)report,rc,freed,retain);
+  if(rc&&!retain&&attempt<NS_MAX_ATTEMPTS&&ns_retry(report,rc,retain)){
+   u32 idx=attempt-1;if(idx>=sizeof(retry_backoff)/sizeof(retry_backoff[0]))idx=sizeof(retry_backoff)/sizeof(retry_backoff[0])-1;
+   if(!s2_sleep((long)retry_backoff[idx]))return -4;
+   continue;
+  }
+  if(retain)return freed?freed:-115;
+  return rc;
+ }
  return rc;
 }
