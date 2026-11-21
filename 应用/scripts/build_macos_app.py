@@ -95,7 +95,7 @@ def stage_libusb(archive, pin, resources, work):
                         ['make', '-j4']):
             result = subprocess.run(command, cwd=source, env=environment, stdout=log, stderr=subprocess.STDOUT)
             if result.returncode:
-                raise RuntimeError('libusb build failed:\n' + (work/'libusb-build.log').read_text()[-4000:])
+                raise RuntimeError('libusb build failed:\n' + (work/'libusb-build.log').read_text(encoding='utf-8')[-4000:])
     library = resources/'lib/libusb-1.0.dylib';library.parent.mkdir()
     shutil.copyfile(source/'libusb/.libs/libusb-1.0.dylib', library)
     subprocess.run(['install_name_tool', '-id', '@rpath/libusb-1.0.dylib', str(library)], check=True)
@@ -119,7 +119,7 @@ def main():
         parser.error('Output exists; choose a new output path')
     cache = args.cache.resolve()
     archive = args.runtime_archive or obtain_archive(cache, download=args.download_runtime)
-    pins = json.loads((ROOT/'desktop/runtime-dependencies.json').read_text())
+    pins = json.loads((ROOT/'desktop/runtime-dependencies.json').read_text(encoding='utf-8'))
     dependencies = {name: dependency(pin, cache, args.download_runtime) for name, pin in pins.items() if name != 'libwdi'}
     pins = {name: pins[name] for name in dependencies}
     with tempfile.TemporaryDirectory(prefix='a6700-standalone-') as folder:
@@ -146,12 +146,12 @@ def main():
                         '-o', str(updater)], check=True)
         shutil.copyfile(ROOT/'desktop/macos/update-installer/public-key.txt', resources/'app-update-public-key.txt')
         shutil.copyfile(ROOT/'desktop/worker.py', resources/'worker.py')
-        (resources/'runtime.json').write_text(json.dumps(dict(kind='bundled', python=pin['python']), indent=2)+'\n')
-        (resources/'runtime-licenses/dependencies.json').write_text(json.dumps(pins, indent=2)+'\n')
+        (resources/'runtime.json').write_text(json.dumps(dict(kind='bundled', python=pin['python']), indent=2)+'\n', encoding='utf-8')
+        (resources/'runtime-licenses/dependencies.json').write_text(json.dumps(pins, indent=2)+'\n', encoding='utf-8')
         def manifest():
             items={name:dict(path=path, sha256=hashlib.sha256((resources/path).read_bytes()).hexdigest())
                    for name,path in [('capture','helpers/mac-capture'),('libusb','lib/libusb-1.0.dylib')]}
-            (resources/'bundle-manifest.json').write_text(json.dumps(dict(schema=1, resources=items), indent=2)+'\n')
+            (resources/'bundle-manifest.json').write_text(json.dumps(dict(schema=1, resources=items), indent=2)+'\n', encoding='utf-8')
         print("Checking dependencies and signing…", flush=True)
         count=sign_bundle(bundle, 'arm64', before_seal=manifest)
         args.output.parent.mkdir(parents=True, exist_ok=True)

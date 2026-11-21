@@ -212,7 +212,7 @@ def rebuild(destination,flags=1,refresh=False):
     if len(receipt)!=512 or len(carrier)>CARRIER_CAPACITY:raise ValueError('Rebuilt carrier geometry differs')
     if refresh:
         meta['carrier_sha256']=sha(carrier)
-        manifest_path.write_text(json.dumps(meta,indent=2,ensure_ascii=False)+'\n')
+        manifest_path.write_text(json.dumps(meta,indent=2,ensure_ascii=False)+'\n', encoding='utf-8')
         packaged=BASE/'carrier.bin' if flags==1 else BASE/'variants'/str(flags)/'carrier.bin'
         packaged.parent.mkdir(parents=True,exist_ok=True);packaged.write_bytes(carrier)
     if sha(carrier)!=meta['carrier_sha256']:raise ValueError('Rebuilt carrier differs')

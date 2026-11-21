@@ -62,7 +62,7 @@ class SettingTests(unittest.TestCase):
                 with self.assertRaises(DeviceError):guard_pending_settings(Path(tmp))
             else:
                 reset_close_setting(SimpleNamespace(),'sound','on');guard_pending_settings(Path(tmp))
-            result=json.loads(next(Path(tmp).glob('runs/*/result.json')).read_text())
+            result=json.loads(next(Path(tmp).glob('runs/*/result.json')).read_text(encoding='utf-8'))
         self.assertEqual(len(calls),1)
         return result,events,reads
     def test_success_requires_restoration_and_independent_read(self):
@@ -80,7 +80,7 @@ class SettingTests(unittest.TestCase):
         result,_,_=self.run_reset('other-setting');self.assertFalse(result['verified'])
     def test_intent_without_result_blocks_new_session(self):
         with tempfile.TemporaryDirectory() as tmp,patch('a6700_unlock.operations.default_state_dir',return_value=Path(tmp)):
-            run=Path(tmp)/'runs/close-setting-example';run.mkdir(parents=True);(run/'intent.json').write_text('{}')
+            run=Path(tmp)/'runs/close-setting-example';run.mkdir(parents=True);(run/'intent.json').write_text('{}', encoding='utf-8')
             with self.assertRaises(DeviceError):guard_pending_settings(Path(tmp))
 
     def pending_fixture(self,root,feature='sound'):
@@ -88,8 +88,8 @@ class SettingTests(unittest.TestCase):
         run=root/'runs/close-setting-pending';run.mkdir(parents=True)
         cfg=setting_request(feature,'on' if feature=='ftp' else 'except-shutter',b'a'*16)
         (run/'request.bin').write_bytes(cfg);(run/'reply.bin').write_bytes(receipt(cfg))
-        (run/'intent.json').write_text(json.dumps(dict(request_sha256=hashlib.sha256(cfg).hexdigest())))
-        (run/'result.json').write_text(json.dumps(dict(feature=feature,service_restore_verified=True,status='SETTING_RESET_UNCONFIRMED')))
+        (run/'intent.json').write_text(json.dumps(dict(request_sha256=hashlib.sha256(cfg).hexdigest())), encoding='utf-8')
+        (run/'result.json').write_text(json.dumps(dict(feature=feature,service_restore_verified=True,status='SETTING_RESET_UNCONFIRMED')), encoding='utf-8')
         return run
 
     def test_only_proven_returned_call_can_be_reobserved(self):
@@ -108,7 +108,7 @@ class SettingTests(unittest.TestCase):
             verify_pending_settings(SimpleNamespace(),root);guard_pending_settings(root)
             self.assertEqual(read.call_count,1)
             self.assertTrue((run/'verification.json').exists())
-            (run/'intent.json').write_text('{}')
+            (run/'intent.json').write_text('{}', encoding='utf-8')
             with self.assertRaises(DeviceError):guard_pending_settings(root)
 
     def test_unfinished_postcondition_keeps_write_guard(self):

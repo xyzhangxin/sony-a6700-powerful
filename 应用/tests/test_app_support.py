@@ -135,7 +135,7 @@ class AppSupportTests(unittest.TestCase):
             with patch('a6700_unlock.feedback.time.sleep'):
                 upload_feedback(failure,'first',state_dir=folder,opener=offline)
                 upload_feedback(failure,'edited',state_dir=folder,opener=offline)
-            rows=[json.loads(path.read_text()) for path in Path(folder,'feedback-pending').glob('*.json')]
+            rows=[json.loads(path.read_text(encoding='utf-8')) for path in Path(folder,'feedback-pending').glob('*.json')]
             self.assertEqual(len(rows),2)
             self.assertEqual({row['payload']['description'] for row in rows},{'first','edited'})
             self.assertEqual(len({row['payload']['feedback_id'] for row in rows}),2)

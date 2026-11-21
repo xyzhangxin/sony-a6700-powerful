@@ -19,7 +19,7 @@ def main():
     args = parser.parse_args()
     pinned = Path(__file__).resolve().parents[1] / 'desktop/macos/update-installer/public-key.txt'
     private = load_pem_private_key(args.private_key.read_bytes(), password=None)
-    if not isinstance(private, Ed25519PrivateKey) or private.public_key().public_bytes_raw() != base64.b64decode(pinned.read_text()):
+    if not isinstance(private, Ed25519PrivateKey) or private.public_key().public_bytes_raw() != base64.b64decode(pinned.read_text(encoding='utf-8')):
         raise ValueError('The signing key does not match the installed Mac updater trust root')
     with ZipFile(args.archive) as archive:
         entries = archive.infolist()

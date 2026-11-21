@@ -51,7 +51,7 @@ class WindowsDriverTests(unittest.TestCase):
         for stage in ('initial_ready','service_ready'):
             with tempfile.TemporaryDirectory() as folder:
                 session=driver.DriverSession(folder)
-                session.status.write_text(json.dumps(dict(stage=stage,pid=0x0336)))
+                session.status.write_text(json.dumps(dict(stage=stage,pid=0x0336)), encoding='utf-8')
                 with patch.object(driver,'_runas',return_value=123),                      patch.object(driver.time,'sleep',side_effect=AssertionError('must not wait')):
                     self.assertIs(session.start(),session)
 
@@ -72,7 +72,7 @@ class WindowsDriverTests(unittest.TestCase):
             root = Path(folder); status = root/'status.json'
             request = root/'request.json'
             request.write_text(json.dumps(dict(schema=1, status_path=str(status),
-                stop_path=str(root/'stop'), destination=str(root/'wdi'), wait_seconds=1)))
+                stop_path=str(root/'stop'), destination=str(root/'wdi'), wait_seconds=1)), encoding='utf-8')
             with patch.object(driver, 'is_admin', return_value=True), \
                  patch.object(driver, 'driver_state', side_effect=state), \
                  patch.object(driver, 'bind', side_effect=bind):
@@ -95,19 +95,19 @@ class WindowsDriverTests(unittest.TestCase):
     def test_stage_service_accepts_only_exact_inf_and_verifies_driver_store(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder); inf=root/'usb_device.inf'
-            inf.write_text('DeviceID   = "VID_054C&PID_0336"\nAddService = WinUSB,0x00000002,WinUSB_ServiceInstall\n')
+            inf.write_text('DeviceID   = "VID_054C&PID_0336"\nAddService = WinUSB,0x00000002,WinUSB_ServiceInstall\n', encoding='utf-8')
             completed=SimpleNamespace(returncode=0)
             with patch.object(driver.subprocess,'run',return_value=completed) as run,                  patch.object(driver,'service_staged',return_value=True):
                 self.assertTrue(driver.stage_service(root))
             self.assertEqual(run.call_args.args[0][0],'pnputil.exe')
-            inf.write_text('DeviceID   = "VID_054C&PID_9999"')
+            inf.write_text('DeviceID   = "VID_054C&PID_9999"', encoding='utf-8')
             with self.assertRaises(DeviceError):driver.stage_service(root)
 
     def test_worker_requires_elevation_and_never_falls_back_to_main_app(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder); status = root/'status.json'; request = root/'request.json'
             request.write_text(json.dumps(dict(schema=1, status_path=str(status),
-                stop_path=str(root/'stop'), destination=str(root/'wdi'))))
+                stop_path=str(root/'stop'), destination=str(root/'wdi'))), encoding='utf-8')
             with patch.object(driver, 'is_admin', return_value=False), \
                  patch.object(driver, 'bind', side_effect=AssertionError('unexpected installer')):
                 self.assertEqual(driver.run_worker(request), 1)

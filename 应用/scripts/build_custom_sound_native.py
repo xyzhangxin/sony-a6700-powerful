@@ -27,7 +27,7 @@ def main() -> None:
     if args.binding:
         source = ROOT / 'src/a6700_unlock/native/custom-sound-binding'
         package = ROOT / 'src/a6700_unlock/data/native/custom-sound-binding'
-        manifest = json.loads((package/'manifest.json').read_text())
+        manifest = json.loads((package/'manifest.json').read_text(encoding='utf-8'))
         for name, digest in manifest['source_files'].items():
             if hashlib.sha256((source/name).read_bytes()).hexdigest() != digest:
                 raise SystemExit('Binding observer source changed: '+name)

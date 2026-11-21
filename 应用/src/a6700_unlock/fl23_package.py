@@ -55,8 +55,8 @@ class Package:
     def __init__(self,root=None,*,menu_ui=None):
         from concurrent.futures import ThreadPoolExecutor
         self.root=root or files('a6700_unlock').joinpath('data/fl23')
-        self.manifest=json.loads(self.root.joinpath('manifest.json').read_text())
-        self.recipe=json.loads(self.root.joinpath('recipe.json').read_text())
+        self.manifest=json.loads(self.root.joinpath('manifest.json').read_text(encoding='utf-8'))
+        self.recipe=json.loads(self.root.joinpath('recipe.json').read_text(encoding='utf-8'))
         canonical=dict(self.recipe);digest=canonical.pop('profile_sha256')
         if (sha(json.dumps(canonical,sort_keys=True,separators=(',',':')).encode())!=digest or
             self.manifest.get('profile_sha256')!=digest or self.manifest.get('names') is not False or

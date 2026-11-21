@@ -79,11 +79,20 @@ jobs:
           fi
       - name: 安装原生测试链接器（macOS）
         if: runner.os == 'macOS'
-        run: brew install lld
+        run: |
+          brew install lld
+          echo "$(brew --prefix lld)/bin" >> "$GITHUB_PATH"
+          echo "NATIVE_TOOLS=1" >> "$GITHUB_ENV"
       - name: 配置原生测试编译器（Windows）
         if: runner.os == 'Windows'
         shell: pwsh
-        run: '"C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append'
+        run: |
+          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          if (Test-Path "C:\Program Files\LLVM\bin\clang.exe") {
+            "NATIVE_TOOLS=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } else {
+            "NATIVE_TOOLS=0" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
       - name: 安装开发依赖
         run: python -m pip install 'setuptools>=77' wheel '.[usb,test,updates]'
       - name: 合成测试及原生 ELF 仿真，不访问相机

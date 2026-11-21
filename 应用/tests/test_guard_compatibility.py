@@ -90,7 +90,7 @@ class GuardCompatibilityTests(unittest.TestCase):
             self.assertEqual(backend.sectors[3], self.variant)
             run = Path(result["run_directory"])
             for name in ("preimages.json", "targets.json"):
-                recorded = json.loads((run / name).read_text())
+                recorded = json.loads((run / name).read_text(encoding='utf-8'))
                 self.assertEqual(recorded["sectors"][3], self.variant.hex())
 
     def test_shipped_overlay_binds_only_read_only_guards(self):

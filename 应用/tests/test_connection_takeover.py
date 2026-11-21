@@ -124,7 +124,7 @@ class TakeoverTests(unittest.TestCase):
         self.assertTrue(result['released']); self.assertEqual(result['signals'], ['SIGTERM'])
         self.assertFalse(lock_busy(self.lock)); self.assertEqual(self.lock.stat().st_ino, inode)
         journal = list((self.root / 'state/connection-takeovers').iterdir())
-        intent = json.loads((journal[0] / 'intent.json').read_text())
+        intent = json.loads((journal[0] / 'intent.json').read_text(encoding='utf-8'))
         self.assertTrue(intent['user_confirmed']); self.assertEqual(intent['owner']['pid'], child.pid)
 
     def test_confirmation_can_escalate_only_for_the_same_stuck_holder(self):
@@ -142,7 +142,7 @@ class TakeoverTests(unittest.TestCase):
     def test_optional_debug_registration_is_not_required_for_other_users(self):
         child = self.holder()
         registration = self.root / 'bench.json'
-        registration.write_text('{broken configuration')
+        registration.write_text('{broken configuration', encoding='utf-8')
         registration.chmod(0o600)
         with patch('a6700_unlock.connection_takeover.urllib.request.build_opener') as opener:
             self.assertFalse(known_active_task(self.lock, dict(pid=child.pid)))
@@ -152,7 +152,7 @@ class TakeoverTests(unittest.TestCase):
     def test_registration_never_sends_tokens_to_nonlocal_addresses(self):
         child = self.holder()
         registration = self.root / 'bench.json'
-        registration.write_text(json.dumps(dict(pid=child.pid, url='http://192.0.2.1:8767', token='test-only')))
+        registration.write_text(json.dumps(dict(pid=child.pid, url='http://192.0.2.1:8767', token='test-only')), encoding='utf-8')
         registration.chmod(0o600)
         with patch('a6700_unlock.connection_takeover.urllib.request.build_opener') as opener:
             self.assertFalse(known_active_task(self.lock, dict(pid=child.pid)))

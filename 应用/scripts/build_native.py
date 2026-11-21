@@ -48,10 +48,10 @@ def main():
                   hardware_validation="pending",syscalls={"fsync":82,"pread64":67,"pwrite64":68},payloads={})
     if args.catalog:
         (destination/"transaction.c").write_bytes(source.read_bytes())
-        (destination/"profile.h").write_text(header)
+        (destination/"profile.h").write_text(header, encoding='utf-8')
     with tempfile.TemporaryDirectory(prefix="a6700-native-build-") as temp:
         work=Path(temp)
-        (work/"profile.h").write_text(header)
+        (work/"profile.h").write_text(header, encoding='utf-8')
         for name,mode in (("reader",0),("writer",1)):
             obj=work/(name+".o");binary=work/(name+".elf")
             subprocess.run([args.clang,"-target","aarch64-unknown-elf","-fPIC","-O2","-ffreestanding",
@@ -62,7 +62,7 @@ def main():
             if data[:4]!=b"\x7fELF": raise RuntimeError("Not ELF")
             (destination/(name+".elf")).write_bytes(data)
             manifest["payloads"][name]=dict(sha256=hashlib.sha256(data).hexdigest(),bytes=len(data))
-    (destination/"manifest.json").write_text(json.dumps(manifest,indent=2)+"\n")
+    (destination/"manifest.json").write_text(json.dumps(manifest,indent=2)+"\n", encoding='utf-8')
     print(json.dumps(manifest,indent=2))
 
 

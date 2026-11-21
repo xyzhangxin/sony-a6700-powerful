@@ -32,10 +32,10 @@ def main():
     relative = "libusb_package/" + library.relative_to(Path(libusb_package.__file__).parent).as_posix()
     with tempfile.TemporaryDirectory(prefix="Powerful6700-FTP-Repair-") as folder:
         work = Path(folder)
-        (work / "entry.py").write_text("from a6700_unlock.ftp_migration import entrypoint\nraise SystemExit(entrypoint())\n")
-        (work / "runtime.json").write_text(json.dumps(dict(kind="bundled", platform="windows-x64", version="FTP-Repair-1")))
+        (work / "entry.py").write_text("from a6700_unlock.ftp_migration import entrypoint\nraise SystemExit(entrypoint())\n", encoding='utf-8')
+        (work / "runtime.json").write_text(json.dumps(dict(kind="bundled", platform="windows-x64", version="FTP-Repair-1")), encoding='utf-8')
         (work / "bundle-manifest.json").write_text(json.dumps(dict(schema=1, resources=dict(
-            libusb=dict(path=relative, sha256=hashlib.sha256(library.read_bytes()).hexdigest())))))
+            libusb=dict(path=relative, sha256=hashlib.sha256(library.read_bytes()).hexdigest())))), encoding='utf-8')
         subprocess.run([sys.executable, "-m", "PyInstaller", "--clean", "--noconfirm", "--onedir", "--console",
             "--name", "Powerful6700-FTP-Repair", "--distpath", str(work / "dist"), "--workpath", str(work / "build"),
             "--specpath", str(work / "spec"), "--paths", str(ROOT / "src"),

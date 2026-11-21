@@ -17,7 +17,7 @@ def observer_assets():
     root=files('a6700_unlock')
     data=root.joinpath('data/native')
     try:
-        manifest=json.loads(data.joinpath('close-state.json').read_text())
+        manifest=json.loads(data.joinpath('close-state.json').read_text(encoding='utf-8'))
         expected={'close-state-source.c','close-state-profile.h','close-state-sha256.h'}
         if (manifest.get('schema')!=1 or manifest.get('model')!='ILCE-6700' or
                 manifest.get('firmware')!='2.00' or manifest.get('kind')!=75 or

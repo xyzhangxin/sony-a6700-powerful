@@ -29,7 +29,7 @@ def sha(raw):
 
 
 def load_assets(folder):
-    manifest = json.loads((folder / 'manifest.json').read_text())
+    manifest = json.loads((folder / 'manifest.json').read_text(encoding='utf-8'))
     if manifest['schema'] != 1 or not manifest.get('expected_runtime'):
         raise ValueError('Unsupported diagnostic package')
     for name, digest in manifest['files'].items():
@@ -87,7 +87,7 @@ def guard_history(state, own):
             path = folder / 'result.json'
             if path.is_symlink() or path.stat().st_size > 2 * 1024 * 1024:
                 raise ValueError('Invalid result')
-            result = json.loads(path.read_text())
+            result = json.loads(path.read_text(encoding='utf-8'))
         except (OSError, ValueError):
             raise ValueError('在先服务事务没有完整结果；请保留原操作记录，先完成收尾。')
         if result.get('service_restore_verified') is not True:
@@ -320,7 +320,7 @@ def load_unfinished_recorder(state_dir=None):
         if not result_path.is_file() or not request_path.is_file():
             continue
         try:
-            result = json.loads(result_path.read_text())
+            result = json.loads(result_path.read_text(encoding='utf-8'))
             request = request_path.read_bytes()
         except (OSError, ValueError):
             continue

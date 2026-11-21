@@ -23,7 +23,7 @@ from ..device_protocol import DeviceError, request, response
 
 def payloads(profile):
     root = files("a6700_unlock").joinpath("data/native")
-    manifest = json.loads(root.joinpath("manifest.json").read_text())
+    manifest = json.loads(root.joinpath("manifest.json").read_text(encoding='utf-8'))
     if manifest["profile_sha256"] != profile.digest:
         raise DeviceError("Native payload/profile versions do not match")
     source = files("a6700_unlock").joinpath("native/transaction.c").read_bytes()

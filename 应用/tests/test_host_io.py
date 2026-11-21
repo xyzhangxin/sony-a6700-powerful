@@ -35,7 +35,7 @@ class HostIoTests(unittest.TestCase):
             output.write('first')
         with self.assertRaises(FileExistsError):
             host_io.open_exclusive(target)
-        self.assertEqual(target.read_text(), 'first')
+        self.assertEqual(target.read_text(encoding='utf-8'), 'first')
 
     def test_lock_is_exclusive_and_released_without_unlinking_inode(self):
         path = self.root / 'device.lock'

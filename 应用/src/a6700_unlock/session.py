@@ -50,7 +50,7 @@ def pending_session_write(directory):
     """
     reason, unconfirmed = None, False
     for intent_path in (Path(directory) / "msc-sessions").glob("*/requests/*/intent.json"):
-        intent = json.loads(intent_path.read_text())
+        intent = json.loads(intent_path.read_text(encoding='utf-8'))
         if intent["method"] != "apply":
             continue
         result_path = intent_path.with_name("result.json")
@@ -58,7 +58,7 @@ def pending_session_write(directory):
             reason = reason or "存在未闭合写入：" + str(intent_path.parent)
             unconfirmed = True
             continue
-        reply = json.loads(result_path.read_text())
+        reply = json.loads(result_path.read_text(encoding='utf-8'))
         result = reply.get("result", {})
         safe = (not reply.get("execution_started", True) if not reply.get("ok") else
                 result.get("write_attempted") is False and not result.get("settings_write_attempted"))
@@ -317,13 +317,13 @@ class PersistentUsbSession:
             directory = self.evidence / "requests" / ident
             signature = dict(method=method, params=params)
             if directory.exists():
-                previous = json.loads((directory / "intent.json").read_text())
+                previous = json.loads((directory / "intent.json").read_text(encoding='utf-8'))
                 if previous["request_sha256"] != digest(signature):
                     raise DeviceError("request_id 已绑定其他请求")
                 result = directory / "result.json"
                 if not result.exists():
                     raise DeviceError("请求结果未知；只能核对记录，不会重发")
-                return json.loads(result.read_text())
+                return json.loads(result.read_text(encoding='utf-8'))
             operations.make_directory(directory)
             operations.save_json(directory / "intent.json", dict(
                 method=method, params=params, request_id=ident, request_sha256=digest(signature),
@@ -349,7 +349,7 @@ class PersistentUsbSession:
                             or any(c not in "0123456789abcdef" for c in key)):
                         raise ValueError("result 需要原请求的32位 request_id")
                     path = self.evidence / "requests" / key / "result.json"
-                    result = json.loads(path.read_text()) if path.exists() else dict(status="unknown", request_id=key)
+                    result = json.loads(path.read_text(encoding='utf-8')) if path.exists() else dict(status="unknown", request_id=key)
                 elif method == "read":
                     result = self._read(params)
                 elif method == "inspect":
@@ -555,7 +555,7 @@ class CameraMscSession:
         self.last_request_id = None
 
     def __enter__(self):
-        self.info = json.loads(self.path.read_text())
+        self.info = json.loads(self.path.read_text(encoding='utf-8'))
         self.call("status")
         return self
 

@@ -56,7 +56,7 @@ class FtpUpdateTests(unittest.TestCase):
         from a6700_unlock.catalog import load_catalog as load_release_catalog
         from a6700_unlock.device_profile import load_device_profile as load_release_profile
         profile = load_release_profile(load_release_catalog())
-        volatile = json.loads((target.ROOT/'release/src/a6700_unlock/data/guard-volatile.json').read_text())
+        volatile = json.loads((target.ROOT/'release/src/a6700_unlock/data/guard-volatile.json').read_text(encoding='utf-8'))
         descriptor = json.loads((target.ROOT/'output/运行/FTP/远程验收/post-reboot-baseline.json').read_bytes())
         run = Path(descriptor['run_directory'])
         if target.sha((run/'result.json').read_bytes()) != descriptor['result_sha256']:
@@ -92,7 +92,7 @@ class FtpUpdateTests(unittest.TestCase):
         config = (run/descriptor['request_path']).read_bytes()
         before = response((run/descriptor['reply_path']).read_bytes(), config[8:24], len(profile.entries))['sectors']
         with patch.object(profile_module, '_guard_volatile_data',
-                          json.loads((target.ROOT/'release/src/a6700_unlock/data/guard-volatile.json').read_text())):
+                          json.loads((target.ROOT/'release/src/a6700_unlock/data/guard-volatile.json').read_text(encoding='utf-8'))):
             plan, after = inspect_sectors(profile, before, 'unlock', features=['ftp'])
         self.assertEqual(plan['changed_bytes'], 241)
         self.assertEqual(plan['changed_sectors'], 83)

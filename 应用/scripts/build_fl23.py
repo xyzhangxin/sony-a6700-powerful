@@ -125,7 +125,7 @@ def build(recipe_path,carrier_path,sha_header,*,destination=None,variants_path=N
         raise ValueError('Invalid reviewed FL23 recipe')
     carrier=Path(carrier_path).read_bytes()
     if not 1024<=len(carrier)<=2098176:raise ValueError('FL23 file carrier extent differs')
-    source=ROOT/'src/a6700_unlock/native/transaction.c';text=source.read_text()
+    source=ROOT/'src/a6700_unlock/native/transaction.c';text=source.read_text(encoding='utf-8')
     boundary='__attribute__((constructor)) static void run(void) {'
     marker='    /* First pass validates every target AND every read-only layout guard. */'
     guard='        if(!BUILD_WRITER) {'
@@ -194,10 +194,10 @@ def build(recipe_path,carrier_path,sha_header,*,destination=None,variants_path=N
             runtime_sha256=sha((destination/'variants'/str(f)/'runtime/manifest.json').read_bytes())) for f,v in variants.items() if f!=1}
     if legacy:
         manifest.update(carrier_revision=5,legacy_carriers=legacy)
-        (destination/'legacy-carriers.json').write_text(json.dumps(legacy,indent=2)+'\n')
-    (destination/'recipe.json').write_text(json.dumps(recipe,indent=2)+'\n')
+        (destination/'legacy-carriers.json').write_text(json.dumps(legacy,indent=2)+'\n', encoding='utf-8')
+    (destination/'recipe.json').write_text(json.dumps(recipe,indent=2)+'\n', encoding='utf-8')
     (destination/'carrier.bin').write_bytes(carrier)
-    (destination/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+    (destination/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n', encoding='utf-8')
     return manifest
 
 

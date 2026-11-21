@@ -332,7 +332,7 @@ class DesktopUpdateService:
         if destination.exists():
             if destination.is_symlink() or not destination.is_file():
                 raise ValueError("音频导入计划记录类型无效。")
-            validate_audio_import_plan(json.loads(destination.read_text()))
+            validate_audio_import_plan(json.loads(destination.read_text(encoding='utf-8')))
             return
         temporary = self.audio_import_plans / (plan["digest"] + ".json.tmp")
         try:
@@ -354,7 +354,7 @@ class DesktopUpdateService:
         if destination.exists():
             if destination.is_symlink() or not destination.is_file():
                 raise ValueError("音频批量导入计划记录类型无效。")
-            validate_audio_import_batch_plan(json.loads(destination.read_text()))
+            validate_audio_import_batch_plan(json.loads(destination.read_text(encoding='utf-8')))
             return
         temporary = self.audio_import_batches / (
             batch["digest"] + ".json.tmp-" + uuid.uuid4().hex)
@@ -379,7 +379,7 @@ class DesktopUpdateService:
         if path.is_symlink() or not path.is_file():
             raise ValueError("本机没有对应的音频批量导入计划。")
         try:
-            batch = json.loads(path.read_text())
+            batch = json.loads(path.read_text(encoding='utf-8'))
         except json.JSONDecodeError as exc:
             raise ValueError("音频批量导入计划记录无效。") from exc
         validate_audio_import_batch_plan(batch)
@@ -395,7 +395,7 @@ class DesktopUpdateService:
         if path.is_symlink() or not path.is_file():
             raise ValueError("本机没有对应的音频导入计划。")
         try:
-            plan = json.loads(path.read_text())
+            plan = json.loads(path.read_text(encoding='utf-8'))
         except json.JSONDecodeError as exc:
             raise ValueError("音频导入计划记录无效。") from exc
         validate_audio_import_plan(plan)
@@ -417,7 +417,7 @@ class DesktopUpdateService:
             if destination.is_symlink() or not destination.is_file():
                 raise ValueError("音频导入确认记录类型无效。")
             try:
-                existing = json.loads(destination.read_text())
+                existing = json.loads(destination.read_text(encoding='utf-8'))
             except json.JSONDecodeError as exc:
                 raise ValueError("音频导入确认记录无效。") from exc
             validate_audio_import_confirmation(existing)
@@ -446,7 +446,7 @@ class DesktopUpdateService:
             if destination.is_symlink() or not destination.is_file():
                 raise ValueError("音频批量导入确认记录类型无效。")
             try:
-                existing = json.loads(destination.read_text())
+                existing = json.loads(destination.read_text(encoding='utf-8'))
             except json.JSONDecodeError as exc:
                 raise ValueError("音频批量导入确认记录无效。") from exc
             validate_audio_import_batch_confirmation(existing)
@@ -491,8 +491,8 @@ class DesktopUpdateService:
         if confirmation_path.is_symlink() or not confirmation_path.is_file():
             raise ValueError("本机没有对应的音频导入确认。")
         try:
-            plan = json.loads(plan_path.read_text())
-            confirmation = json.loads(confirmation_path.read_text())
+            plan = json.loads(plan_path.read_text(encoding='utf-8'))
+            confirmation = json.loads(confirmation_path.read_text(encoding='utf-8'))
         except json.JSONDecodeError as exc:
             raise ValueError("音频导入计划或确认记录无效。") from exc
         validate_audio_import_plan(plan)
@@ -516,8 +516,8 @@ class DesktopUpdateService:
         if confirmation_path.is_symlink() or not confirmation_path.is_file():
             raise ValueError("本机没有对应的音频导入确认。")
         try:
-            plan = json.loads(plan_path.read_text())
-            confirmation = json.loads(confirmation_path.read_text())
+            plan = json.loads(plan_path.read_text(encoding='utf-8'))
+            confirmation = json.loads(confirmation_path.read_text(encoding='utf-8'))
         except json.JSONDecodeError as exc:
             raise ValueError("音频导入计划或确认记录无效。") from exc
         validate_audio_import_plan(plan)
@@ -541,7 +541,7 @@ class DesktopUpdateService:
         if aggregate_path.is_symlink() or not aggregate_path.is_file():
             raise ValueError("本机没有对应的音频批量导入确认。")
         try:
-            aggregate = json.loads(aggregate_path.read_text())
+            aggregate = json.loads(aggregate_path.read_text(encoding='utf-8'))
         except json.JSONDecodeError as exc:
             raise ValueError("音频批量导入确认记录无效。") from exc
         validate_audio_import_batch_confirmation(aggregate, batch=batch)
@@ -550,7 +550,7 @@ class DesktopUpdateService:
             if path.is_symlink() or not path.is_file():
                 raise ValueError("音频批量导入确认与子计划确认不匹配。")
             try:
-                actual = json.loads(path.read_text())
+                actual = json.loads(path.read_text(encoding='utf-8'))
             except json.JSONDecodeError as exc:
                 raise ValueError("音频子计划确认记录无效。") from exc
             validate_audio_import_confirmation(actual, plan=plan)

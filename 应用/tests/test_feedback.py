@@ -62,7 +62,7 @@ class FeedbackTests(unittest.TestCase):
             sent.mkdir(parents=True)
             operation_id = '11111111-1111-4111-8111-111111111111'
             (sent / (operation_id + '.json')).write_text(json.dumps(dict(payload=dict(diagnostic=dict(
-                transaction_status='verified', operation_id=operation_id, events=[])))))
+                transaction_status='verified', operation_id=operation_id, events=[])))), encoding='utf-8')
             downloads = Path(folder) / 'Downloads'
             downloads.mkdir()
             archive_path = downloads / 'FL23-故障报告-test.zip'
@@ -85,7 +85,7 @@ class FeedbackTests(unittest.TestCase):
             self.assertEqual(first['status'], 'unknown')
             pending = list((Path(folder) / 'feedback-pending').glob('*.json'))
             self.assertEqual(len(pending), 1)
-            saved = json.loads(pending[0].read_text())
+            saved = json.loads(pending[0].read_text(encoding='utf-8'))
 
             def success(request, timeout):
                 calls.append(request)
@@ -143,7 +143,7 @@ class FeedbackTests(unittest.TestCase):
                 raise TimeoutError('synthetic timeout')
             feedback.upload_feedback(legacy, state_dir=folder, opener=timeout)
             pending = next((Path(folder) / 'feedback-pending').glob('*.json'))
-            self.assertEqual(json.loads(pending.read_text())['payload']['diagnostic']['events'][0]['phase'], 'start')
+            self.assertEqual(json.loads(pending.read_text(encoding='utf-8'))['payload']['diagnostic']['events'][0]['phase'], 'start')
 
             requests = []
             def success(request, timeout):
@@ -155,7 +155,7 @@ class FeedbackTests(unittest.TestCase):
             payload = json.loads(requests[0].data)
             self.assertEqual(payload['diagnostic']['events'][0]['phase'], 'connect')
             sent = next((Path(folder) / 'feedback-sent').glob('*.json'))
-            self.assertEqual(json.loads(sent.read_text())['payload']['diagnostic']['events'][0]['phase'], 'connect')
+            self.assertEqual(json.loads(sent.read_text(encoding='utf-8'))['payload']['diagnostic']['events'][0]['phase'], 'connect')
 
     def test_http_429_is_bounded_and_keeps_pending_report(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -415,7 +415,7 @@ class BridgeGuidedTests(unittest.TestCase):
             (run / 'operation-start.request').write_bytes(b'A67P' + b'\0' * 4 + nonce + b'\0' * 16)
             (run / 'result.json').write_text(json.dumps(dict(
                 status='recording', operation_id='old', mapping='0x1000',
-                mapping_bytes=4096, boot_id='01234567-89ab-cdef-8123-456789abcdef')))
+                mapping_bytes=4096, boot_id='01234567-89ab-cdef-8123-456789abcdef')), encoding='utf-8')
             controller = DesktopController(None, mode='physical', physical_state_dir=state)
             controller.service.connected = False
             commands = Commands()
@@ -607,7 +607,7 @@ class BridgeGuidedTests(unittest.TestCase):
             (run / 'operation-start.request').write_bytes(b'A67P' + b'\0' * 4 + nonce + b'\0' * 16)
             (run / 'result.json').write_text(json.dumps(dict(
                 status='recording', operation_id='recovery', mapping='0x1000',
-                mapping_bytes=4096, boot_id='01234567-89ab-cdef-8123-456789abcdef')))
+                mapping_bytes=4096, boot_id='01234567-89ab-cdef-8123-456789abcdef')), encoding='utf-8')
             controller = DesktopController(None, mode='physical', physical_state_dir=state)
             output = io.StringIO()
             requests = json.dumps(dict(command='shutdown')) + '\n'
@@ -630,7 +630,7 @@ class BridgeGuidedTests(unittest.TestCase):
             (run / 'operation-start.request').write_bytes(b'A67P' + b'\0' * 4 + nonce + b'\0' * 16)
             (run / 'result.json').write_text(json.dumps(dict(
                 status='recording', operation_id='recovery', mapping='0x1000',
-                mapping_bytes=4096, boot_id='01234567-89ab-cdef-8123-456789abcdef')))
+                mapping_bytes=4096, boot_id='01234567-89ab-cdef-8123-456789abcdef')), encoding='utf-8')
             controller = DesktopController(None, mode='physical', physical_state_dir=state)
             controller.service.connected = True
             controller.service._session_backend = object()
@@ -662,7 +662,7 @@ class BridgeGuidedTests(unittest.TestCase):
             (run / 'operation-start.request').write_bytes(b'A67P' + b'\0' * 4 + nonce + b'\0' * 16)
             (run / 'result.json').write_text(json.dumps(dict(
                 status='recording', operation_id='recovery', mapping='0x1000',
-                mapping_bytes=4096, boot_id='01234567-89ab-cdef-8123-456789abcdef')))
+                mapping_bytes=4096, boot_id='01234567-89ab-cdef-8123-456789abcdef')), encoding='utf-8')
             controller = DesktopController(None, mode='physical', physical_state_dir=state)
             controller.service.connected = False
             output = io.StringIO()
@@ -702,7 +702,7 @@ class BridgeGuidedTests(unittest.TestCase):
             (run / 'operation-start.request').write_bytes(b'A67P' + b'\0' * 4 + nonce + b'\0' * 16)
             (run / 'result.json').write_text(json.dumps(dict(
                 status='recording', operation_id='recovery', mapping='0x1000',
-                mapping_bytes=4096, boot_id='01234567-89ab-cdef-8123-456789abcdef')))
+                mapping_bytes=4096, boot_id='01234567-89ab-cdef-8123-456789abcdef')), encoding='utf-8')
             controller = DesktopController(None, mode='physical', physical_state_dir=state)
             controller.service.connected = False
             output = io.StringIO()
@@ -843,15 +843,15 @@ class ArtifactUploadTests(unittest.TestCase):
             self.assertEqual(first['status'], 'partial')
             operation_id = result['operation_id']
             sent = Path(folder) / 'feedback-sent' / (operation_id + '.json')
-            original = json.loads(sent.read_text())
+            original = json.loads(sent.read_text(encoding='utf-8'))
             original_id = original['payload']['feedback_id']
             # Reproduce the legacy split-brain state: a later retry created a
             # different pending feedback for the same operation and content.
-            duplicate = json.loads(sent.read_text())
+            duplicate = json.loads(sent.read_text(encoding='utf-8'))
             duplicate['payload']['feedback_id'] = '44444444-4444-4444-8444-444444444444'
             duplicate['delete_token'] = original['delete_token']
             pending = Path(folder) / 'feedback-pending' / (operation_id + '.json')
-            pending.write_text(json.dumps(duplicate))
+            pending.write_text(json.dumps(duplicate), encoding='utf-8')
             calls = []
             def success(request, timeout):
                 calls.append(request)

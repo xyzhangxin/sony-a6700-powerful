@@ -29,7 +29,7 @@ class BundledTests(unittest.TestCase):
         patcher.start();self.addCleanup(patcher.stop)
 
     def save(self):
-        (self.root/'bundle-manifest.json').write_text(json.dumps(dict(schema=1,resources=self.items)))
+        (self.root/'bundle-manifest.json').write_text(json.dumps(dict(schema=1,resources=self.items)), encoding='utf-8')
 
     def test_corrupt_or_missing_bundle_never_falls_back_to_developer_library(self):
         self.assertEqual(bundled.resource('libusb'),self.root/'libusb')
@@ -110,7 +110,7 @@ class BundledTests(unittest.TestCase):
 
     def test_capture_helper_socket_permits_directory_owner_to_connect(self):
         source = Path(__file__).resolve().parents[1] / 'src/a6700_unlock/native/mac_capture.m'
-        text = source.read_text()
+        text = source.read_text(encoding='utf-8')
         self.assertIn('chmod(path, 0666)', text)
         self.assertIn('getpeereid(client, &peer, &group)', text)
         self.assertIn('caller\'s 0700 directory', text)

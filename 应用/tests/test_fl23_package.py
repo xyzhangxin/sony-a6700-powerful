@@ -371,7 +371,7 @@ class FileNativeTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temp=tempfile.TemporaryDirectory();p=Path(cls.temp.name);recipe=synthetic();cls.recipe=recipe
         cls.carrier=b'FL23 synthetic file '+bytes(range(256))*4
-        (p/'recipe.json').write_text(json.dumps(recipe));(p/'carrier.bin').write_bytes(cls.carrier)
+        (p/'recipe.json').write_text(json.dumps(recipe), encoding='utf-8');(p/'carrier.bin').write_bytes(cls.carrier)
         cls.out=p/'out'
         builder.build(p/'recipe.json',p/'carrier.bin',ROOT/'src/a6700_unlock/native/fl23_sha256.h',destination=cls.out)
         cls.binary=(cls.out/'files.elf').read_bytes();cls.profile=Profile(recipe)
@@ -445,11 +445,11 @@ class FileVariantNativeTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temp=tempfile.TemporaryDirectory();p=Path(cls.temp.name);cls.recipe=synthetic()
         cls.carriers={f:bytes([f])*n for f,n in ((1,1100),(2,1300),(3,1500),(4,1200),(5,1400),(6,1600),(7,1800))}
-        (p/'recipe.json').write_text(json.dumps(cls.recipe));(p/'carrier.bin').write_bytes(cls.carriers[1])
+        (p/'recipe.json').write_text(json.dumps(cls.recipe), encoding='utf-8');(p/'carrier.bin').write_bytes(cls.carriers[1])
         cls.out=p/'out';variants=cls.out/'variants'
         for f in range(2,8):
             folder=variants/str(f);(folder/'runtime').mkdir(parents=True)
-            (folder/'carrier.bin').write_bytes(cls.carriers[f]);(folder/'runtime/manifest.json').write_text('{"files":{}}')
+            (folder/'carrier.bin').write_bytes(cls.carriers[f]);(folder/'runtime/manifest.json').write_text('{"files":{}}', encoding='utf-8')
         builder.build(p/'recipe.json',p/'carrier.bin',ROOT/'src/a6700_unlock/native/fl23_sha256.h',destination=cls.out,variants_path=variants)
         cls.binary=(cls.out/'files.elf').read_bytes()
     @classmethod
@@ -499,14 +499,14 @@ class FileRevisionNativeTests(unittest.TestCase):
         cls.temp=tempfile.TemporaryDirectory();p=Path(cls.temp.name);cls.recipe=synthetic()
         cls.carriers={f:bytes([f])*(1100+200*f) for f in range(1,8)}
         cls.carriers.update({ident:bytes([(ident&0xff)^0x40])*size for ident,_,_,size in cls.LEGACY_SPECS})
-        (p/'recipe.json').write_text(json.dumps(cls.recipe));(p/'carrier.bin').write_bytes(cls.carriers[1])
+        (p/'recipe.json').write_text(json.dumps(cls.recipe), encoding='utf-8');(p/'carrier.bin').write_bytes(cls.carriers[1])
         cls.out=p/'out';variants=cls.out/'variants'
         for f in range(2,8):
             folder=variants/str(f);(folder/'runtime').mkdir(parents=True)
-            (folder/'carrier.bin').write_bytes(cls.carriers[f]);(folder/'runtime/manifest.json').write_text('{"files":{}}')
+            (folder/'carrier.bin').write_bytes(cls.carriers[f]);(folder/'runtime/manifest.json').write_text('{"files":{}}', encoding='utf-8')
         legacy={str(ident):dict(flags=flags,revision=rev,bytes=len(cls.carriers[ident]),sha256=sha(cls.carriers[ident]))
                 for ident,flags,rev,_ in cls.LEGACY_SPECS}
-        (p/'legacy.json').write_text(json.dumps(legacy))
+        (p/'legacy.json').write_text(json.dumps(legacy), encoding='utf-8')
         builder.build(p/'recipe.json',p/'carrier.bin',ROOT/'src/a6700_unlock/native/fl23_sha256.h',
             destination=cls.out,variants_path=variants,legacy_path=p/'legacy.json')
         cls.binary=(cls.out/'files.elf').read_bytes()

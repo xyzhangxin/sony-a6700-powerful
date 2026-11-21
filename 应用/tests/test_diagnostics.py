@@ -42,7 +42,7 @@ class DiagnosticsTests(unittest.TestCase):
                 plan=dict(features=[dict(id='fl23', state='enabled'),
                                     dict(id='unknown-feature', state='enabled')]),
                 final_features=[dict(id='creative_look_names', state='enabled')],
-                secret='must-not-be-exported')))
+                secret='must-not-be-exported')), encoding='utf-8')
             result = diagnostics.export(state_dir=root / 'state', output_dir=root / 'out',
                                         progress=lambda _: None)
             self.assertEqual(result['status'], 'collected')
@@ -93,12 +93,12 @@ class DiagnosticsTests(unittest.TestCase):
             (old / 'operation-start.request').write_bytes(b'A67P' + b'\0' * 4 + nonce_old + b'\0' * 16)
             (old / 'result.json').write_text(json.dumps(dict(status='recording',
                 operation_id='old', mapping='0x1000', mapping_bytes=4096,
-                boot_id='01234567-89ab-cdef-8123-456789abcdef')))
+                boot_id='01234567-89ab-cdef-8123-456789abcdef')), encoding='utf-8')
             (old / 'operation-stop.request').write_bytes(b'\0' * 8 + nonce_old + b'\0' * 24)
             (new / 'operation-start.request').write_bytes(b'A67P' + b'\0' * 4 + nonce_new + b'\0' * 16)
             (new / 'result.json').write_text(json.dumps(dict(status='recording',
                 operation_id='new', mapping='0x2000', mapping_bytes=8192,
-                boot_id='01234567-89ab-cdef-8123-456789abcdef')))
+                boot_id='01234567-89ab-cdef-8123-456789abcdef')), encoding='utf-8')
             recorder = diagnostics.load_unfinished_recorder(Path(folder) / 'state')
         self.assertEqual(recorder['operation_id'], 'new')
         self.assertEqual(recorder['nonce'], nonce_new.hex())
@@ -116,7 +116,7 @@ class DiagnosticsTests(unittest.TestCase):
                 (run / 'operation-start.request').write_bytes(b'A67P' + b'\0' * 4 + nonce + b'\0' * 16)
                 (run / 'result.json').write_text(json.dumps(dict(status='recording',
                     operation_id=operation, mapping=mapping, mapping_bytes=4096,
-                    boot_id='01234567-89ab-cdef-8123-456789abcdef')))
+                    boot_id='01234567-89ab-cdef-8123-456789abcdef')), encoding='utf-8')
             (new / 'operation-stop.request').write_bytes(b'A67P' + b'\0' * 4 + nonce_new + b'\0' * 16)
             older_time = old / 'operation-start.request'
             newer_time = new / 'operation-start.request'
@@ -272,7 +272,7 @@ class DiagnosticsTests(unittest.TestCase):
             recorder = diagnostics.start_operation_log(state_dir=Path(folder) / 'state',
                 operation_id='11111111-1111-4111-8111-111111111111', progress=lambda _: None)
             run = Path(folder) / 'state' / 'runs' / recorder['run']
-            result = json.loads((run / 'result.json').read_text())
+            result = json.loads((run / 'result.json').read_text(encoding='utf-8'))
         self.assertEqual(recorder['mapping'], '0x44000000')
         self.assertTrue(recorder['sampling_ready'])
         self.assertEqual(result['status'], 'recording')
@@ -312,7 +312,7 @@ class DiagnosticsTests(unittest.TestCase):
                 operation_id='11111111-1111-4111-8111-111111111111',
                 progress=lambda _: None, backend=backend)
             run = next((Path(folder) / 'state' / 'runs').glob('fl23-diagnostic-*'))
-            result = json.loads((run / 'result.json').read_text())
+            result = json.loads((run / 'result.json').read_text(encoding='utf-8'))
         self.assertFalse(recorder['sampling_ready'])
         self.assertTrue(recorder['sampling_degraded'])
         self.assertEqual(recorder['sampling_error'], -22)

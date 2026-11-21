@@ -28,7 +28,14 @@ def main():
     args = parser.parse_args()
     discovered = unittest.defaultTestLoader.discover(str(ROOT/'tests'))
     selected = unittest.TestSuite(test for test in cases(discovered)
-                                 if args.native or not test.id().startswith(('test_native.', 'test_fl23_package.FileNativeTests.', 'test_fl23_state.')))
+                                 if args.native or not test.id().startswith((
+                                     'test_native.',
+                                     'test_custom_sound_native.',
+                                     'test_fl23_package.FileNativeTests.',
+                                     'test_fl23_package.FileVariantNativeTests.',
+                                     'test_fl23_package.FileRevisionNativeTests.',
+                                     'test_fl23_state.',
+                                 )))
     print('Device access: none. Native emulation: ' + ('included' if args.native else 'excluded'), flush=True)
     result = unittest.TextTestRunner(verbosity=2).run(selected)
     if args.strict and result.skipped:

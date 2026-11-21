@@ -27,7 +27,7 @@ def verify_digest(archive, expected):
 
 
 def obtain_archive(cache, *, download=False):
-    pin = json.loads(LOCK.read_text())
+    pin = json.loads(LOCK.read_text(encoding='utf-8'))
     destination = Path(cache) / pin['filename']
     if not destination.exists():
         if not download:
@@ -48,7 +48,7 @@ def obtain_archive(cache, *, download=False):
 
 
 def stage_runtime(archive, resources):
-    pin = json.loads(LOCK.read_text())
+    pin = json.loads(LOCK.read_text(encoding='utf-8'))
     verify_digest(archive, pin['sha256'])  # Must precede tar or any runtime execution.
     metadata = subprocess.check_output(['/usr/bin/tar', '-xOf', str(archive), 'python/PYTHON.json'])
     distribution = json.loads(metadata)
@@ -77,7 +77,7 @@ def stage_runtime(archive, resources):
     subprocess.run(['/usr/bin/tar', '-xf', str(archive), '-C', str(notices),
                     '--strip-components', '2', 'python/licenses'], check=True)
     (notices / 'PYTHON.json').write_bytes(metadata)
-    (notices / 'runtime-pin.json').write_text(json.dumps(pin, indent=2) + '\n')
+    (notices / 'runtime-pin.json').write_text(json.dumps(pin, indent=2) + '\n', encoding='utf-8')
     if not (notices / 'LICENSE.cpython.txt').is_file():
         raise ValueError('Runtime license missing')
     return pin

@@ -111,7 +111,7 @@ class OperationTests(unittest.TestCase):
         self.assertEqual({f["state"] for f in result["final_features"]},{"enabled"})
         self.assertEqual((backend.writes,backend.reads),(1,2))
         self.assertFalse(result["full_backup"])
-        public = json.loads((Path(result["run_directory"])/"result.json").read_text())
+        public = json.loads((Path(result["run_directory"])/"result.json").read_text(encoding='utf-8'))
         self.assertNotIn("sectors",public["native_result"])
     def test_unknown_guard_blocks_entire_operation(self):
         bad = list(self.sectors);bad[3] = b"x"+bad[3][1:]
@@ -163,7 +163,7 @@ class OperationTests(unittest.TestCase):
         self.assertTrue(result["verified"])
         self.assertEqual((backend.writes, backend.reads), (1, 2))
         self.assertIn("相机执行结果", result["record_warning"])
-        stored = json.loads((Path(result["run_directory"]) / "result.json").read_text())
+        stored = json.loads((Path(result["run_directory"]) / "result.json").read_text(encoding='utf-8'))
         self.assertEqual(stored["record_warning"], result["record_warning"])
 
     def test_multiple_report_failures_preserve_warnings_and_verified_state(self):

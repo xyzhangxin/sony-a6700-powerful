@@ -71,7 +71,7 @@ class ObserverTests(unittest.TestCase):
         backend=SimpleNamespace(channel=SimpleNamespace(send=send))
         with tempfile.TemporaryDirectory() as tmp,patch('a6700_unlock.operations.default_state_dir',return_value=Path(tmp)),patch('a6700_unlock.fl23_package.service_files',service):
             state=read_ftp_state(backend,self.nonce)
-            report=json.loads(next(Path(tmp).glob('runs/*/result.json')).read_text())
+            report=json.loads(next(Path(tmp).glob('runs/*/result.json')).read_text(encoding='utf-8'))
         self.assertTrue(state['features']['ftp']['media_released'])
         self.assertEqual(events,['open','saved-read','saved-read','restored'])
         self.assertTrue(report['service_restore_verified'])

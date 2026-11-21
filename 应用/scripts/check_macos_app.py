@@ -15,7 +15,7 @@ import time
 
 
 def check_worker(resources, physical):
-    config=json.loads((resources/'runtime.json').read_text())
+    config=json.loads((resources/'runtime.json').read_text(encoding='utf-8'))
     python=resources/config['python']
     command=[str(python),'-I','-S','-B','-u',str(resources/'worker.py')]+(['--physical'] if physical else [])
     # Inject unusable external paths deliberately: isolated mode must ignore them.

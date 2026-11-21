@@ -63,7 +63,7 @@ def build_ui(bundle, work, python=None, *, include_shutter_sound_import=False):
     for name in ('Powerful6700.png', 'Powerful6700.icns'):
         shutil.copyfile(ROOT/'desktop/品牌'/name, resources/name)
     if python:
-        (resources/'runtime.json').write_text(json.dumps(dict(kind='development', python=str(python)), indent=2)+'\n')
+        (resources/'runtime.json').write_text(json.dumps(dict(kind='development', python=str(python)), indent=2)+'\n', encoding='utf-8')
     standalone = python is None
     display_name = app_name(standalone=standalone)
     bundle_id = 'org.a6700unlock.desktop' if standalone else 'org.a6700unlock.preview'

@@ -225,7 +225,7 @@ class CustomSoundExecutorTests(unittest.TestCase):
             self.assertEqual(kwargs['expected'], old)
             pending = pending_package_installation(directory)
             self.assertIsNotNone(pending)
-            saved = json.loads((pending / 'preimages.json').read_text())
+            saved = json.loads((pending / 'preimages.json').read_text(encoding='utf-8'))
             self.assertEqual(base64.b64decode(saved['slot1']), old)
             return dict(status=0)
         backend.run_custom_sound_import.side_effect = write
@@ -294,11 +294,11 @@ class CustomSoundExecutorTests(unittest.TestCase):
                     ('result.json', lambda data: data.update(execution_unconfirmed=True)),
                     ('result.json', lambda data: data.update(status='uncertain'))):
                     data = json.loads(originals[name]); change(data)
-                    (run/name).write_text(json.dumps(data))
+                    (run/name).write_text(json.dumps(data), encoding='utf-8')
                     with self.assertRaises(CustomSoundExecutorError):
                         load_slot_recovery(run, profile_sha256='a'*64, binding=self.binding)
                     (run/name).write_bytes(originals[name])
-                (run/'service-restore-failure.json').write_text('{}')
+                (run/'service-restore-failure.json').write_text('{}', encoding='utf-8')
                 with self.assertRaises(CustomSoundExecutorError):
                     load_slot_recovery(run, profile_sha256='a'*64, binding=self.binding)
 

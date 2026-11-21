@@ -18,7 +18,7 @@ def main():
     if args.output.exists():parser.error('Output exists; never overwrite a distributed payload')
     root=ROOT/'src/a6700_unlock/data/native'
     stem='close-setting' if args.setting else 'close-state'
-    manifest=json.loads((root/(stem+'.json')).read_text())
+    manifest=json.loads((root/(stem+'.json')).read_text(encoding='utf-8'))
     sha=lambda b:hashlib.sha256(b).hexdigest()
     for name,digest in manifest['sources'].items():
         if Path(name).name!=name or sha((root/name).read_bytes())!=digest:raise ValueError('Observer source mismatch')

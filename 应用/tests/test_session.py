@@ -426,13 +426,18 @@ class SessionTests(unittest.TestCase):
         def serve():
             while server.step():
                 pass
-        thread = threading.Thread(target=serve)
-        thread.start()
+        thread = threading.Thread(target=serve, daemon=True)
         def close():
             server.owner.closing = True
             thread.join(5)
             self.assertFalse(thread.is_alive())
             server.__exit__(None, None, None)
+        try:
+            thread.start()
+        except BaseException:
+            server.owner.closing = True
+            server.__exit__(None, None, None)
+            raise
         self.addCleanup(close)
         return server
 
@@ -469,16 +474,16 @@ class SessionTests(unittest.TestCase):
 
     def test_existing_descriptor_is_never_deleted_or_overwritten(self):
         path = descriptor_path(self.directory)
-        path.write_text("crashed worker evidence")
+        path.write_text("crashed worker evidence", encoding='utf-8')
         with self.assertRaises(FileExistsError):
             with SessionServer(self.owner()):
                 pass
-        self.assertEqual(path.read_text(), "crashed worker evidence")
+        self.assertEqual(path.read_text(encoding='utf-8'), "crashed worker evidence")
         self.assertEqual(self.backend.opens, 0)
 
     def test_explicit_endpoint_recovery_preserves_transaction_evidence(self):
         path = descriptor_path(self.directory)
-        path.write_text(json.dumps(dict(pid=2147483647, session_id="dead", token="private-token")))
+        path.write_text(json.dumps(dict(pid=2147483647, session_id="dead", token="private-token")), encoding='utf-8')
         evidence = self.directory / "msc-sessions" / "old" / "requests" / ("a" * 32)
         evidence.mkdir(parents=True)
         operations.save_json(evidence / "intent.json", dict(method="apply"))
@@ -495,7 +500,7 @@ class SessionTests(unittest.TestCase):
 
     def test_endpoint_recovery_refuses_live_owner_and_occupied_lock(self):
         path = descriptor_path(self.directory)
-        path.write_text(json.dumps(dict(pid=os.getpid())))
+        path.write_text(json.dumps(dict(pid=os.getpid())), encoding='utf-8')
         with patch.dict(os.environ, A6700_BENCH_JOB="synthetic-recovery"):
             with self.assertRaisesRegex(DeviceError, "进程仍存在"):
                 recover_descriptor(self.directory)
