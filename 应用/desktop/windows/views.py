@@ -409,6 +409,7 @@ class Views:
         button(t,'选择未解锁或可更新' if self.action=='unlock' else '选择可关闭',lambda:self.command('select',mode='missing' if self.action=='unlock' else 'enabled'),'link')
         button(t,'清空' if len(selected)==len(available) else '全选',lambda:self.command('select',mode='none' if len(selected)==len(available) else 'all'),'quiet');listbox.addWidget(toolbar);line(listbox)
         has_custom_feature = any(item.get('id') == 'custom_shutter_sound' for item in features)
+        custom_status = s.get('custom_sound') or {}
         by_id = {item['id']: item for item in features}
         for i,f in enumerate(features):
             if i:line(listbox)
@@ -425,7 +426,16 @@ class Views:
                 req_lbl = label('需要：' + req_names, 'small')
                 req_lbl.setStyleSheet(f'font-size:10px;color:{AMBER};')
                 text.addWidget(req_lbl)
-            state_text='暂未开放' if not f.get('available',True) else {'enabled':'已解锁','disabled':'未解锁','partial':'部分解锁','unknown':'待核实'}.get(f['state'],'待确认')
+            display_state = f['state']
+            if f['id'] == 'custom_shutter_sound' and custom_status.get('state') == 'error':
+                display_state = 'error'
+                reason = custom_status.get('reason')
+                if reason:
+                    detail = label(reason, 'small')
+                    detail.setObjectName('customSoundFailureDetail')
+                    detail.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+                    text.addWidget(detail)
+            state_text='暂未开放' if not f.get('available',True) else {'enabled':'已解锁','disabled':'未解锁','partial':'部分解锁','unknown':'待核实','error':'校验失败'}.get(display_state,'待确认')
             if f.get('available',True) and f.get('update_available'):state_text+=' · 可更新'
             action_buttons = []
             if f.get('update_available'):
@@ -449,7 +459,7 @@ class Views:
                 mkt.setToolTip('前往快门声市场查看状态、读取相机槽位或导入音频')
                 mkt.clicked.connect(self.open_market)
                 action_buttons.append(mkt)
-            state_color = ACCENT if f.get('available',True) and f['state']=='enabled' else MUTED
+            state_color = ACCENT if f.get('available',True) and display_state=='enabled' else AMBER if display_state=='error' else MUTED
             self._add_feature_trailing(r, state_text, state_color, action_buttons)
             listbox.addWidget(w)
             if f['id'] == 'sound' and not has_custom_feature:

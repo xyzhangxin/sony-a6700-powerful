@@ -4,8 +4,9 @@ import io
 import zipfile
 
 from a6700_unlock.audio_packages import (
-    AUDIO_INDEX_SCHEMA, AUDIO_PACKAGE_SCHEMA, AudioPackageError, _digest,
-    build_audio_bundle, build_audio_package, select_sound,
+    AUDIO_INDEX_SCHEMA, AUDIO_PACKAGE_SCHEMA, CAMERA_CLIP_FRAMES,
+    CAMERA_SAMPLE_RATE, AudioPackageError, _digest, build_audio_bundle,
+    build_audio_package, inspect_pcm_wav, normalize_camera_clip, select_sound,
     validate_audio_bundle, validate_audio_index, validate_audio_package)
 
 
@@ -241,6 +242,27 @@ class AudioPackageTests(unittest.TestCase):
             author="Morris", license="CC-BY-4.0")
         with self.assertRaisesRegex(AudioPackageError, "WAV 与清单不匹配"):
             build_audio_bundle(package, [dict(filename="missing.wav", data=pcm_wav())])
+
+    def test_normalize_camera_clip_pads_short_wavs_and_matches_bundled_defaults(self):
+        from pathlib import Path
+        normalized = normalize_camera_clip(pcm_wav())
+        parsed = inspect_pcm_wav(normalized, "short.wav")
+        self.assertEqual((parsed["sample_rate"], parsed["channels"],
+                          parsed["bit_depth"], parsed["frame_count"],
+                          parsed["duration_ms"], parsed["bytes"]),
+                         (CAMERA_SAMPLE_RATE, 1, 16, CAMERA_CLIP_FRAMES, 350,
+                          44 + CAMERA_CLIP_FRAMES * 2))
+        self.assertEqual(normalize_camera_clip(normalized), normalized)
+
+        wav_dir = Path(__file__).resolve().parents[1] / "desktop/macos/默认音频"
+        for name in ("coin.wav", "slap.wav", "duck.wav", "beep.wav"):
+            raw = (wav_dir / name).read_bytes()
+            info = inspect_pcm_wav(raw, name)
+            self.assertEqual((info["sample_rate"], info["channels"],
+                              info["bit_depth"], info["frame_count"],
+                              info["duration_ms"]),
+                             (CAMERA_SAMPLE_RATE, 1, 16, CAMERA_CLIP_FRAMES, 350))
+            self.assertEqual(normalize_camera_clip(raw), raw)
 
 
 if __name__ == "__main__":

@@ -298,6 +298,7 @@ struct AudioImportExecuteResult: Decodable {
     let target_slot: Int?
     let generation: Int?
     let independent_readback: Bool?
+    let restart_notice: String?
     let backup_cleanup_failed: Bool?
     let cleanup_warning: String?
     let error: String?

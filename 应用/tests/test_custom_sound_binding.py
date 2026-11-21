@@ -44,6 +44,13 @@ class BindingTests(unittest.TestCase):
             self.assertEqual(binding.package_sha256,m['host_sha256'])
         self.assertEqual(request(n)[8:24],n)
 
+    def test_missing_loader_endpoint_retains_native_status(self):
+        manifest, nonce, response = self.fixture()
+        raw = bytearray(response)
+        struct.pack_into('<I', raw, 24, 8)
+        with self.assertRaisesRegex(DeviceError, '未检测到声音加载器的运行端点.*原生状态 8'):
+            parse(bytes(raw), nonce, manifest, 'c' * 64, 'a' * 64)
+
     def test_nonce_owner_boot_and_every_hook_entry_tamper_rejected(self):
         m,n,r=self.fixture()
         targets=[8,24,44,308,556+1120,44+4608]

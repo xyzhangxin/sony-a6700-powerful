@@ -246,9 +246,68 @@ def run(window, report):
             assert len(dup_vis) == 7 and sum(1 for x in dup_vis if x.id == '336BFC4B-BBDB-4285-ADDF-353B4D2223F9') == 1
             assert dup_vis[0].title == '已存在金币音'
             dup_sess.cleanup()
+        # Slot inventory cache preservation, None-backfill and cold-reboot notice
+        from market_views import ShutterSoundInstallDialog as _InstallDialog
+        from a6700_unlock.desktop.aftercare import AUDIO_IMPORT_RESTART_NOTICE, CUSTOM_SOUND_RECOVERY_NOTICE
+        window.audio_slots = [dict(slot=i, name='金币' if i == 1 else '[空]',
+                                   label=f'{i} 金币' if i == 1 else f'{i} [空]',
+                                   status='imported' if i == 1 else 'empty',
+                                   generation=0x10000001 if i == 1 else None,
+                                   playable=(i == 1)) for i in range(1, 11)]
+        unknown_slots = [dict(slot=i, name='[未读取]', label=f'{i} [未读取]',
+                              status='unknown', generation=None, playable=False)
+                         for i in range(1, 11)]
+        gen = window.client.generation
+        window.on_event(gen, dict(type='audio-result', result=dict(status='active', packages=[], slots=unknown_slots)))
+        assert window.audio_slots[0]['status'] == 'imported' and window.audio_slots[2]['status'] == 'empty'
+        window.audio_slots = None
+        window.audio_plan = dict(target=dict(slot=3), candidate=dict(filename='嘟嘟'))
+        window.audio_import_flow_slot = 3
+        window.on_event(gen, dict(type='audio-import-execute-result', result=dict(
+            status='completed', independent_readback=True, restart_required=True,
+            restart_notice=AUDIO_IMPORT_RESTART_NOTICE, target_slot=3, generation=0x30000001)))
+        assert window.audio_slots is not None and window.audio_slots[2]['status'] == 'imported'
+        assert window.audio_slots[2]['label'] == '3 嘟嘟' and window.audio_slots[2]['playable'] is True
+        beep_sound = next(s for s in visible_default if s.title == '嘟嘟')
+        assert beep_sound.duration_ms == 350
+        with patch.object(window, '_is_camera_connected', return_value=True), \
+             patch.object(window, '_custom_sound_state', return_value='enabled'), \
+             patch.object(window, '_feature_state', return_value='enabled'), \
+             patch.object(window, 'ensure_audio_slots_loaded', return_value=None):
+            ctrl = dict(window._market_controller(), is_physical=lambda: True)
+            dlg = _InstallDialog(window.audio_market, beep_sound, ctrl, window)
+            assert AUDIO_IMPORT_RESTART_NOTICE in dlg.status_label.text()
+            dlg.close()
+        window.reset_audio_import_flow()
+        window.audio_slots = None
         window.open_camera_workspace(); app.processEvents()
         assert not window.viewing_market
         checks.append('custom-shutter-sound-market-seven-defaults-trim-dedup-and-demo-install')
+        previous_custom_sound = window.state.get('custom_sound')
+        window.state['custom_sound'] = dict(state='error', reason=CUSTOM_SOUND_RECOVERY_NOTICE)
+        window.render()
+        workspace = window.scroll.widget()
+        assert '校验失败' in [item.text() for item in workspace.findChildren(QLabel, 'featureStatusLabel')]
+        assert workspace.findChild(QLabel, 'customSoundFailureDetail').text() == CUSTOM_SOUND_RECOVERY_NOTICE
+        with patch.object(window, '_is_camera_connected', return_value=True):
+            assert window._custom_sound_state() == 'error' and not window._can_install_audio()
+        window.state['custom_sound'] = previous_custom_sound
+        window.render()
+        checks.append('custom-shutter-sound-workspace-runtime-failure-and-recovery')
+        market = window.market_widget
+        with patch.dict(market.ctrl, {
+            'is_physical': lambda: True,
+            'is_camera_connected': lambda: False,
+            'camera_disconnect_result': lambda: dict(cleanup_status='msc-observed'),
+        }):
+            market._refresh_status_panel()
+            assert market.status_reason.text() == '已断开相机 · MSC 已恢复'
+            with patch.dict(market.ctrl, {
+                'camera_disconnect_result': lambda: dict(cleanup_status='unconfirmed', cleanup_warning='退出未确认'),
+            }):
+                market._refresh_status_panel()
+                assert market.status_reason.text() == '退出未确认'
+        checks.append('audio-market-reports-confirmed-and-unconfirmed-disconnect')
         # Active native settings are restored first, then firmware is closed.
         window.command('reset', scenario='close-active')
         until(lambda:window.state.get('scenario')=='close-active' and window.state.get('phase')=='notice')

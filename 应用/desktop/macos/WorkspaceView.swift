@@ -64,6 +64,8 @@ struct WorkspaceView: View {
             }.font(.system(size: 11)).padding(14)
             Divider()
             ForEach(features) { feature in
+                let soundFailure = feature.id == "custom_shutter_sound" && model.customSoundState == "error"
+                let statusText = soundFailure ? "校验失败" : feature.stateText
                 VStack(spacing: 0) {
                     Toggle(isOn: Binding(get: { feature.selected == true }, set: {
                         model.send("select_feature", extra: ["id": feature.id, "value": $0])
@@ -75,6 +77,10 @@ struct WorkspaceView: View {
                                 Text(feature.title).font(.system(size: 13, weight: .semibold))
                                 Text(feature.isAvailable ? feature.explanation : (feature.unavailable_reason ?? "开发中，暂不开放")).font(.system(size: 10)).foregroundColor(UI.muted)
                                     .fixedSize(horizontal: false, vertical: true)
+                                if soundFailure, let reason = model.state?.custom_sound?.reason {
+                                    Text(reason).font(.system(size: 10)).foregroundColor(UI.amber)
+                                        .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                                }
                                 if !(feature.requires ?? []).isEmpty {
                                     Text("需要：" + features.filter { (feature.requires ?? []).contains($0.id) }.map(\.title).joined(separator: "、"))
                                         .font(.system(size: 10)).foregroundColor(UI.amber)
@@ -92,13 +98,13 @@ struct WorkspaceView: View {
                                 marketShortcutButton(disabled: model.isBusy)
                             }
                             featureStatusLabel(
-                                feature.isAvailable ? feature.stateText : "暂未开放",
-                                color: feature.state == "enabled" ? UI.accent : UI.muted
+                                feature.isAvailable ? statusText : "暂未开放",
+                                color: soundFailure ? UI.amber : feature.state == "enabled" ? UI.accent : UI.muted
                             )
                         }.padding(.leading, 6)
                     }.toggleStyle(.checkbox).disabled(!feature.isAvailable).opacity(feature.isAvailable ? 1 : 0.55).padding(.horizontal, 16).padding(.vertical, 10)
                         .accessibilityLabel("选择功能：" + feature.title)
-                        .accessibilityHint(feature.stateText + "。" + feature.explanation)
+                        .accessibilityHint(statusText + "。" + feature.explanation)
                     if feature.id == "sound" && !features.contains(where: { $0.id == "custom_shutter_sound" }) {
                         Divider().padding(.leading, 50)
                         customSoundFeatureRow

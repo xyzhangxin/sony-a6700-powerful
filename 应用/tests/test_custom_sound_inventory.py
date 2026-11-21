@@ -250,6 +250,10 @@ class InventoryProtocolTests(unittest.TestCase):
             import_result = service.execute_audio_import(plan, wav)
             self.assertEqual(import_result['status'], 'completed')
             self.assertTrue(import_result['independent_readback'])
+            notice = import_result['restart_notice']
+            self.assertLess(notice.index('断开相机'), notice.index('拔 USB'))
+            self.assertIn('断电至少 10 秒', notice)
+            self.assertIn('静置约 90 秒', notice)
             self.assertTrue(service.connected)
             self.assertEqual(mock_lock.call_count, 1)
             self.assertEqual(access.return_value.open_transport.call_count, 1)

@@ -10,7 +10,9 @@ from datetime import datetime, timezone
 import hashlib
 import zipfile
 
-from a6700_unlock.audio_packages import _digest, inspect_pcm_wav
+from a6700_unlock.audio_packages import (
+    _digest, inspect_pcm_wav, normalize_camera_clip,
+)
 from a6700_unlock.audio_import import build_audio_import_plan
 from a6700_unlock.capability_packages import _digest, builtin_adapter_set
 from a6700_unlock.catalog import load_catalog
@@ -131,7 +133,19 @@ class DesktopUpdateTests(unittest.TestCase):
             service.confirm_audio_import(plan['digest'], True)
             loaded, data = service.prepare_audio_import_execution(plan['digest'])
             self.assertEqual(loaded['target']['slot'],10)
-            self.assertEqual(data,pcm_wav())
+            self.assertEqual(data,normalize_camera_clip(pcm_wav()))
+            self.assertEqual(loaded['candidate']['duration_ms'],350)
+            self.assertEqual(loaded['candidate']['sample_rate'],24000)
+            self.assertEqual(loaded['candidate']['bytes'],44+8400*2)
+            over_long = Path(folder)/'over350ms.wav'
+            import struct
+            long_payload = b'\x01\x00' * 12000
+            over_long.write_bytes(
+                b'RIFF' + (len(long_payload) + 36).to_bytes(4, 'little') + b'WAVEfmt '
+                + struct.pack('<IHHIIHH', 16, 1, 1, 24000, 48000, 2, 16)
+                + b'data' + len(long_payload).to_bytes(4, 'little') + long_payload)
+            with self.assertRaisesRegex(ValueError, '350 毫秒'):
+                service.plan_audio_import('local', path=str(over_long), target_slot=3)
             with self.assertRaises(ValueError):
                 service.plan_audio_import('local',path=str(path),target_slot=0)
 
@@ -295,7 +309,7 @@ class DesktopUpdateTests(unittest.TestCase):
                 local_plan['candidate']['sha256'] + '.wav')
             self.assertTrue(candidate_path.is_file())
             self.assertEqual(service.load_audio_candidate(
-                local_plan['candidate']['sha256']), pcm_wav())
+                local_plan['candidate']['sha256']), normalize_camera_clip(pcm_wav()))
             plan_path = Path(folder) / 'audio-import-plans' / (local_plan['digest'] + '.json')
             self.assertTrue(plan_path.is_file())
             declined = service.confirm_audio_import(local_plan['digest'], False)

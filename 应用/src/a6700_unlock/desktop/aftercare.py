@@ -11,6 +11,19 @@ from ..operation_workflow import build_evidence, build_workflow
 FL23_STARTUP_NOTICE = ('每次取出电池并重新装入后，开机需等待约 40 秒，'
                        '待 FL2／FL3 自动加载后再使用。刚开机时未显示这两项，请先等待加载。')
 
+CUSTOM_SOUND_STARTUP_CHECK = ('开机后保持 USB 断开，先静置约 90 秒，再到相机的「声音选项」检查'
+                              '「电子快门声」及槽位。')
+AUDIO_IMPORT_RESTART_NOTICE = (
+    '全部声音写入完成后，关闭此窗口，在快门声市场点击「断开相机」。'
+    '确认断开后正常关机，等存储指示灯熄灭，再拔 USB、取出电池并断开外接供电。'
+    '断电至少 10 秒后装回电池并开机。' + CUSTOM_SOUND_STARTUP_CHECK
+)
+CUSTOM_SOUND_RECOVERY_NOTICE = (
+    '请先断开相机并完全断电重启。' + CUSTOM_SOUND_STARTUP_CHECK
+    + '如果菜单仍不可用，可在「功能管理」切换到「关闭」，仅勾选「自定义快门声」。'
+    '关闭会清除全部 10 槽的声音和自定义快门声设置，完成后可重新解锁。'
+)
+
 
 MENU_CHECKS = {
     'fl23': dict(

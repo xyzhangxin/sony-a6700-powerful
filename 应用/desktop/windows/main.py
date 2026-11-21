@@ -122,11 +122,14 @@ class Window(Views,QMainWindow):
         return 'unknown'
 
     def _custom_sound_state(self):
+        cs = self.state.get('custom_sound')
+        runtime_state = cs.get('state', 'unknown') if isinstance(cs, dict) else 'unknown'
+        if runtime_state == 'error':
+            return runtime_state
         for item in self.state.get('features', []):
             if item.get('id') == 'custom_shutter_sound':
                 return item.get('state', 'unknown')
-        cs = self.state.get('custom_sound')
-        return cs.get('state', 'unknown') if isinstance(cs, dict) else 'unknown'
+        return runtime_state
 
     def _can_install_audio(self):
         return (
@@ -143,7 +146,10 @@ class Window(Views,QMainWindow):
             return '请先连接并检查相机，再将声音安装到槽位'
         if self._feature_state('sound') != 'enabled':
             return '请先在「功能管理」解锁电子快门声音'
-        if self._custom_sound_state() != 'enabled':
+        custom_state = self._custom_sound_state()
+        if custom_state == 'error':
+            return '自定义快门声加载校验失败，请查看快门声市场的状态说明'
+        if custom_state != 'enabled':
             return '当前相机未解锁自定义快门声'
         return '选择相机槽位 1～10 写入当前声音'
 
@@ -248,6 +254,7 @@ class Window(Views,QMainWindow):
             'electronic_sound_state': lambda: self._feature_state('sound'),
             'custom_sound_state': self._custom_sound_state,
             'custom_sound_reason': lambda: (self.state.get('custom_sound') or {}).get('reason', ''),
+            'camera_disconnect_result': lambda: self.state.get('camera_disconnect'),
             'can_install_audio': self._can_install_audio,
             'install_disabled_reason': self._install_disabled_reason,
             'get_camera_slots': lambda: self.audio_slots,
@@ -516,8 +523,13 @@ class Window(Views,QMainWindow):
                 self.progress_label.setText(message)
         elif event.get('type') == 'audio-result':
             result = event.get('result', {})
-            if 'slots' in result:
-                self.audio_slots = result['slots']
+            incoming_slots = result.get('slots')
+            if isinstance(incoming_slots, list) and (
+                not self.audio_slots
+                or not any(item.get('status') != 'unknown' for item in self.audio_slots)
+                or any(item.get('status') != 'unknown' for item in incoming_slots)
+            ):
+                self.audio_slots = incoming_slots
             self.audio_market.set_catalog_from_worker(result.get('packages', []))
             if hasattr(self, 'market_widget') and self.viewing_market:
                 self.market_widget.refresh()
@@ -598,14 +610,29 @@ class Window(Views,QMainWindow):
             if result.get('status') == 'completed' and result.get('independent_readback') is True:
                 self.audio_error_text = ''
                 slot_num = result.get('target_slot', self.audio_import_flow_slot)
-                if self.audio_slots and slot_num is not None:
+                if slot_num is not None:
+                    slot_int = int(slot_num)
                     fname = ((self.audio_plan or {}).get('candidate') or {}).get('filename') or result.get('filename') or '已写入'
+                    base_slots = self.audio_slots or [
+                        dict(slot=i, name='[未读取]', label=f'{i} [未读取]', status='unknown', generation=None, playable=False)
+                        for i in range(1, 11)
+                    ]
                     self.audio_slots = [
-                        (dict(item, status='occupied', name=fname) if int(item.get('slot', 0)) == int(slot_num) else item)
-                        for item in self.audio_slots
+                        (dict(
+                            item,
+                            name=fname,
+                            label=f'{slot_int} {fname}',
+                            status='imported',
+                            generation=result.get('generation', item.get('generation')),
+                            playable=True,
+                        ) if int(item.get('slot', 0)) == slot_int else item)
+                        for item in base_slots
                     ]
             else:
                 self.audio_error_text = result.get('error') or '声音槽位写入未完成。'
+                if result.get('write_attempted'):
+                    self.audio_slots = None
+                    self.audio_slots_loaded_op = None
             if hasattr(self, 'market_widget'):
                 self.market_widget.notify_install_state()
         elif event.get('type') == 'error':

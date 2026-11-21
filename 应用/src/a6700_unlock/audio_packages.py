@@ -392,6 +392,76 @@ def inspect_pcm_wav(data, filename, *, title=None, description="", tags=()):
     return parsed
 
 
+CAMERA_SAMPLE_RATE = 24000
+# The camera worker allocates exactly one 350 ms Kind3 table per slot
+# (8400 samples -> 271 frames -> 8672 bytes) and silently leaves any other
+# length unloaded at cold boot. Every slot WAV is normalized to this shape.
+CAMERA_CLIP_FRAMES = 8400
+
+
+def _pcm_payload(data):
+    offset = 12
+    while offset + 8 <= len(data):
+        size = struct.unpack_from("<I", data, offset + 4)[0]
+        if data[offset:offset + 4] == b"data":
+            return data[offset + 8:offset + 8 + size]
+        offset += 8 + size + (size & 1)
+    raise AudioPackageError("WAV chunk 不完整")
+
+
+def _camera_wav(samples):
+    payload = struct.pack(f"<{len(samples)}h", *samples)
+    return (b"RIFF" + struct.pack("<I", 36 + len(payload)) + b"WAVE"
+            + b"fmt " + struct.pack("<IHHIIHH", 16, 1, 1, CAMERA_SAMPLE_RATE,
+                                    CAMERA_SAMPLE_RATE * 2, 2, 16)
+            + b"data" + struct.pack("<I", len(payload)) + payload)
+
+
+def normalize_camera_clip(data):
+    """Return the exact 24 kHz mono 16-bit 350 ms WAV a camera slot can load.
+
+    Shorter clips are padded with trailing silence; longer clips are rejected
+    instead of being silently cut. Applies to local, bundled and market audio.
+    """
+    if not isinstance(data, bytes) or not data:
+        raise AudioPackageError("音频内容无效")
+    parsed = _parse_pcm_wav(data)
+    rate, channels, bits = parsed["sample_rate"], parsed["channels"], parsed["bit_depth"]
+    frames = parsed["frame_count"]
+    target = frames if rate == CAMERA_SAMPLE_RATE else max(
+        1, round(frames * CAMERA_SAMPLE_RATE / rate))
+    if target > CAMERA_CLIP_FRAMES + 1:
+        raise AudioPackageError("相机槽位音频最长 350 毫秒，请先裁剪后再导入。")
+    payload = _pcm_payload(data)
+    if rate == CAMERA_SAMPLE_RATE and channels == 1 and bits == 16:
+        if frames == CAMERA_CLIP_FRAMES and len(data) == 44 + CAMERA_CLIP_FRAMES * 2:
+            return data
+        samples = list(struct.unpack(f"<{frames}h", payload[:frames * 2]))
+    else:
+        width = bits // 8
+        scale = float(1 << (bits - 1))
+        mono = []
+        for index in range(0, frames * width * channels, width * channels):
+            total = 0
+            for channel in range(channels):
+                raw = payload[index + channel * width:index + (channel + 1) * width]
+                total += raw[0] - 128 if bits == 8 else int.from_bytes(raw, "little", signed=True)
+            mono.append(total / channels / scale)
+        samples = []
+        ratio = rate / CAMERA_SAMPLE_RATE
+        last = len(mono) - 1
+        for index in range(target):
+            position = index * ratio
+            left = min(int(position), last)
+            right = min(left + 1, last)
+            fraction = position - left if left < last else 0.0
+            value = mono[left] * (1.0 - fraction) + mono[right] * fraction
+            samples.append(max(-32768, min(32767, int(round(value * 32767.0)))))
+    samples = samples[:CAMERA_CLIP_FRAMES]
+    samples += [0] * (CAMERA_CLIP_FRAMES - len(samples))
+    return _camera_wav(samples)
+
+
 def _filename_title(filename):
     stem = filename[:-4] if filename.lower().endswith(".wav") else filename
     return stem.replace("_", " ").replace("-", " ").strip() or "Selected sound"

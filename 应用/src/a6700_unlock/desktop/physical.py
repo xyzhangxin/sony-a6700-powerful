@@ -39,6 +39,9 @@ def _build_custom_sound_row(matched_guards, package_result=None, *, installable=
             else:
                 state = 'error'
                 reason = runtime.get('error') or '十槽自定义快门声已安装，当前启动的加载校验尚未通过。'
+                if installable:
+                    from .aftercare import CUSTOM_SOUND_RECOVERY_NOTICE
+                    reason += '\n' + CUSTOM_SOUND_RECOVERY_NOTICE
         elif state == 'partial':
             reason = '检测到部分自定义快门声状态或菜单改动，可直接重新解锁补全或关闭彻底清除。'
         elif state == 'error':
@@ -551,6 +554,9 @@ class PhysicalService:
             raise
         if owns_session or journal_status != 'verified' or result.get('execution_unconfirmed'):
             self.close_session()
+        if output['status'] == 'completed' and output.get('restart_required'):
+            from .aftercare import AUDIO_IMPORT_RESTART_NOTICE
+            output['restart_notice'] = AUDIO_IMPORT_RESTART_NOTICE
         return output
 
     def _perform_combined(self, backend, action, directory, progress, features):

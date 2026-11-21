@@ -427,6 +427,7 @@ class CustomSoundNativeTests(unittest.TestCase):
         files = {
             "/setting/csnd/slot1.bin": self.record,
             "/setting/csnd/slot10.tmp": b"stale",
+            "/setting/csnd/.shutter-autoload-pending": b"",
             "/setting/csnd/state": b"state-data",
             "/setting/csnd/nested/extra.bin": b"nested",
             "/setting/other/keep.bin": b"untouched",

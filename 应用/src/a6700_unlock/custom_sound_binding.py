@@ -41,6 +41,8 @@ def parse(raw, nonce, manifest, identity, profile):
         raise DeviceError('声音加载器回包格式不匹配')
     if echoed != nonce:
         raise DeviceError('声音加载器回包与本次 USB 请求不对应')
+    if status == 8:
+        raise DeviceError('本次检查未检测到声音加载器的运行端点（原生状态 8）。')
     if status:
         raise DeviceError(f'机身拒绝加载器观察（原生状态 {status}）')
     words = struct.unpack_from('<32Q', raw, 44)

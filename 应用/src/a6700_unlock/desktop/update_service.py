@@ -22,7 +22,7 @@ from ..audio_import import (
 )
 from ..audio_packages import (
     build_audio_bundle, build_audio_package, inspect_pcm_wav,
-    MAX_BUNDLE_BYTES, MAX_WAV_BYTES,
+    normalize_camera_clip, MAX_BUNDLE_BYTES, MAX_WAV_BYTES,
 )
 from ..capability_packages import custom_shutter_sound_available
 from ..custom_sound_slots import valid_slot, slot_inventory
@@ -154,7 +154,7 @@ class DesktopUpdateService:
                 raise ValueError("本地音频必须是普通文件。")
             if selected.stat().st_size > MAX_WAV_BYTES:
                 raise ValueError("本地音频超过512KiB。")
-            data = selected.read_bytes()
+            data = normalize_camera_clip(selected.read_bytes())
             candidate = inspect_pcm_wav(data, filename if filename is not None else selected.name)
             origin = dict(type="local")
         elif source == "market":
@@ -169,6 +169,7 @@ class DesktopUpdateService:
                     data = archive.read(sound["filename"])
             except (OSError, KeyError, zipfile.BadZipFile) as exc:
                 raise ValueError("音频包读取失败。") from exc
+            data = normalize_camera_clip(data)
             candidate = inspect_pcm_wav(
                 data, filename if filename is not None else sound["filename"],
                 title=sound["title"],
@@ -204,7 +205,7 @@ class DesktopUpdateService:
         try:
             with zipfile.ZipFile(io.BytesIO(archive_data)) as archive:
                 for sound in sounds:
-                    data = archive.read(sound["filename"])
+                    data = normalize_camera_clip(archive.read(sound["filename"]))
                     candidate = inspect_pcm_wav(
                         data, sound["filename"], title=sound["title"],
                         description=sound["description"], tags=sound["tags"])

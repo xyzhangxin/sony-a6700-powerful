@@ -712,6 +712,11 @@ struct ShutterSoundInstallView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Label("槽位 \(exec.target_slot ?? selectedSlot) 已写入「\(model.audioPlan?.candidate.filename ?? previewCameraFilename)」并通过独立回读验证。", systemImage: "checkmark.circle.fill")
                         .font(.system(size: 12, weight: .semibold)).foregroundColor(UI.accent)
+                    if let notice = exec.restart_notice {
+                        Text(notice)
+                            .font(.system(size: 11)).foregroundColor(UI.accent)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     if exec.backup_cleanup_failed == true {
                         Text(exec.cleanup_warning ?? "注意：临时备份槽位清理未确认。")
                             .font(.system(size: 11)).foregroundColor(UI.amber)

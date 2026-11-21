@@ -462,6 +462,8 @@ class ShutterSoundInstallDialog(QDialog):
             target_s = ex.get('target_slot', self.selected_slot)
             fname = trimmed or default_camera_target_name(self.sound)
             msg = f'槽位 {target_s} 已写入「{fname}」并通过独立回读验证。'
+            if ex.get('restart_notice'):
+                msg += '\n' + ex['restart_notice']
             if ex.get('backup_cleanup_failed'):
                 msg += f"\n{ex.get('cleanup_warning') or '注意：临时备份槽位清理未确认。'}"
             self.status_box.setStyleSheet('background:#eaf5f0;border-radius:8px;')
@@ -716,7 +718,14 @@ class ShutterSoundMarketWidget(QWidget):
         else:
             button(self.status_top, '功能管理', self.ctrl['on_go_features'], 'compactSecondary', not self.ctrl['is_busy']())
 
-        if connected and (not sound_ok or not custom_ok):
+        cleanup = self.ctrl['camera_disconnect_result']() if physical and not connected else None
+        if cleanup:
+            warning = cleanup.get('cleanup_warning')
+            confirmed = cleanup.get('cleanup_status') == 'msc-observed' and not warning
+            self.status_reason.setText('已断开相机 · MSC 已恢复' if confirmed
+                                       else warning or '相机断开后尚未确认 MSC 已恢复。')
+            self.status_reason.show()
+        elif connected and (not sound_ok or not custom_ok):
             if not sound_ok:
                 self.status_reason.setText('当前相机尚未解锁「电子快门声音」；请先在「功能管理」解锁电子快门声音。')
             else:
