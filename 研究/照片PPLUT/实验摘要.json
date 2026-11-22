@@ -1,0 +1,302 @@
+{
+  "schema": "powerful6700/photo-pplut-research-summary/1",
+  "camera": {
+    "model": "ILCE-6700",
+    "firmware": "2.00",
+    "sample_units": 1
+  },
+  "period_local": [
+    "2026-11-11",
+    "2026-11-15"
+  ],
+  "note": "Selected observations from historical experiment and audit reports. No device identifiers or raw dumps.",
+  "hardware_observations": {
+    "AP_parameter_observer_0_4_0": {
+      "complete_events": 41,
+      "call_sites": 6,
+      "photo_outputs": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "AP_lifecycle_0_5_0": {
+      "complete_events": 56,
+      "photo_eligibility_context": 2,
+      "video_eligibility_context": 3
+    },
+    "photo_PP1_loading_0_1_0": {
+      "baseline_events": 36,
+      "adapted_marker_events": 64,
+      "total_events": 100,
+      "photo_slots": [
+        17,
+        18
+      ],
+      "photo_load_bytes_each": 48128,
+      "photo_PP1_native_loading_verified": true,
+      "AP_submit_and_callback_correlation_verified": true,
+      "six_original_calls_restored_and_native_readback_verified": true,
+      "CP_MLUT_ready_verified": false
+    },
+    "photo_PP1_ABA_0_2_0": {
+      "baseline_published_events": 73,
+      "total_published_events": 182,
+      "PP_Off_admissions_preserved": true,
+      "twelve_original_calls_restored_and_native_readback_passed": true,
+      "CP_MLUT_ready_verified": false,
+      "lut_labels": [
+        "IDENTITY17",
+        "RBSWAP17",
+        "IDENTITY17"
+      ],
+      "native_base": [
+        11,
+        3,
+        1,
+        1,
+        0
+      ],
+      "output_switches": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "photo_PP1_override_0_3_0_r2": {
+      "baseline_events": 62,
+      "total_events": 193,
+      "applied_parameter_event_count": 6,
+      "native_STOP_restoration_verified": true,
+      "native_release_hook_hit": false,
+      "CP_MLUT_ready_verified": false,
+      "local_base_input": [
+        10,
+        0,
+        1,
+        1,
+        0
+      ],
+      "local_output_switches_with_Main_preserved": [
+        0,
+        1,
+        1,
+        1,
+        1
+      ],
+      "jpeg_size": [
+        6192,
+        4128
+      ],
+      "same_blue_region_RGB_medians_A_B_A": [
+        [
+          48.0,
+          52.0,
+          91.0
+        ],
+        [
+          48.0,
+          53.0,
+          92.0
+        ],
+        [
+          48.0,
+          52.0,
+          90.0
+        ]
+      ],
+      "expected_red_blue_swap_observed": false
+    },
+    "CP_native_reading": {
+      "config_header": {
+        "CP_reads": 11,
+        "CP_total_bytes": 536,
+        "config_header_bytes": 120,
+        "both_header_bytes_identical": true
+      },
+      "ring_headers": {
+        "CP_reads": 17,
+        "CP_bytes": 760,
+        "RBUF_header_bytes": 80,
+        "ring_headers_measured": true
+      },
+      "single_VFX_MLUT_body_capture": {
+        "CP_reads": 25,
+        "CP_bytes": 7188,
+        "body_bytes": 6216
+      },
+      "stages_same_boot": [
+        {
+          "stage": "photo_PP_Off_ST",
+          "VFX_retained": 0,
+          "MLUT_retained": 0
+        },
+        {
+          "stage": "photo_PP1_shot_and_playback",
+          "VFX_retained": 21,
+          "MLUT_retained": 0
+        },
+        {
+          "stage": "video_PPLUT1_preview",
+          "VFX_retained": 57,
+          "MLUT_retained": 103
+        }
+      ],
+      "video_MLUT_begin": 12,
+      "video_MLUT_end": 12,
+      "MLUT_end_status_words": {
+        "0x0": 12
+      },
+      "whole_video_event_history_retained": false,
+      "photo_task_unique_attribution_proven": false,
+      "callback_drain_proven": false,
+      "CP_cache_visibility_verified": false,
+      "coherent_snapshot_proven": false
+    },
+    "photo_JPEG_VFX_log_pair": {
+      "pair_CP_reads": 62,
+      "pair_CP_bytes": 31128,
+      "pair_body_bytes": 28816,
+      "begin_count": 3,
+      "end_count": 3,
+      "end_status_words_all_zero": true,
+      "main_vs_auxiliary_encoder_identity_proven": false,
+      "native_callback_drain_proven": false,
+      "JPEG_pixels_verified": false,
+      "JPEG_retained_before_after": [
+        385,
+        385
+      ]
+    },
+    "direct_selector_pair": {
+      "host_manifest_sha256": "d061c99d7f8fa841bc6b188859021613ceccd5d9c6d50b0b05350e6eec104e0d",
+      "candidate_owned_bytes": 236,
+      "remote_key": "0x908f084b",
+      "selector": "0x43",
+      "actual_direct_statuses": [
+        "0x80",
+        "0x5a",
+        "0x80"
+      ],
+      "direct_CP_execution_verified": true,
+      "candidate_installations": 1,
+      "original_restorations": 1,
+      "final_verification_firmware_writes": 0,
+      "original_stock_code_and_sector_verified": true,
+      "service_files_restored": true,
+      "USB_auto_exit_confirmed": false,
+      "physical_closeout_accepted": true
+    },
+    "photo_observer_startup_failure": {
+      "manifest_sha256": "dcca69d28286f1eeff72dee41b53e0e2bd0f920614dbf405bad0e785f9848e88",
+      "media_writer_invocations": 1,
+      "service_files_restored": true,
+      "photo_AP_CP_events_correlated": false,
+      "CP_sectors": 9,
+      "sector_bytes": 512,
+      "changed_bytes": 711,
+      "before_install_direct_reply": "0x80",
+      "first_cold_start": "brief partial UI, then black screen; repeated lens motion and continued access light while powered",
+      "menu_continuously_usable": false,
+      "usable_MSC_observed": false,
+      "USB_HID_VID_PID_observed": "054c:0d68",
+      "no_card_recovery": false,
+      "no_lens_recovery": false,
+      "movie_P_recovery": false,
+      "original_nine_sectors_retained_locally": true,
+      "AP_loader_installed": false,
+      "CP_arm_or_capture_attempted": false,
+      "post_install_firmware_writes": 0,
+      "original_CP_restored": false,
+      "latest_camera_on": false,
+      "USB_present": false
+    }
+  },
+  "historical_offline_replays": {
+    "AP_log_proxy": {
+      "AP_proxy_key": "0x808f084a",
+      "AP_callback_text_offset": "0x5570",
+      "direct_CP_key": "0x908f084b",
+      "case_count": 6,
+      "statuses_before_proxy": [
+        "0x80",
+        "0x5a"
+      ],
+      "statuses_after_proxy": [
+        "0x80",
+        "0x80"
+      ]
+    },
+    "CP_descriptor_to_photo": {
+      "case_count": 11,
+      "case_names": [
+        "historical_AP_descriptors_replayed_with_fresh_photo_handles",
+        "same_handle_reuses_mapping_until_explicit_invalidation",
+        "failed_retain_increments_generation_but_supplies_no_user_LUT",
+        "native_descriptor_clear_does_not_propagate_mapping_release_failure",
+        "receiver_publishes_descriptor_even_when_reported_span_is_short",
+        "new_descriptor_while_available_rejects_old_photo_Main",
+        "stock_photo_Main_remains_bypassed_even_after_successful_modelled_completion",
+        "new_descriptor_before_submit_rejects_stale_parameters",
+        "native_duplicate_and_mapping_only_release_replay",
+        "mapping_only_release_failure_clears_mapping_count_and_later_noops",
+        "CP_binder_and_AP_provider_use_real_packets_for_owned_DMM_share"
+      ],
+      "fixture_scope": "Archived AP descriptors with local photo handles; no hardware pixel output."
+    },
+    "DMM_provider": {
+      "case_count": 5,
+      "case_names": [
+        "share_and_open_pin_unit_until_both_references_are_released",
+        "Close_releases_mapping_only_Free_releases_share",
+        "share_increment_survives_mapping_failure",
+        "stale_unit_generation",
+        "unexpected_asset_type"
+      ]
+    },
+    "Main_through_encoder": {
+      "result": "passed_bounded_native_parameter_route",
+      "case_count": 4,
+      "hardware_encoder_fixtures": true
+    },
+    "CP_boot": {
+      "rebuilt_matches_nine_readback_sectors": true,
+      "replay_cases": {
+        "stock": {
+          "outcome": "stock_finalizer_entered",
+          "stopped_at": "0x108070"
+        },
+        "candidate_loaded": {
+          "outcome": "stock_finalizer_entered",
+          "stopped_at": "0x108070"
+        },
+        "candidate_unmapped": {
+          "outcome": "emulator_fault",
+          "stopped_at": "0x10f000"
+        },
+        "candidate_zeroed": {
+          "outcome": "emulator_fault",
+          "stopped_at": "0x111000"
+        },
+        "stock_wait_held": {
+          "outcome": "instruction_limit",
+          "stopped_at": "0x108980"
+        }
+      },
+      "exception_register_save_reproduced_with_injected_values": true,
+      "failure_PC_on_camera_known": false
+    }
+  },
+  "outstanding": [
+    "independent non-MSC recovery and restoration method",
+    "single photo User3D completion correlation",
+    "native photo PPLUT menu",
+    "photo LUT preview",
+    "main JPEG LUT pixels",
+    "FL23 compatibility"
+  ]
+}
