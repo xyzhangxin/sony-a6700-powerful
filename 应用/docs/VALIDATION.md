@@ -1,9 +1,5 @@
 # 验证记录
 
-## A6700 2.00 照片 PPLUT 研究（2026-11）
-
-照片 PP1 已在实机经 AP 加载视频 PPLUT1 绑定的 LUT。CP User3D／MLUT 与 JPEG 主图路径已定位，原／候选／恢复原 CP 直连得到 `0x80`、`0x5A`、`0x80`。为了关联同一次拍摄的 LUT 完成和图片任务，后来安装九个 CP 扇区的记录器。该轮冷启动未能进入可用菜单或 MSC，原九扇区尚未恢复。照片 JPEG 的 LUT 像素效果、取景以及照片挡原生 PPLUT 菜单仍待验收。 [完整研究交接](../../研究/照片PPLUT/README.md) · [黑屏与 USB 排查](USB-TROUBLESHOOTING.md#冷启动黑屏或只枚举-hid)
-
 ## Windows 0.4.1 x64 发布候选（2026-11-08）
 
 用户已确认普通Windows首次驱动安装与连接验收通过。发布候选将dev5的SetupAPI与驱动库独立复核、initial_ready／service_ready兼容、UTF-16 INF读取及安装超时真实绑定复核固化为0.4.1，不再带开发版后缀；功能范围与dev5一致。
