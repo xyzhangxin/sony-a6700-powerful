@@ -18,6 +18,7 @@ def _build_custom_sound_row(matched_guards, package_result=None, *, installable=
     """Describe inspected custom-shutter-sound firmware state separately from sound."""
     mode = 'not-installed'
     state = 'disabled'
+    diagnostic = None
     pkg_row = None
     if isinstance(package_result, dict):
         for row in package_result.get('plan', {}).get('features', ()):
@@ -38,8 +39,9 @@ def _build_custom_sound_row(matched_guards, package_result=None, *, installable=
                 reason = '十槽自定义快门声已安装并通过本次启动的加载校验，可在快门声市场管理音频。'
             else:
                 state = 'error'
+                diagnostic = runtime.get('diagnostic') if isinstance(runtime.get('diagnostic'), dict) else None
                 reason = runtime.get('error') or '十槽自定义快门声已安装，当前启动的加载校验尚未通过。'
-                if installable:
+                if diagnostic is None and installable:
                     from .aftercare import CUSTOM_SOUND_RECOVERY_NOTICE
                     reason += '\n' + CUSTOM_SOUND_RECOVERY_NOTICE
         elif state == 'partial':
@@ -52,6 +54,7 @@ def _build_custom_sound_row(matched_guards, package_result=None, *, installable=
     elif isinstance(package_result, dict) and {9, 12}.issubset(matched_guards) and package_result.get('status') == 'error':
         state = 'error'
         mode = 'binding-error'
+        diagnostic = package_result.get('diagnostic') if isinstance(package_result.get('diagnostic'), dict) else None
         reason = package_result.get('error') or '十槽自定义快门声加载器校验失败。'
     elif {9, 12} & matched_guards:
         state = 'partial'
@@ -61,16 +64,28 @@ def _build_custom_sound_row(matched_guards, package_result=None, *, installable=
         reason = ('尚未启用自定义快门声；勾选解锁将自动包含「电子快门声音」。'
                   if installable
                   else '尚未安装十槽自定义快门声固件；需先解锁「电子快门声音」。')
-    return dict(
+    recovery_mode = diagnostic.get('recovery_mode') if isinstance(diagnostic, dict) else None
+    recoverable = bool(
+        installable and state == 'error'
+        and mode in ('fl23-unified-carrier', 'binding-error')
+        and recovery_mode in (None, 'lossless-recover', 'update-carrier')
+    )
+    row = dict(
         id='custom_shutter_sound',
         name='自定义快门声',
         state=state,
         requires=['sound'],
         available=bool(installable),
         installable=bool(installable),
+        recoverable=recoverable,
         mode=mode,
         reason=reason,
     )
+    if recovery_mode is not None:
+        row['recovery_mode'] = recovery_mode
+    if diagnostic is not None:
+        row['diagnostic'] = diagnostic
+    return row
 
 
 def _verified_custom_sound_binding(backend, profile_digest, device_identity):
@@ -85,6 +100,18 @@ def _verified_custom_sound_binding(backend, profile_digest, device_identity):
     if binding.device_identity_sha256 != device_identity:
         raise ValueError('加载器绑定与认证前机身身份不一致。')
     return binding, validated
+
+
+def _custom_sound_runtime_error(exc, prefix=''):
+    error = str(exc).strip() or type(exc).__name__
+    payload = dict(status='error', error=prefix + error if prefix else error)
+    native_status = getattr(exc, 'native_status', None)
+    diagnostic = getattr(exc, 'diagnostic', None)
+    if native_status is not None:
+        payload['native_status'] = native_status
+    if isinstance(diagnostic, dict):
+        payload['diagnostic'] = diagnostic
+    return payload
 
 
 class PhysicalService:
@@ -217,8 +244,10 @@ class PhysicalService:
 
     def perform(self, action, progress=lambda _message: None, backup_id=None, features=None):
         self._refresh_adapter_set()
-        if action not in ("inspect", "unlock", "close", "backup", "restore"):
+        if action not in ("inspect", "unlock", "close", "backup", "restore", "recover_custom_sound"):
             raise ValueError("未知设备操作；当前支持检查、解锁、关闭、功能状态备份与恢复")
+        if action == "recover_custom_sound" and not self.custom_sound_available:
+            raise ValueError('当前版本未包含自定义快门声无损恢复组件。')
         # Reject package feature injection before acquiring/authenticating USB.
         # The fixed-sector backend cannot install startup packages.
         package_ids={'fl23'} if self.fl23_available else set()
@@ -269,7 +298,12 @@ class PhysicalService:
         backend = self._session_backend
         backend.progress = progress
         try:
-            if effective_features is not None and set(effective_features)&package_ids and set(effective_features)-package_ids:
+            if action == 'recover_custom_sound':
+                if not hasattr(backend, '_command'):
+                    raise ValueError('当前适配器尚不支持自定义快门声无损恢复。')
+                from ..fl23_package import perform
+                result = perform(backend, 'recover-custom-sound', directory, progress)
+            elif effective_features is not None and set(effective_features)&package_ids and set(effective_features)-package_ids:
                 result=self._perform_combined(backend,action,directory,progress,effective_features)
             elif effective_features is not None and set(effective_features)&package_ids:
                 from ..fl23_package import perform
@@ -326,14 +360,14 @@ class PhysicalService:
                                 try:
                                     _verified_custom_sound_binding(backend, self.profile.digest, device_identity)
                                 except Exception as exc:
-                                    error = str(exc).strip() or type(exc).__name__
-                                    package_result['custom_sound_runtime'] = dict(
-                                        status='error', error=f'十槽自定义快门声已安装，加载校验失败。{error}')
+                                    runtime = _custom_sound_runtime_error(
+                                        exc, prefix='十槽自定义快门声已安装，加载校验失败。')
+                                    package_result['custom_sound_runtime'] = runtime
                                     if (getattr(backend, '_fl23_transport_uncertain', False) is True
                                             or getattr(backend, '_custom_sound_service_restore_unconfirmed', False) is True):
                                         result['status'] = 'blocked'
                                         result['plan']['compatible'] = False
-                                        result['error'] = error
+                                        result['error'] = runtime['error']
                                 else:
                                     package_result['custom_sound_runtime'] = dict(status='verified')
                     if ((package_result is None or package_result.get('status') != 'inspected')
@@ -383,14 +417,14 @@ class PhysicalService:
                                 _verified_custom_sound_binding(backend, self.profile.digest, device_identity)
                                 pkg = dict(status='inspected', mode='custom-sound-combined-stage')
                             except BaseException as exc:
-                                pkg = dict(status='error', error=str(exc) or type(exc).__name__)
+                                pkg = _custom_sound_runtime_error(exc)
                     result['custom_sound'] = _build_custom_sound_row(
                         matched_guards, pkg, installable=self.custom_sound_available)
         except BaseException:
             self.close_session()
             raise
         self._last_run_directory = Path(result['run_directory'])
-        if action in ('unlock', 'close') or result.get('status') in (
+        if action in ('unlock', 'close', 'recover_custom_sound') or result.get('status') in (
                 'blocked', 'error', 'uncertain', 'close-preparation-required',
                 'close-preparation-uncertain', 'close-preparation-cancelled', 'close-preparation-restart-required'):
             try:

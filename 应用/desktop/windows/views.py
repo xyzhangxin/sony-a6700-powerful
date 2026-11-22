@@ -371,6 +371,17 @@ class Views:
         st.setStyleSheet(f'font-size:10px;font-weight:600;color:{state_color};')
         layout.addWidget(st)
 
+    def _custom_sound_recover_button(self, enabled):
+        btn = QPushButton('无损恢复（保留音频）')
+        btn.setObjectName('recoverCustomSoundButton')
+        btn.setProperty('role', 'compactSecondary')
+        btn.setStyleSheet(f'background:#eef6f3;border:1px solid {ACCENT};color:{ACCENT};border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;')
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setEnabled(enabled)
+        btn.setToolTip('清除开机保护锁标记并按需升级常驻，完整保留全部 10 槽音频')
+        btn.clicked.connect(lambda: self.command('recover_custom_sound'))
+        return btn
+
     def _custom_sound_fallback_row(self, listbox):
         custom = (self.state.get('custom_sound') or {})
         state = custom.get('state', 'disabled')
@@ -394,8 +405,12 @@ class Views:
         mkt_btn.setIcon(symbol_icon('waveform', 13, ACCENT, 4)); mkt_btn.setIconSize(QSize(17, 13))
         mkt_btn.setEnabled(not self.inflight and not self.state.get('busy'))
         mkt_btn.clicked.connect(self.open_market)
+        trailing = []
+        if self.physical and state == 'error' and custom.get('installable') and custom.get('recoverable') is True:
+            trailing.append(self._custom_sound_recover_button(not self.inflight and not self.state.get('busy')))
+        trailing.append(mkt_btn)
         color = ACCENT if state == 'enabled' else (AMBER if state in ('partial', 'error') else MUTED)
-        self._add_feature_trailing(r, state_lbl, color, [mkt_btn])
+        self._add_feature_trailing(r, state_lbl, color, trailing)
         listbox.addWidget(w)
 
     def workspace(self,l):
@@ -450,6 +465,8 @@ class Views:
                 update.clicked.connect(lambda _=False, is_ftp=is_ftp: self.command('update_ftp' if is_ftp else 'update_fl23'))
                 action_buttons.append(update)
             if f['id'] == 'custom_shutter_sound':
+                if self.physical and display_state == 'error' and custom_status.get('installable') and custom_status.get('recoverable') is True:
+                    action_buttons.append(self._custom_sound_recover_button(not self.inflight and not s.get('busy')))
                 mkt = QPushButton('去快门声市场')
                 mkt.setObjectName('openAudioMarketButton')
                 mkt.setStyleSheet('background:#f0f2f1;border:1px solid #dde3e0;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:500;')
@@ -477,9 +494,20 @@ class Views:
         issue=self.dependency_issue(features,affected)
         if issue:box.addWidget(label(issue,'amber'))
         if self.action=='unlock':
-            for feature in selected:
-                if feature.get('unlock_notice'):
-                    notice=label(feature['unlock_notice'],'amber');notice.setObjectName('fl23StartupNotice');box.addWidget(notice)
+            from a6700_unlock.desktop.aftercare import CUSTOM_SOUND_STARTUP_NOTICE
+            custom_row=next((f for f in features if f['id']=='custom_shutter_sound'),None)
+            custom_active=(custom_status.get('state') in ('enabled','error')
+                           or (custom_row is not None and custom_row.get('state') in ('enabled','error')))
+            notices=[]
+            if any(f['id']=='custom_shutter_sound' for f in selected) or (
+                    custom_active and any(f.get('unlock_notice') for f in selected)):
+                notices.append((custom_row or {}).get('unlock_notice') or CUSTOM_SOUND_STARTUP_NOTICE)
+            else:
+                for feature in selected:
+                    text=feature.get('unlock_notice')
+                    if text and text not in notices:notices.append(text)
+            for text in notices:
+                notice=label(text,'amber');notice.setObjectName('fl23StartupNotice');box.addWidget(notice)
         if self.action=='close':box.addWidget(label('一次完成：先恢复相关机身默认设置，再关闭固件功能并独立回读。','muted'))
         execute=button(box,('' if self.physical else '演示：')+('解锁或更新 ' if has_updates else '解锁 ' if self.action=='unlock' else '恢复设置并关闭 ')+str(len(affected))+' 项',lambda:self.confirm_write(self.action),'primary' if self.action=='unlock' else 'destructive',bool(affected) and not issue and s.get('compatible',False))
         execute.setAccessibleName('解锁所选功能' if self.action=='unlock' else '关闭所选功能')
@@ -539,10 +567,11 @@ class Views:
             b.addStretch()
 
     def success(self,l,r,after):
-        text='已经是目标状态' if r.get('status')=='no-op' else ('固件已关闭，设置已恢复' if r.get('status')=='settings-prepared' else '关闭完成' if self.state.get('action')=='close' else '解锁或更新完成')
+        action=self.state.get('action')
+        text='已经是目标状态' if r.get('status')=='no-op' else ('固件已关闭，设置已恢复' if r.get('status')=='settings-prepared' else '无损恢复完成' if action=='recover_custom_sound' else '关闭完成' if action=='close' else '解锁或更新完成')
         if not self.physical and r.get('status')!='no-op':text='模拟'+text
         head=row(l,13);head.addWidget(Symbol('success',30),0,Qt.AlignmentFlag.AlignTop);titles=column(head,7,1)
-        subtitle=('所选功能已符合目标，未重复写入。请在相机上确认实际表现。' if r.get('status')=='no-op' else '写入与独立回读通过，实际功能还需在相机上确认。') if self.physical else '合成数据演示已完成；真实相机没有被访问或修改。'
+        subtitle=('所选功能已符合目标，未重复写入。请在相机上确认实际表现。' if r.get('status')=='no-op' else '已无损清除开机保护锁标记（原有 10 槽音频完整保留），并通过独立回读。请完全断电重启并静置约 90 秒后检查。' if action=='recover_custom_sound' else '写入与独立回读通过，实际功能还需在相机上确认。') if self.physical else '合成数据演示已完成；真实相机没有被访问或修改。'
         title(titles,text,subtitle);head.addWidget(pill('待机身验收' if self.physical else '仅演示结果'),0,Qt.AlignmentFlag.AlignTop)
         self.close_preparation_panel(l,r.get('close_preparation'))
         if self.state.get('action')=='close':

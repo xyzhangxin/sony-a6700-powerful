@@ -2,6 +2,10 @@
 
 本入口对应 `package_updates.py`、`online_updates.py`、Worker `scripts/sign-index.mjs` 和 `data/update-trust.json`。更新只改变本机适配集，不直接改变相机。 独立 macOS 应用的 `desktop/runtime-dependencies.json` 还固定 cryptography 46.0.3、cffi 2.1.1（cp313 arm64）和 pycparser 3.12；构建时校验 wheel 哈希并将原生库裁剪到 arm64，缺少这些组件的包不能称为支持签名更新。
 
+## 0.5.1 双平台发布（2026-11-21）
+
+经维护者验收，基于冻结测试源码发布 v0.5.1，标签指向 `8b20d7391dc489d92c58193ae7790bd10899c287`。双平台共用应用源码，Mac arm64 更新签名通过校验。六个 GitHub 附件下载回读与本地一致，0.5.0 更新检查在两个平台均识别到 0.5.1。[GitHub 发布](https://github.com/xyzhangxin/sony-a6700-powerful/releases/tag/v0.5.1) · [发行目录](../dist/v0.5.1/) · [发布验收](../../output/运行/快门声音/051发布/验收摘要.md)
+
 ## 当前信任根（2026-11-08）
 
 - `key_id`：`a6700-update-2026-01`

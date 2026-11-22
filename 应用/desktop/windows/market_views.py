@@ -714,7 +714,12 @@ class ShutterSoundMarketWidget(QWidget):
             btn = button(self.status_top, '连接相机' if physical else '演示连接', self.ctrl['on_connect'], 'primary', not self.ctrl['is_busy']())
             btn.setObjectName('marketConnectButton')
         elif not sound_ok or not custom_ok:
-            button(self.status_top, '去功能管理', self.ctrl['on_go_features'], 'primary', not self.ctrl['is_busy']())
+            if sound_ok and self.ctrl.get('custom_sound_recoverable', lambda: False)():
+                rec_btn = button(self.status_top, '无损恢复（保留音频）', self.ctrl['recover_custom_sound'], 'primary', not self.ctrl['is_busy']())
+                rec_btn.setObjectName('marketRecoverCustomSoundButton')
+                button(self.status_top, '去功能管理', self.ctrl['on_go_features'], 'compactSecondary', not self.ctrl['is_busy']())
+            else:
+                button(self.status_top, '去功能管理', self.ctrl['on_go_features'], 'primary', not self.ctrl['is_busy']())
         else:
             button(self.status_top, '功能管理', self.ctrl['on_go_features'], 'compactSecondary', not self.ctrl['is_busy']())
 

@@ -298,6 +298,78 @@ class AppSupportTests(unittest.TestCase):
                     with zipfile.ZipFile(io.BytesIO(send.call_args.kwargs['failure_archive'])) as archive:
                         self.assertIn('plan.json', archive.namelist())
 
+    def test_custom_sound_diagnostic_records_and_failure_details_stay_allowlisted(self):
+        from a6700_unlock.diagnostic_records import collect
+
+        with tempfile.TemporaryDirectory() as folder:
+            state = Path(folder)
+            run = state / 'runs' / ('looks-' + 'a' * 32)
+            run.mkdir(parents=True)
+            (run / 'result.json').write_text(json.dumps(dict(
+                action='inspect', status='inspected', verified=True, device_access=True,
+                write_attempted=False, selected_features=['custom_shutter_sound'],
+                final_features=[dict(id='custom_shutter_sound', state='error')],
+                plan=dict(features=[dict(id='custom_shutter_sound', state='error')]),
+            )), encoding='utf-8')
+            (run / 'fl23-inspect-result.json').write_text(json.dumps(dict(
+                status='inspected',
+                plan=dict(features=[dict(id='fl23', state='enabled'),
+                                    dict(id='custom_shutter_sound', state='enabled')]),
+                custom_sound_runtime=dict(
+                    status='error',
+                    error='/private/raw-error-text boot=deadbeef',
+                    native_status=8,
+                    diagnostic=dict(
+                        category='autoload-pending-blocked',
+                        recovery_mode='close-custom-sound',
+                        boot_socket=True,
+                        boot_page_matches=1,
+                        autoload_present=True,
+                        autoload_step=2,
+                        autoload_status=-17,
+                        boot_id='01234567-secret-boot-id',
+                        bias='0x19000000',
+                    ),
+                ),
+            )), encoding='utf-8')
+            collected = collect(state)
+            self.assertEqual(len(collected['records']), 1)
+            rec = collected['records'][0]
+            self.assertEqual(rec['selected_features'], ['custom_shutter_sound'])
+            self.assertEqual(rec['final_features'], [dict(id='custom_shutter_sound', state='error')])
+            self.assertEqual(rec['fl23_features'][1], dict(id='custom_shutter_sound', state='enabled'))
+            self.assertEqual(rec['custom_sound_runtime']['diagnostic']['category'], 'autoload-pending-blocked')
+            self.assertEqual(rec['custom_sound_runtime']['diagnostic']['autoload_status'], -17)
+            for forbidden in ('/private', 'deadbeef', '01234567-secret', '0x19000000', 'raw-error-text'):
+                self.assertNotIn(forbidden, json.dumps(collected))
+
+        identity = str(uuid.uuid4())
+        trace = FailureTrace()
+        trace.begin(identity)
+        outcome = dict(
+            status='blocked', write_attempted=False, settings_write_attempted=False, verified=False,
+            fl23_inspection=dict(custom_sound_runtime=dict(
+                status='error',
+                error='secret path /tmp/x',
+                native_status=8,
+                diagnostic=dict(
+                    category='no-boot-context',
+                    recovery_mode='power-cycle-wait',
+                    boot_socket=False,
+                    bias=0x19000000,
+                ),
+            )),
+            plan=dict(compatible=False, issues=[], features=[dict(id='custom_shutter_sound', state='error')]),
+        )
+        snapshot = dict(operation_id=identity, action='inspect', result=dict(status='blocked'))
+        report = trace.report(snapshot, outcome)
+        files = failure_details(report, outcome, snapshot)
+        self.assertEqual(files['result.json']['custom_sound_runtime']['diagnostic']['category'], 'no-boot-context')
+        self.assertEqual(files['plan.json']['features'], [dict(id='custom_shutter_sound', state='error')])
+        self.assertNotIn('/tmp/x', json.dumps(files))
+        self.assertNotIn(str(0x19000000), json.dumps(files))
+        self.assertNotIn('bias', json.dumps(files))
+
 
 if __name__ == '__main__':
     unittest.main()

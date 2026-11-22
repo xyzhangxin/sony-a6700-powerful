@@ -23,7 +23,7 @@ def _acceptance_steps(action, check):
                  path=check["path"], expected=check["expected"])]
 
 
-def build_workflow(action, restart_steps, checks, changed_ids, restart_required=True):
+def build_workflow(action, restart_steps, checks, changed_ids, restart_required=True, wait_seconds=None):
     steps = []
     for step in restart_steps if restart_required else ():
         item = dict(id="restart_" + step["id"], type="manual_action", phase="restart",
@@ -34,11 +34,13 @@ def build_workflow(action, restart_steps, checks, changed_ids, restart_required=
         if step["id"] == "on":
             item["emits"] = "camera_power_on_confirmed"
         steps.append(item)
-    if (changed_ids & {"fl23", "creative_look_names", "custom_shutter_sound"}) and action == "unlock":
+    if (changed_ids & {"fl23", "creative_look_names", "custom_shutter_sound"}) and action in ("unlock", "recover_custom_sound"):
+        seconds = (wait_seconds if isinstance(wait_seconds, int) and wait_seconds > 0
+                   else (90 if "custom_shutter_sound" in changed_ids else 40))
         steps.append(dict(
             id="fl23_ready", type="wait_for_ready", phase="ready",
             anchor="camera_power_on_confirmed", evidence="user_attestation",
-            timing=dict(kind="estimate", seconds=40, completion="prompt_checks_only"),
+            timing=dict(kind="estimate", seconds=seconds, completion="prompt_checks_only"),
             required=True,
         ))
     for check in checks:

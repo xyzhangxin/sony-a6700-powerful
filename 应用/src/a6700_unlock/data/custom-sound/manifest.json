@@ -1,7 +1,7 @@
 {
   "schema": "a6700.custom-sound-native-payload/1",
   "payload_id": "custom-shutter-sound-slot-import",
-  "source_sha256": "795b38d9636a946af108a628d2256418ca403cdb1c7654b3902cc3d361f522f0",
+  "source_sha256": "dc26d68f16210d33f18c710a1925c7c5ec86a0dd5fcdbbd774622655141f522f",
   "hardware_validation": "pending",
   "request_header_bytes": 72,
   "response_bytes": 44,
@@ -18,8 +18,8 @@
   },
   "payloads": {
     "custom-sound-writer": {
-      "sha256": "8deac723fb27286573008738191a76b03a0531e796c075c6f52d7a782dd10b91",
-      "bytes": 10528
+      "sha256": "ba06c27aecd496a6fda02810cbe2be09b4c2775d9afde06dcdb841bee5963d7a",
+      "bytes": 11648
     }
   },
   "camera_io": false,

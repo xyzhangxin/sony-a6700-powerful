@@ -13,10 +13,20 @@ import plistlib
 import re
 import stat
 
-FEATURES = frozenset(("fl23", "creative_look_names", "ftp", "shutter",
+FEATURES = frozenset(("fl23", "creative_look_names", "custom_shutter_sound", "ftp", "shutter",
                       "exposure", "sound", "pixel_shift", "dynamic_active"))
-STATES = frozenset(("enabled", "disabled", "partial", "unknown", "original"))
+STATES = frozenset(("enabled", "disabled", "partial", "error", "unknown", "original"))
 LIMIT = 2 * 1024 * 1024
+_RECOVERY_MODES = frozenset(("power-cycle-wait", "close-custom-sound", "update-carrier"))
+_DIAG_BOOLS = (
+    "boot_socket", "same_boot_session", "receipt_present", "receipt_matched",
+    "wrapper_present", "autoload_present", "autoload_pending_retained",
+)
+_DIAG_SMALL_INTS = ("boot_page_matches", "fl23_worker_state", "wrapper_primary_ran", "wrapper_custom_started")
+_DIAG_SIGNED_INTS = (
+    "fl23_worker_error", "wrapper_primary_rc", "wrapper_custom_rc",
+    "wrapper_early_abort_rc", "autoload_step", "autoload_status",
+)
 
 
 def read_record(path):
@@ -51,6 +61,41 @@ def feature_rows(rows):
             item["update_state"] = row["update_state"]
         output.append(item)
     return output
+
+
+def custom_sound_runtime_summary(runtime):
+    """Return strictly allowlisted scalar telemetry for custom-sound probe checks."""
+    if not isinstance(runtime, dict):
+        return None
+    summary = {}
+    if runtime.get("status") in ("verified", "error", "unknown"):
+        summary["status"] = runtime["status"]
+    native_status = runtime.get("native_status")
+    if type(native_status) is int and 0 <= native_status <= 255:
+        summary["native_status"] = native_status
+    diag = runtime.get("diagnostic")
+    if isinstance(diag, dict):
+        safe_diag = {}
+        category = diag.get("category")
+        if isinstance(category, str) and re.fullmatch(r"[a-z][a-z0-9-]{0,47}", category):
+            safe_diag["category"] = category
+        recovery_mode = diag.get("recovery_mode")
+        if recovery_mode in _RECOVERY_MODES:
+            safe_diag["recovery_mode"] = recovery_mode
+        for key in _DIAG_BOOLS:
+            if type(diag.get(key)) is bool:
+                safe_diag[key] = diag[key]
+        for key in _DIAG_SMALL_INTS:
+            val = diag.get(key)
+            if type(val) is int and 0 <= val <= 1000:
+                safe_diag[key] = val
+        for key in _DIAG_SIGNED_INTS:
+            val = diag.get(key)
+            if type(val) is int and -100000 <= val <= 100000:
+                safe_diag[key] = val
+        if safe_diag:
+            summary["diagnostic"] = safe_diag
+    return summary or None
 
 
 def collect(state_dir):
@@ -112,6 +157,17 @@ def collect(state_dir):
                 digest = data.get("carrier_sha256")
                 if isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest):
                     item["carrier_sha256"] = digest
+            inspect_file = folder / "fl23-inspect-result.json"
+            if inspect_file.is_file() and not inspect_file.is_symlink():
+                inspect_data = read_record(inspect_file)
+                runtime = custom_sound_runtime_summary(inspect_data.get("custom_sound_runtime"))
+                if runtime is not None:
+                    item["custom_sound_runtime"] = runtime
+                inspect_plan = inspect_data.get("plan")
+                if isinstance(inspect_plan, dict):
+                    fl23_rows = feature_rows(inspect_plan.get("features"))
+                    if fl23_rows:
+                        item["fl23_features"] = fl23_rows
             output.append(item)
         except (OSError, ValueError, TypeError, KeyError):
             unreadable += 1

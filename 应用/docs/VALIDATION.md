@@ -1,5 +1,14 @@
 # 验证记录
 
+## 0.5.2 防永久死锁与无损恢复（2026-11-22）
+
+- **离线仿真与核心回归**：Unicorn 仿真复核 `custom_sound_autoload`（`output/运行/快门声音/消除永久死锁与无损恢复/stage/autoload-validation.json`，24 项用例通过，覆盖首启正常、阶段 12 单次隔离并自动放行、下次正常开机回收并恢复、阶段 13 连续两次异常隔离）；Mac Python 3.14.5 下 `scripts/check.py --native --strict` 全部 **662 项**通过（0 失败、0 跳过），覆盖 `rev=6` 统一载体、`op=5` 无损清锁命令、状态 8 分型诊断、`probe.elf` 双版本收据兼容、`protocol.py` 命令白名单、`recover_custom_sound` 控制器与售后门禁、Mac / Windows UI 契约与双平台构建资产检查。
+- **ILCE-6700 2.00 真机调试闭环（共享调试台）**：
+  - `rev=5 -> rev=6` 无损升级验证：`rev=5` 前态识别（`legacy_receipts` `1287`）→ 槽 3 写入内置「嘟嘟」（`generation: 805306369`）→ 执行 `recover_custom_sound`（原位升级 `/setting/fl23` 至 `rev=6`、64 KB 回读通过、执行原生 `custom-sound-writer.elf` `version=5` 清锁入口）→ 新只读会话确认 `fl23.installed_revision == 6` 且槽 3「嘟嘟」完好保留。
+  - 冷启动与加载校验闭环：`rev=6` 冷启动实测 `autoload_step == 6`、`autoload_status == 0`、`receipt_matched == true`、`wrapper_primary_rc == 0`、`wrapper_custom_started == 1`、`wrapper_custom_rc == 0`；修复 `probe.elf` 内置收据同步支持 `rev=6`（`4..7`）与 `rev=5`（`1284..1287`）后，真机 `inspect` 校验 `custom_sound.state == "enabled"`。
+  - 单独关闭与重新解锁闭环：真机单独关闭 `custom_shutter_sound` 并冷启动复验为 `disabled`（保留 `FL2/FL3`、中文名称与基础电子快门声音，清除 `/setting/csnd`）；随后从禁用态重新完整解锁 `custom_shutter_sound` `rev=6` 并冷启动（实测早期 `fl23_worker_state == 5` 准确报告 `startup-in-progress` 与 `recoverable=false`，静置完成后同一启动过程进入 `enabled` 且 10 槽为 `[空]`）；最后再次向槽 3 写入内置「嘟嘟」并独立回读、MSC 正常退出通过。
+- **已知边界**：连续两次异常中断触发阶段 `13` 隔离保护锁并经 `op=5` 现场清锁的实际相机注入测试未在真机刻意破坏写入／断电触发，该路径由 Unicorn 24 项仿真、控制器状态 8 模拟测试与真机 `op=5` 实机执行共同覆盖；双端成组发布前在 `.77` Windows 11 x64 完成同一份冻结源码包全检与冻结成品离线自检。
+
 ## 0.5.1 自定义快门声修订（2026-11-21）
 
 - 对照冻结的 0.5.0 源码包，原「嘟嘟」为 4800 帧，本地版本为 8400 帧，原始音频经过共用规范化后与本地内置文件逐字节一致。242 份冻结的核心数据资源逐字节一致。

@@ -196,9 +196,20 @@ struct ShutterSoundMarketView: View {
                         .buttonStyle(PrimaryStyle())
                         .disabled(model.cameraOperationActive)
                 } else if !soundUnlocked || !customUnlocked {
-                    Button("去功能管理", action: onGoToFeatures)
+                    if soundUnlocked && model.customSoundRecoverable {
+                        Button("无损恢复（保留音频）") {
+                            model.send("recover_custom_sound")
+                        }
                         .buttonStyle(PrimaryStyle())
                         .disabled(model.isBusy)
+                        Button("去功能管理", action: onGoToFeatures)
+                            .buttonStyle(.bordered).controlSize(.small)
+                            .disabled(model.isBusy)
+                    } else {
+                        Button("去功能管理", action: onGoToFeatures)
+                            .buttonStyle(PrimaryStyle())
+                            .disabled(model.isBusy)
+                    }
                 } else {
                     Button("功能管理", action: onGoToFeatures)
                         .buttonStyle(.bordered).controlSize(.small)

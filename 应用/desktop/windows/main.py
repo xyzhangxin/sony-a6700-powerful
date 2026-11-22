@@ -131,6 +131,15 @@ class Window(Views,QMainWindow):
                 return item.get('state', 'unknown')
         return runtime_state
 
+    def _custom_sound_recoverable(self):
+        cs = self.state.get('custom_sound') or {}
+        return (
+            self.physical
+            and self._custom_sound_state() == 'error'
+            and bool(cs.get('installable'))
+            and cs.get('recoverable') is True
+        )
+
     def _can_install_audio(self):
         return (
             self._is_camera_connected()
@@ -253,7 +262,9 @@ class Window(Views,QMainWindow):
             'is_busy': self.camera_operation_active,
             'electronic_sound_state': lambda: self._feature_state('sound'),
             'custom_sound_state': self._custom_sound_state,
+            'custom_sound_recoverable': self._custom_sound_recoverable,
             'custom_sound_reason': lambda: (self.state.get('custom_sound') or {}).get('reason', ''),
+            'recover_custom_sound': lambda: self.command('recover_custom_sound'),
             'camera_disconnect_result': lambda: self.state.get('camera_disconnect'),
             'can_install_audio': self._can_install_audio,
             'install_disabled_reason': self._install_disabled_reason,
@@ -275,7 +286,7 @@ class Window(Views,QMainWindow):
         }
 
     def command(self, name, **values):
-        if name in ('prepare_and_inspect', 'inspect', 'unlock', 'close', 'update_fl23', 'update_ftp', 'check_updates', 'disconnect_camera'):
+        if name in ('prepare_and_inspect', 'inspect', 'unlock', 'close', 'update_fl23', 'update_ftp', 'recover_custom_sound', 'check_updates', 'disconnect_camera'):
             if self.inflight or self.state.get('busy'):
                 return
             if name == 'check_updates':
@@ -458,7 +469,7 @@ class Window(Views,QMainWindow):
             self.finish_app_download({'status': 'download-failed'})
         self.app_update_request = None
         if self.failure_dialog is not None:self.failure_dialog.service_exited()
-        uncertain = self.inflight in ('unlock', 'close', 'update_fl23', 'update_ftp') or (self.state.get('busy') and self.state.get('action') in ('unlock', 'close'))
+        uncertain = self.inflight in ('unlock', 'close', 'update_fl23', 'update_ftp', 'recover_custom_sound') or (self.state.get('busy') and self.state.get('action') in ('unlock', 'close', 'recover_custom_sound'))
         self.render_interrupted('结果待核实：服务在功能操作中退出。请保留本机记录，先重新检查，不要盲目重复写入。'
                                 if uncertain else '本机服务已退出。重新启动服务后，重新准备并连接相机。')
 
@@ -479,6 +490,10 @@ class Window(Views,QMainWindow):
                 self.inflight = self.state.get('action')
             elif self.operation_started:
                 self.inflight = None
+            if (self.viewing_market
+                    and self.state.get('phase') in ('running', 'result')
+                    and self.state.get('action') == 'recover_custom_sound'):
+                self.viewing_market = False
             self.scroll.setEnabled(not self.inflight or self.operation_started)
             self.render()
         elif event.get('type') == 'app-update-result':

@@ -48,6 +48,9 @@ class ProtocolTests(unittest.TestCase):
         self.assertNotIn('execute_audio_import', capabilities('simulation')['commands'])
         self.assertIn('refresh_audio_slots', capabilities('physical')['commands'])
         self.assertNotIn('refresh_audio_slots', capabilities('simulation')['commands'])
+        self.assertIn('recover_custom_sound', capabilities('physical')['commands'])
+        self.assertNotIn('recover_custom_sound', capabilities('simulation')['commands'])
+        self.assertEqual(decode_request('{"command":"recover_custom_sound"}')['command'], 'recover_custom_sound')
 
 
 if __name__ == '__main__':

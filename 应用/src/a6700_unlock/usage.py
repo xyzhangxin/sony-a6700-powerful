@@ -21,7 +21,7 @@ DEFAULT_NOTICE = 'usage-default-on-v1'
 EXPLICIT_OPT_IN = 'usage-v1'
 
 PAGES = {'prepare', 'features', 'progress', 'result'}
-SUCCESS_ACTIONS = {'unlock', 'close', 'restore', 'update_fl23', 'update_ftp'}
+SUCCESS_ACTIONS = {'unlock', 'close', 'restore', 'update_fl23', 'update_ftp', 'recover_custom_sound'}
 
 
 class _NoRedirects(urllib.request.HTTPRedirectHandler):

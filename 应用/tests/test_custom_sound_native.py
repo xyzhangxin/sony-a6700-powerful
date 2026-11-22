@@ -8,7 +8,8 @@ import unittest
 from a6700_unlock.audio_import import build_audio_import_plan
 from a6700_unlock.audio_packages import inspect_pcm_wav
 from a6700_unlock.custom_sound_native import (
-    custom_sound_request, custom_sound_response, custom_sound_wipe_request,
+    custom_sound_clear_pending_request, custom_sound_request,
+    custom_sound_response, custom_sound_wipe_request,
     load_custom_sound_payload)
 from a6700_unlock.custom_sound_records import build_slot_record
 
@@ -125,6 +126,10 @@ class Machine:
                     self.dirs.remove(path)
                     self.ret(0)
             elif (self.failure == "cleanup" and path.endswith(".bak")
+                    and path in self.files and not self.failed):
+                self.failed = True
+                self.ret(-5)
+            elif (self.failure == "unlink-pending" and ".shutter-autoload-" in path
                     and path in self.files and not self.failed):
                 self.failed = True
                 self.ret(-5)
@@ -463,6 +468,48 @@ class CustomSoundNativeTests(unittest.TestCase):
         bad = bytearray(request)
         struct.pack_into("<I", bad, 56, 1)
         result_bad, _ = self.machine(files={"/setting/csnd/slot1.bin": self.record}, request=bytes(bad))
+        self.assertEqual(result_bad["status"], 2)
+
+    def test_clear_pending_removes_lock_markers_only_and_preserves_slots(self):
+        request = custom_sound_clear_pending_request(self.nonce)
+        files = {
+            "/setting/csnd/slot1.bin": self.record,
+            "/setting/csnd/slot3.bin": self.record,
+            "/setting/csnd/state": b"state-data",
+            "/setting/csnd/.shutter-autoload-pending": b"",
+            "/setting/csnd/.shutter-autoload-quarantine": b"",
+            "/setting/other/keep.bin": b"untouched",
+        }
+        result, machine = self.machine(files=files, request=request)
+        self.assertEqual(result["status"], 0)
+        self.assertTrue(result["markers_cleared"])
+        self.assertEqual(machine.files, {
+            "/setting/csnd/slot1.bin": self.record,
+            "/setting/csnd/slot3.bin": self.record,
+            "/setting/csnd/state": b"state-data",
+            "/setting/other/keep.bin": b"untouched",
+        })
+        self.assertIn("/setting/csnd", machine.dirs)
+
+        # Idempotent when markers or /setting/csnd are already absent.
+        result2, machine2 = self.machine(files={"/setting/csnd/slot1.bin": self.record}, request=request)
+        self.assertEqual(result2["status"], 0)
+        self.assertFalse(result2["markers_cleared"])
+        self.assertEqual(machine2.files, {"/setting/csnd/slot1.bin": self.record})
+
+        result3, _ = self.machine(files={}, request=request)
+        self.assertEqual(result3["status"], 0)
+        self.assertFalse(result3["markers_cleared"])
+
+        failed, failed_machine = self.machine(
+            files={"/setting/csnd/slot1.bin": self.record, "/setting/csnd/.shutter-autoload-pending": b""},
+            request=request, failure="unlink-pending")
+        self.assertEqual(failed["status"], 8)
+        self.assertEqual(failed_machine.files["/setting/csnd/slot1.bin"], self.record)
+
+        bad = bytearray(request)
+        struct.pack_into("<I", bad, 56, 1)
+        result_bad, _ = self.machine(files=files, request=bytes(bad))
         self.assertEqual(result_bad["status"], 2)
 
 

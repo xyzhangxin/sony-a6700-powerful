@@ -2,7 +2,7 @@
 import json
 import sys
 import time
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 from PySide6.QtCore import QTimer, Qt, QEvent
 from PySide6.QtGui import QKeyEvent
 from dialogs import OperationConfirmation
@@ -166,7 +166,7 @@ def run(window, report):
             from PySide6.QtWidgets import QLabel
             notices=window.scroll.widget().findChildren(QLabel,'fl23StartupNotice')
             assert bool(notices)==(action=='unlock')
-            if action=='unlock':assert '40 秒' in notices[0].text()
+            if action=='unlock':assert '90 秒' in notices[0].text()
             if action=='unlock':
                 choose_confirmation(action,False)
                 choose_confirmation(action,False,escape=True)
@@ -185,9 +185,9 @@ def run(window, report):
             notices=window.scroll.widget().findChildren(QLabel,'fl23StartupNotice')
             assert bool(notices)==(action=='unlock')
             if action=='unlock':
-                assert '40 秒' in notices[0].text()
+                assert '90 秒' in notices[0].text()
                 assert '10 秒' in result['aftercare']['steps'][3]['title']
-                assert '40 秒' in result['aftercare']['startup_notice']
+                assert '90 秒' in result['aftercare']['startup_notice']
             checks.append(action+'-result-six-steps-and-menu-checks')
             capture(action+'-result')
             window.command('restart_preparation')
@@ -284,15 +284,34 @@ def run(window, report):
         assert not window.viewing_market
         checks.append('custom-shutter-sound-market-seven-defaults-trim-dedup-and-demo-install')
         previous_custom_sound = window.state.get('custom_sound')
-        window.state['custom_sound'] = dict(state='error', reason=CUSTOM_SOUND_RECOVERY_NOTICE)
-        window.render()
-        workspace = window.scroll.widget()
-        assert '校验失败' in [item.text() for item in workspace.findChildren(QLabel, 'featureStatusLabel')]
-        assert workspace.findChild(QLabel, 'customSoundFailureDetail').text() == CUSTOM_SOUND_RECOVERY_NOTICE
-        with patch.object(window, '_is_camera_connected', return_value=True):
-            assert window._custom_sound_state() == 'error' and not window._can_install_audio()
-        window.state['custom_sound'] = previous_custom_sound
-        window.render()
+        orig_feature_state = window._feature_state
+        try:
+            window.state['custom_sound'] = dict(
+                state='error', installable=True, recoverable=True,
+                recovery_mode='lossless-recover', reason=CUSTOM_SOUND_RECOVERY_NOTICE,
+            )
+            with patch.object(type(window), 'physical', new_callable=PropertyMock, return_value=True), \
+                 patch.object(window, '_is_camera_connected', return_value=True), \
+                 patch.object(window, '_feature_state', side_effect=lambda fid: 'enabled' if fid == 'sound' else orig_feature_state(fid)):
+                window.render()
+                workspace = window.scroll.widget()
+                assert '校验失败' in [item.text() for item in workspace.findChildren(QLabel, 'featureStatusLabel')]
+                assert workspace.findChild(QLabel, 'customSoundFailureDetail').text() == CUSTOM_SOUND_RECOVERY_NOTICE
+                recover_btn = workspace.findChild(QPushButton, 'recoverCustomSoundButton')
+                assert recover_btn is not None and recover_btn.isEnabled()
+                with patch.object(window, 'command') as send:
+                    recover_btn.click()
+                    send.assert_called_once_with('recover_custom_sound')
+                window.market_widget._refresh_status_panel()
+                market_recover = window.market_widget.findChild(QPushButton, 'marketRecoverCustomSoundButton')
+                assert market_recover is not None and market_recover.isEnabled()
+                with patch.object(window, 'command') as send:
+                    market_recover.click()
+                    send.assert_called_once_with('recover_custom_sound')
+                assert window._custom_sound_state() == 'error' and not window._can_install_audio()
+        finally:
+            window.state['custom_sound'] = previous_custom_sound
+            window.render()
         checks.append('custom-shutter-sound-workspace-runtime-failure-and-recovery')
         market = window.market_widget
         with patch.dict(market.ctrl, {

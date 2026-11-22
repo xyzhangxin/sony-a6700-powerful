@@ -85,6 +85,8 @@ struct CustomSoundRow: Decodable {
     let requires: [String]?
     let available: Bool?
     let installable: Bool?
+    let recoverable: Bool?
+    let recovery_mode: String?
     let mode: String?
     let reason: String?
 }
@@ -397,12 +399,17 @@ final class PreviewModel: ObservableObject {
     var customSoundState: String { state?.custom_sound?.state ?? "unknown" }
     var electronicSoundUnlocked: Bool { electronicSoundState == "enabled" }
     var customSoundUnlocked: Bool { customSoundState == "enabled" }
+    var customSoundRecoverable: Bool {
+        physicalMode && customSoundState == "error"
+            && (state?.custom_sound?.installable == true)
+            && (state?.custom_sound?.recoverable == true)
+    }
     var canReadSlotsOnCamera: Bool { isCameraConnected && customSoundUnlocked }
     var canInstallAudioOnCamera: Bool { isCameraConnected && electronicSoundUnlocked && customSoundUnlocked }
     var cameraOperationActive: Bool { !serviceExited && (pendingAction != nil || state?.busy == true) }
     private var workerBusy: Bool { !serviceExited && (cameraOperationActive || diagnosticBusy || uploadBusy || updateBusy || audioBusy || audioPreviewBusy || audioPlanBusy || audioConfirmationBusy || audioGateBusy || audioExecuteBusy) }
     var isBusy: Bool { workerBusy || audioImportFlowActive }
-    var serviceWriteUncertain: Bool { physicalMode && ["unlock", "close", "restore"].contains(serviceExitAction ?? "") }
+    var serviceWriteUncertain: Bool { physicalMode && ["unlock", "close", "restore", "recover_custom_sound"].contains(serviceExitAction ?? "") }
     private var process: Process?
     private var input: FileHandle?
     private var outputHandle: FileHandle?
@@ -1237,7 +1244,7 @@ final class PreviewModel: ObservableObject {
             send("prepare")
             return
         }
-        if ["prepare_and_inspect", "inspect", "unlock", "close", "backup", "restore", "takeover"].contains(command) {
+        if ["prepare_and_inspect", "inspect", "unlock", "close", "backup", "restore", "takeover", "recover_custom_sound"].contains(command) {
             guard !isBusy else { return }
             pendingAction = command == "prepare_and_inspect" ? "inspect" : command
         }
@@ -1314,7 +1321,7 @@ final class PreviewModel: ObservableObject {
             audioExecuteError = ""
         }
         error = ""
-        if ["inspect", "unlock", "close", "backup", "restore", "takeover", "reset", "environment"].contains(command) { progress = [] }
+        if ["inspect", "unlock", "close", "backup", "restore", "takeover", "recover_custom_sound", "reset", "environment"].contains(command) { progress = [] }
         var request = extra; request["command"] = command
         request["api_version"] = 1
         request["request_id"] = UUID().uuidString

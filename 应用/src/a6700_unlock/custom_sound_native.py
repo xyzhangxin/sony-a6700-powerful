@@ -106,11 +106,19 @@ def custom_sound_wipe_request(nonce: bytes) -> bytes:
     return CUSTOM_SOUND_REQUEST.pack(b"CSND", 4, nonce, bytes(32), 0, 0, 0, 0)
 
 
+def custom_sound_clear_pending_request(nonce: bytes) -> bytes:
+    """Build a zero-payload request to unlink only autoload lock markers under /setting/csnd."""
+    if not isinstance(nonce, bytes) or len(nonce) != 16:
+        raise DeviceError("自定义快门声无损清理请求身份无效")
+    return CUSTOM_SOUND_REQUEST.pack(b"CSND", 5, nonce, bytes(32), 0, 0, 0, 0)
+
+
 def custom_sound_response(data: bytes, nonce: bytes) -> dict:
     result = response(data, nonce, 0)
     if result["status"]:
         result["error"] = CUSTOM_SOUND_ERRORS.get(result["status"], "unknown custom-sound error")
     result["backup_cleanup_failed"] = bool(data[40] & 2)
+    result["markers_cleared"] = bool(data[40] & 4)
     return result
 
 

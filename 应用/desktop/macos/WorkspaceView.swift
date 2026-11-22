@@ -94,6 +94,9 @@ struct WorkspaceView: View {
                                 .buttonStyle(.bordered).tint(UI.accent).controlSize(.small)
                                 .accessibilityHint("仅更新当前功能，保留其他功能和设置")
                             }
+                            if feature.id == "custom_shutter_sound" && model.customSoundRecoverable {
+                                recoverCustomSoundButton(disabled: model.isBusy)
+                            }
                             if feature.id == "custom_shutter_sound" && onOpenMarket != nil {
                                 marketShortcutButton(disabled: model.isBusy)
                             }
@@ -153,6 +156,9 @@ struct WorkspaceView: View {
                 Text("需要：电子快门声音").font(.system(size: 10)).foregroundColor(UI.amber)
             }
             Spacer(minLength: 8)
+            if model.customSoundRecoverable {
+                recoverCustomSoundButton(disabled: model.isBusy)
+            }
             marketShortcutButton(disabled: model.isBusy || onOpenMarket == nil)
             featureStatusLabel(
                 stateLabel,
@@ -160,6 +166,17 @@ struct WorkspaceView: View {
             )
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
+    }
+
+    private func recoverCustomSoundButton(disabled: Bool) -> some View {
+        Button {
+            model.send("recover_custom_sound")
+        } label: {
+            Label("无损恢复（保留音频）", systemImage: "arrow.triangle.2.circlepath")
+        }
+        .buttonStyle(.bordered).tint(UI.accent).controlSize(.small)
+        .disabled(disabled)
+        .accessibilityHint("清除开机保护锁标记并按需升级常驻，完整保留全部 10 槽音频")
     }
 
     private func marketShortcutButton(disabled: Bool) -> some View {
@@ -221,12 +238,28 @@ struct WorkspaceView: View {
                 }
             }
             if action == "unlock" {
-                ForEach(selected) { feature in
-                    if let notice = feature.unlock_notice, !notice.isEmpty {
-                        Label(notice, systemImage: "clock")
-                            .font(.system(size: 12)).foregroundColor(UI.amber)
-                            .fixedSize(horizontal: false, vertical: true).padding(.bottom, 14)
+                let customActive = (available + selected).contains {
+                    $0.id == "custom_shutter_sound" && ($0.state == "enabled" || $0.state == "error")
+                } || (model.state?.custom_sound?.state == "enabled" || model.state?.custom_sound?.state == "error")
+                let customNotice = (available + selected).first { $0.id == "custom_shutter_sound" }?.unlock_notice
+                let notices: [String] = {
+                    if (selected.contains(where: { $0.id == "custom_shutter_sound" })
+                        || (customActive && selected.contains(where: { !($0.unlock_notice ?? "").isEmpty }))),
+                       let notice = customNotice, !notice.isEmpty {
+                        return [notice]
                     }
+                    var seen: [String] = []
+                    for feature in selected {
+                        if let notice = feature.unlock_notice, !notice.isEmpty, !seen.contains(notice) {
+                            seen.append(notice)
+                        }
+                    }
+                    return seen
+                }()
+                ForEach(notices, id: \.self) { notice in
+                    Label(notice, systemImage: "clock")
+                        .font(.system(size: 12)).foregroundColor(UI.amber)
+                        .fixedSize(horizontal: false, vertical: true).padding(.bottom, 14)
                 }
             }
             Button { model.send(action) } label: {

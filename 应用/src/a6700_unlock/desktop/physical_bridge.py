@@ -977,9 +977,10 @@ def main():
                 thread = Thread(target=run, args=(request_id,), daemon=True)
                 thread.start()
                 continue
-            if command in ('inspect', 'unlock', 'close', 'backup', 'restore', 'update_fl23', 'update_ftp'):
+            if command in ('inspect', 'unlock', 'close', 'backup', 'restore', 'update_fl23', 'update_ftp', 'recover_custom_sound'):
                 if command=='update_fl23':controller.reserve_fl23_update()
                 elif command=='update_ftp':controller.reserve_ftp_update()
+                elif command=='recover_custom_sound':controller.reserve_custom_sound_recovery()
                 else:controller.reserve(command, request.get('backup_id') if command == 'restore' else None)
                 emit('state', state=controller.snapshot(), request_id=request_id)
                 thread = Thread(target=run, args=(request_id,), daemon=True)

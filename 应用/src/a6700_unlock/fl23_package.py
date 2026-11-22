@@ -115,7 +115,7 @@ class Package:
                         raise DeviceError(failure)
         revision=self.manifest.get('carrier_revision',1)
         legacy=self.manifest.get('legacy_carriers',{})
-        if type(revision) is not int or not 1<=revision<=5:
+        if type(revision) is not int or not 1<=revision<=6:
             raise DeviceError('FL23 功能包版本清单不匹配')
         if legacy:
             if revision<2:raise DeviceError('FL23 功能包版本清单不匹配')
@@ -305,6 +305,13 @@ class Session:
             custom_sound_wipe_request(nonce),lambda raw:custom_sound_response(raw,nonce))
         if result['status']:raise DeviceError('清除 /setting/csnd 目录及音频文件失败：'+str(result))
         return result
+    def clear_pending_autoload(self):
+        from .custom_sound_native import custom_sound_clear_pending_request,custom_sound_response,load_custom_sound_payload
+        nonce=uuid.uuid4().bytes
+        result=self.exchange_payload('csnd-clear-pending',load_custom_sound_payload(),
+            custom_sound_clear_pending_request(nonce),lambda raw:custom_sound_response(raw,nonce))
+        if result['status']:raise DeviceError('清理自定义快门声开机锁残留失败：'+str(result))
+        return result
     def file(self,op=0,offset=0,data=b'',length=0,flags=1):
         p=self.package;nonce=uuid.uuid4().bytes
         cfg=struct.pack('<4sI16s32s4I',b'A67F',1,nonce,bytes.fromhex(p.profile.digest),op,offset,len(data) if op==2 else length,flags if flags!=1 else 0)+data
@@ -457,7 +464,7 @@ def update_units(session,units,action):
 
 def perform(backend,action,directory,progress=lambda _:None,features=None,*,validate_close=False,validate_unlock=False):
     """Caller holds device lock; install is journaled, never auto-replayed."""
-    if (action not in ('inspect','unlock','close')
+    if (action not in ('inspect','unlock','close','recover-custom-sound')
             or ((validate_close or validate_unlock) and action!='inspect')
             or (validate_close and validate_unlock)):
         raise ValueError('未知创意外观操作')
@@ -465,6 +472,7 @@ def perform(backend,action,directory,progress=lambda _:None,features=None,*,vali
     if len(getattr(package,'carriers',{}))>1:
         return perform_options(package,backend,action,directory,progress,features,
                                validate_close=validate_close,validate_unlock=validate_unlock)
+    if action=='recover-custom-sound':raise DeviceError('当前功能包不支持自定义快门声无损恢复')
     if features is not None and set(features)!={'fl23'}:raise DeviceError('中文名称安装组件尚未准备完成')
     run=Path(directory)/'runs'/('fl23-'+uuid.uuid4().hex)
     make_directory(run)
@@ -537,14 +545,26 @@ def perform(backend,action,directory,progress=lambda _:None,features=None,*,vali
     return result
 
 
+def _upload_and_verify_carrier(session,file,carrier,target,repair_update,progress):
+    if file.get('owned_mask',0)&2:raise DeviceError('存在未完成的 /setting/fl23 暂存事务，未重复上传')
+    progress('正在更新 /setting/fl23 修复包…' if repair_update else '正在安装所选 /setting/fl23 功能组合…');session.file(1,flags=target)
+    for at in range(0,len(carrier),65536):session.file(2,at,carrier[at:at+65536],flags=target)
+    session.file(3,flags=target)
+    data=b''.join(session.file(0,at,length=min(65536,len(carrier)-at),flags=target)['data'] for at in range(0,len(carrier),65536))
+    if data!=carrier:raise DeviceError('/setting/fl23 组合载荷独立回读失败')
+
+
 def perform_options(package,backend,action,directory,progress,features=None,*,validate_close=False,validate_unlock=False):
     """One shared loader, independent flags 1..7, CP for FL23, 23-sector menu-ui + /setting/csnd wipe for custom sound."""
     from .creative_looks import FEATURES,FEATURE_IDS
     has_custom=4 in getattr(package,'carriers',{})
     valid_ids=FEATURE_IDS if has_custom else ('fl23','creative_look_names')
     bits={'fl23':1,'creative_look_names':2,'custom_shutter_sound':4}
-    selected=tuple(features or ('fl23',))
-    if action not in ('inspect','unlock','close') or not set(selected)<=set(valid_ids) or len(set(selected))!=len(selected):
+    default_features=('custom_shutter_sound',) if action=='recover-custom-sound' else ('fl23',)
+    selected=tuple(features or default_features)
+    if (action not in ('inspect','unlock','close','recover-custom-sound')
+            or not set(selected)<=set(valid_ids)
+            or len(set(selected))!=len(selected)):
         raise ValueError('未知或重复的功能包选项')
     run=Path(directory)/'runs'/('looks-'+uuid.uuid4().hex);make_directory(run)
     result=dict(action=action,status='error',device_access=True,write_attempted=False,verified=False,
@@ -600,6 +620,43 @@ def perform_options(package,backend,action,directory,progress,features=None,*,va
                 result.update(error=error, after_flags=target)
             elif action=='inspect':
                 result['status']='inspected'
+            elif action=='recover-custom-sound':
+                if not (has_custom and file['present'] and detail['startup']!='disabled'
+                        and bool(current&4) and detail.get('custom_sound_state')=='enabled'):
+                    raise DeviceError('自定义快门声尚未完整安装或菜单结构不完整，不能执行无损清锁恢复；未写入任何数据。')
+                from .custom_sound_native import load_custom_sound_payload
+                load_custom_sound_payload()
+                target_rev=getattr(package,'manifest',{}).get('carrier_revision',1)
+                installed_rev=file.get('revision',1)
+                repair_update=installed_rev<target_rev
+                carrier=package.carriers.get(current)
+                if carrier is None:raise DeviceError('当前功能组合缺少对应常驻载荷')
+                inert=pause_startup_branches(package,before) if repair_update else before
+                save_json(run/'preimages.json',dict(sectors=[s.hex() for s in before],cp_units=[u.hex() for u in units],full_backup=False))
+                save_json(run/'write-intent.json',dict(action=action,before_flags=current,after_flags=current,
+                    selected_features=selected,carrier_sha256=sha(carrier),changed_bytes=0,
+                    package_update=repair_update,installed_revision=installed_rev,target_revision=target_rev))
+                result['write_attempted']=True
+                if repair_update:
+                    if before!=inert:
+                        progress('正在暂停开机常驻加载入口…');session.blocks(before,inert)
+                        if session.blocks()!=inert:raise DeviceError('开机加载入口暂停回读失败')
+                    _upload_and_verify_carrier(session,file,carrier,current,True,progress)
+                    if before!=inert:
+                        progress('正在提交更新后的常驻加载入口…');session.blocks(inert,before)
+                        if session.blocks()!=before:raise DeviceError('代码变更独立回读失败')
+                progress('正在无损清除自定义快门声开机锁残留（保留全部 10 槽音频）…')
+                clear_result=session.clear_pending_autoload()
+                final,fd,_,final_units,final_file,_=inspect(session);final_rows=rows(final,fd)
+                if fd['flags']!=current or fd.get('custom_sound_state')!='enabled':
+                    raise DeviceError('无损恢复后功能包最终状态不一致')
+                if repair_update and (final_file.get('revision',1)<target_rev or final.get('update_available')):
+                    raise DeviceError('自定义快门声升级独立回读未通过')
+                if final_units!=units:raise DeviceError('无损恢复改变了原有 CP 参数')
+                result.update(status='completed',verified=True,final_features=final_rows,restart_required=True,
+                    before_flags=current,after_flags=current,package_updated=repair_update,
+                    custom_sound_recovered=True,markers_cleared=bool(clear_result.get('markers_cleared')))
+                progress('开机锁残留已无损清除（10 槽音频完整保留）；断电冷启动约 90 秒后生效。')
             else:
                 legacy_close=action=='close' and legacy_condition
                 # Do not infer an unselected option from incomplete state.
@@ -638,12 +695,10 @@ def perform_options(package,backend,action,directory,progress,features=None,*,va
                     if target:
                         carrier=package.carriers[target]
                         if file.get('flags')!=target or not file['present'] or repair_update:
-                            if file.get('owned_mask',0)&2:raise DeviceError('存在未完成的 /setting/fl23 暂存事务，未重复上传')
-                            progress('正在更新 /setting/fl23 修复包…' if repair_update else '正在安装所选 /setting/fl23 功能组合…');session.file(1,flags=target)
-                            for at in range(0,len(carrier),65536):session.file(2,at,carrier[at:at+65536],flags=target)
-                            session.file(3,flags=target)
-                        data=b''.join(session.file(0,at,length=min(65536,len(carrier)-at),flags=target)['data'] for at in range(0,len(carrier),65536))
-                        if data!=carrier:raise DeviceError('/setting/fl23 组合载荷独立回读失败')
+                            _upload_and_verify_carrier(session,file,carrier,target,repair_update,progress)
+                        else:
+                            data=b''.join(session.file(0,at,length=min(65536,len(carrier)-at),flags=target)['data'] for at in range(0,len(carrier),65536))
+                            if data!=carrier:raise DeviceError('/setting/fl23 组合载荷独立回读失败')
                     menu_changed=0
                     if has_custom and getattr(package,'menu_ui',None) is not None:
                         if target&4 and detail.get('custom_sound_state')!='enabled':

@@ -296,7 +296,7 @@ static u32 host_probe(void) {
     if (!same(result+300,expected_boot_id,36)) return 8;
 #endif
     int matched_receipt = 0;
-    for (u32 i = 0; i < 4; ++i) {
+    for (u32 i = 0; i < (u32)(sizeof(host_receipts) / sizeof(host_receipts[0])); ++i) {
         if (same(page + 1120, host_receipts[i], 512)) { matched_receipt = 1; break; }
     }
     if (!matched_receipt || words[6] != APP_BIAS ||

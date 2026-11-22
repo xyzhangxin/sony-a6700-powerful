@@ -72,7 +72,7 @@ def build_feedback(result, description='', *, email=''):
     if result.get('mode') == 'operation_failure':
         action = result.get('action')
         diagnostic.update(
-            action='update' if action in ('update_fl23', 'update_ftp') else 'close' if action == 'restore' else action,
+            action='update' if action in ('update_fl23', 'update_ftp', 'recover_custom_sound') else 'close' if action == 'restore' else action,
             transaction_status=result['transaction_status'], error_code=result['error_code'],
             stage_id=result['stage_id'], events=result.get('events', []))
         if result.get('package_set_sha256'):

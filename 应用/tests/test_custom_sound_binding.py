@@ -76,3 +76,104 @@ class BindingTests(unittest.TestCase):
                 bad=bytearray(r);struct.pack_into('<Q',bad,at,1)
                 with self.subTest(sample=sample,name=name),self.assertRaises(DeviceError):
                     parse(bytes(bad),n,m,'c'*64,'a'*64)
+
+    def test_status8_subdiagnosis_classifies_boot_wrapper_autoload_and_receipt_states(self):
+        from a6700_unlock.custom_sound_binding import AUTOLOAD_MAGIC, WRAPPER_MAGIC, CustomSoundBindingError
+
+        def parse_status8(raw, manifest):
+            with self.assertRaises(CustomSoundBindingError) as ctx:
+                parse(bytes(raw), nonce, manifest, 'c' * 64, 'a' * 64)
+            exc = ctx.exception
+            self.assertIsInstance(exc, DeviceError)
+            self.assertEqual(exc.native_status, 8)
+            self.assertRegex(str(exc), '未检测到声音加载器的运行端点.*原生状态 8')
+            self.assertNotIn('01234567-89ab', str(exc.diagnostic))
+            self.assertNotIn(hex(0x19000000), str(exc.diagnostic))
+            self.assertNotIn(hex(0x52000000), str(exc.diagnostic))
+            return exc
+
+        manifest, nonce, response = self.fixture()
+
+        # 1. No boot context socket (e.g. standby power switch without 10s battery pull)
+        no_ctx = bytearray(response)
+        struct.pack_into('<I', no_ctx, 24, 8)
+        struct.pack_into('<Q', no_ctx, 44 + 8 * 3, 0)
+        exc = parse_status8(no_ctx, manifest)
+        self.assertEqual(exc.diagnostic['category'], 'no-boot-context')
+        self.assertEqual(exc.diagnostic['recovery_mode'], 'power-cycle-wait')
+        self.assertIn('无需在工具中' if False else '不需要关闭自定义快门声', str(exc))
+
+        # 2. Boot socket exists, but page not matched
+        no_page = bytearray(response)
+        struct.pack_into('<I', no_page, 24, 8)
+        struct.pack_into('<Q', no_page, 44 + 8 * 10, 0)
+        exc = parse_status8(no_page, manifest)
+        self.assertEqual(exc.diagnostic['category'], 'boot-page-not-found')
+        self.assertEqual(exc.diagnostic['recovery_mode'], 'power-cycle-wait')
+
+        # 3. Same boot session as previous recorded boot_id
+        same_boot = bytearray(response)
+        struct.pack_into('<I', same_boot, 24, 8)
+        same_manifest = dict(manifest, previous_boot_id='01234567-89ab-cdef-0123-456789abcdef')
+        exc = parse_status8(same_boot, same_manifest)
+        self.assertEqual(exc.diagnostic['category'], 'same-boot-session')
+        self.assertTrue(exc.diagnostic['same_boot_session'])
+
+        # 4. Early boot with zeroed receipt and no autoload header -> startup-in-progress
+        early = bytearray(response)
+        struct.pack_into('<I', early, 24, 8)
+        early[556 + 1120:556 + 1632] = b'\x00' * 512
+        exc = parse_status8(early, manifest)
+        self.assertEqual(exc.diagnostic['category'], 'startup-in-progress')
+        self.assertEqual(exc.diagnostic['recovery_mode'], 'power-cycle-wait')
+        self.assertFalse(exc.diagnostic['receipt_present'])
+
+        # 5. Stale .shutter-autoload-pending marker (-17 == -EEXIST) -> lossless-recover (step 2, 12, 13)
+        for step, expected_cat in (
+            (2, 'autoload-pending-blocked'),
+            (12, 'autoload-pending-bypassed-once'),
+            (13, 'autoload-pending-blocked'),
+        ):
+            pending_eexist = bytearray(response)
+            struct.pack_into('<I', pending_eexist, 24, 8)
+            struct.pack_into('<QQq32Q', pending_eexist, 556 + 1664, AUTOLOAD_MAGIC, 1, -17, step, *([0] * 31))
+            exc = parse_status8(pending_eexist, manifest)
+            self.assertEqual(exc.diagnostic['category'], expected_cat)
+            self.assertEqual(exc.diagnostic['recovery_mode'], 'lossless-recover')
+            self.assertEqual(exc.diagnostic['autoload_status'], -17)
+            self.assertEqual(exc.diagnostic['autoload_step'], step)
+
+        # 6. Autoload failed with detail[14] retained pending lock vs clean failure
+        retained = bytearray(response)
+        struct.pack_into('<I', retained, 24, 8)
+        detail = [0] * 32
+        detail[0] = 5
+        detail[14] = 1
+        struct.pack_into('<QQq32Q', retained, 556 + 1664, AUTOLOAD_MAGIC, 1, -110, *detail)
+        exc = parse_status8(retained, manifest)
+        self.assertEqual(exc.diagnostic['category'], 'autoload-failed')
+        self.assertEqual(exc.diagnostic['recovery_mode'], 'lossless-recover')
+        self.assertTrue(exc.diagnostic['autoload_pending_retained'])
+
+        # 6b. Rev-5 legacy receipt still validates normal parse without false mismatch
+        legacy_response = bytearray(response)
+        legacy_receipt = bytes.fromhex(manifest['legacy_receipts']['1287'])
+        legacy_response[556 + 1120:556 + 1632] = legacy_receipt
+        parsed_legacy = parse(bytes(legacy_response), nonce, manifest, 'c' * 64, 'a' * 64)
+        self.assertEqual(parsed_legacy.package_id, 'custom_shutter_sound')
+
+        # 7. Non-zero non-matching receipt -> carrier-receipt-mismatch
+        mismatch = bytearray(response)
+        struct.pack_into('<I', mismatch, 24, 8)
+        mismatch[556 + 1120] ^= 0xff
+        exc = parse_status8(mismatch, manifest)
+        self.assertEqual(exc.diagnostic['category'], 'carrier-receipt-mismatch')
+        self.assertEqual(exc.diagnostic['recovery_mode'], 'update-carrier')
+
+        # 8. Wrapper primary/early abort -> carrier-wrapper-failed
+        wrapper_fail = bytearray(response)
+        struct.pack_into('<I', wrapper_fail, 24, 8)
+        struct.pack_into('<QQQqQqqq', wrapper_fail, 556 + 1984, WRAPPER_MAGIC, 7, 1, -5, 0, 0, 0, -5)
+        exc = parse_status8(wrapper_fail, manifest)
+        self.assertEqual(exc.diagnostic['category'], 'carrier-wrapper-failed')
+        self.assertEqual(exc.diagnostic['wrapper_early_abort_rc'], -5)

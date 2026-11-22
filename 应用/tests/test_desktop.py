@@ -998,6 +998,39 @@ class PhysicalDesktopTests(unittest.TestCase):
         self.assertEqual(pkg_error['state'], 'error')
         self.assertIn('自定义状态异常', pkg_error['reason'])
 
+        startup_row = _build_custom_sound_row(
+            frozenset(),
+            dict(status='inspected',
+                 plan=dict(features=[dict(id='custom_shutter_sound', state='enabled')]),
+                 custom_sound_runtime=dict(
+                     status='error',
+                     error='十槽自定义快门声已安装，加载校验失败。本次检查未检测到声音加载器的运行端点（原生状态 8：加载器仍在启动中）。',
+                     native_status=8,
+                     diagnostic=dict(category='startup-in-progress', recovery_mode='power-cycle-wait'),
+                 )),
+            installable=True,
+        )
+        self.assertEqual(startup_row['state'], 'error')
+        self.assertFalse(startup_row['recoverable'])
+        self.assertEqual(startup_row['diagnostic']['category'], 'startup-in-progress')
+        self.assertNotIn('如果菜单仍不可用，可在「功能管理」切换到「关闭」', startup_row['reason'])
+
+        pending_row = _build_custom_sound_row(
+            frozenset(),
+            dict(status='inspected',
+                 plan=dict(features=[dict(id='custom_shutter_sound', state='enabled')]),
+                 custom_sound_runtime=dict(
+                     status='error',
+                     error='十槽自定义快门声已安装，加载校验失败。原生状态 8：保护锁占用。',
+                     native_status=8,
+                     diagnostic=dict(category='autoload-pending-blocked', recovery_mode='lossless-recover'),
+                 )),
+            installable=True,
+        )
+        self.assertEqual(pending_row['state'], 'error')
+        self.assertTrue(pending_row['recoverable'])
+        self.assertEqual(pending_row['diagnostic']['recovery_mode'], 'lossless-recover')
+
         controller = self.physical_controller()
         from copy import deepcopy
         from a6700_unlock.catalog import Catalog
@@ -1048,6 +1081,89 @@ class PhysicalDesktopTests(unittest.TestCase):
         self.assertFalse(blocked['result']['success'])
         self.assertFalse(blocked['write_attempted'])
         self.assertIn('自定义快门声', blocked['result']['error'])
+        self.assertTrue(backend.closed)
+
+    def test_physical_custom_sound_lossless_recovery_end_to_end_and_wait_guard(self):
+        from a6700_unlock.custom_sound_binding import CustomSoundBindingError
+        controller = self.physical_controller()
+        orig_factory = controller.service.backend_factory
+        def command_factory(progress):
+            backend = orig_factory(progress)
+            backend._command = lambda *args, **kwargs: None
+            return backend
+        controller.service.backend_factory = command_factory
+        controller.service.fl23_available = True
+        controller.service.names_available = True
+        controller.service.custom_sound_available = True
+        controller.service._refresh_adapter_set()
+        self.prepare(controller)
+
+        calls = []
+
+        def fake_perform(backend, action, directory, progress, features=None):
+            calls.append(action)
+            if action == 'inspect':
+                return dict(
+                    status='inspected', verified=False, write_attempted=False,
+                    run_directory=str(directory / 'pkg-inspect'),
+                    plan=dict(compatible=True, features=[
+                        dict(id='fl23', name='FL2／FL3 创意外观', state='enabled', available=True),
+                        dict(id='creative_look_names', name='创意外观中文名称', state='enabled', available=True),
+                        dict(id='custom_shutter_sound', name='自定义快门声', state='enabled', available=True),
+                    ]),
+                )
+            self.assertEqual(action, 'recover-custom-sound')
+            return dict(
+                status='completed', verified=True, write_attempted=True,
+                restart_required=True, package_updated=True,
+                custom_sound_recovered=True, markers_cleared=True,
+                run_directory=str(directory / 'pkg-recover'),
+                final_features=[
+                    dict(id='fl23', name='FL2／FL3 创意外观', state='enabled', available=True),
+                    dict(id='creative_look_names', name='创意外观中文名称', state='enabled', available=True),
+                    dict(id='custom_shutter_sound', name='自定义快门声', state='enabled', available=True),
+                ],
+                plan=dict(compatible=True, features=[], read_sectors=0, read_bytes=0, changed_bytes=0),
+            )
+
+        wait_err = CustomSoundBindingError(
+            '未检测到开机引导上下文', native_status=8,
+            diagnostic=dict(category='no-boot-context', recovery_mode='power-cycle-wait'),
+        )
+        recover_err = CustomSoundBindingError(
+            '开机保护锁占用', native_status=8,
+            diagnostic=dict(category='autoload-pending-blocked', recovery_mode='lossless-recover'),
+        )
+
+        # Case 1: power-cycle-wait error must refuse recover_custom_sound
+        with patch('a6700_unlock.fl23_package.perform', side_effect=fake_perform), \
+             patch('a6700_unlock.desktop.physical._verified_custom_sound_binding', side_effect=wait_err):
+            controller.operate('inspect')
+            wait_snap = controller.snapshot()
+            self.assertFalse(wait_snap['custom_sound']['recoverable'])
+            with self.assertRaises(ValueError):
+                controller.reserve_custom_sound_recovery()
+
+        # Case 2: lossless-recover error permits reserve_custom_sound_recovery + 90s cold-reboot aftercare
+        controller.restart_preparation()
+        controller.confirm_preparation(True)
+        with patch('a6700_unlock.fl23_package.perform', side_effect=fake_perform), \
+             patch('a6700_unlock.desktop.physical._verified_custom_sound_binding', side_effect=recover_err):
+            snap = controller.operate('inspect')
+            self.assertEqual(snap['custom_sound']['state'], 'error')
+            self.assertTrue(snap['custom_sound']['recoverable'])
+            backend = controller.service._session_backend
+            controller.reserve_custom_sound_recovery()
+            recovered = controller.run_reserved()
+        self.assertEqual(calls[-1], 'recover-custom-sound')
+        self.assertEqual(recovered['action'], 'recover_custom_sound')
+        self.assertEqual(recovered['result']['status'], 'completed')
+        self.assertTrue(recovered['result']['success'])
+        self.assertTrue(recovered['result']['aftercare']['restart_required'])
+        self.assertIn('90 秒', recovered['result']['aftercare']['startup_notice'])
+        self.assertTrue(any(s.get('id') == 'fl23_ready' and s['timing']['seconds'] == 90
+                            for s in recovered['result']['aftercare']['workflow']['steps']))
+        self.assertFalse(recovered['compatible'])
         self.assertTrue(backend.closed)
 
 

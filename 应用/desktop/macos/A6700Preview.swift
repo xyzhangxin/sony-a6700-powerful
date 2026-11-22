@@ -113,6 +113,10 @@ struct PreviewView: View {
             if value == "notice" { preparationAcknowledged = false }
             if !["notice", "preparation"].contains(value) { queuedConnectAfterEnv = false }
             if value != "result" { uploadToast = nil }
+            if ["running", "result"].contains(value) && model.state?.action == "recover_custom_sound" {
+                returnToMarketAfterConnect = false
+                viewingMarket = false
+            }
         }
         .onChange(of: cameraReady && !busy) { ready in
             if ready && returnToMarketAfterConnect {

@@ -23,6 +23,7 @@ _COMMAND_FIELDS = {
     "restart_preparation": set(), "select_feature": {"id", "value"}, "select": {"mode"},
     "acknowledge_check": set(), "inspect": set(), "unlock": set(), "close": set(),
     "backup": set(), "restore": {"backup_id"}, "update_fl23": set(), "update_ftp": set(),
+    "recover_custom_sound": set(),
     "takeover": {"confirmation", "confirmed"}, "cancel": set(), "disconnect": set(),
     "reconnect": set(), "home": set(), "shutdown": set(),
     "disconnect_camera": set(),
@@ -51,6 +52,7 @@ CAPABILITIES = dict(
 )
 _SIMULATION_ONLY = {"reset", "disconnect", "reconnect"}
 _PHYSICAL_ONLY = {"set_automatic_failure_feedback", "disconnect_camera", "set_usage", "start_usage", "preview_failure_feedback", "upload_failure_feedback", "takeover", "diagnostic", "guided_diagnostic", "upload_feedback",
+                  "recover_custom_sound",
                   "check_updates", "check_app_update", "download_app_update", "list_audio", "refresh_audio_slots", "preview_audio", "export_audio_package",
                   "plan_audio_import",
                   "plan_audio_import_batch",

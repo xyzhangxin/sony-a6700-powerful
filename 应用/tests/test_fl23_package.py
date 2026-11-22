@@ -493,7 +493,8 @@ class FileVariantNativeTests(unittest.TestCase):
 class FileRevisionNativeTests(unittest.TestCase):
     LEGACY_SPECS=((257,1,1,1150),(259,3,1,1250),(513,1,2,1350),(514,2,2,1450),(515,3,2,1550),
                   (772,4,3,1650),(773,5,3,1750),(774,6,3,1850),(775,7,3,1950),
-                  (1028,4,4,2050),(1029,5,4,2150),(1030,6,4,2250),(1031,7,4,2350))
+                  (1028,4,4,2050),(1029,5,4,2150),(1030,6,4,2250),(1031,7,4,2350),
+                  (1284,4,5,2450),(1285,5,5,2550),(1286,6,5,2650),(1287,7,5,2750))
     @classmethod
     def setUpClass(cls):
         cls.temp=tempfile.TemporaryDirectory();p=Path(cls.temp.name);cls.recipe=synthetic()
@@ -536,7 +537,7 @@ class FileRevisionNativeTests(unittest.TestCase):
             self.assertEqual(p.file_specs[ident]['revision'],rev)
         for f in range(1,8):
             self.assertEqual(p.file_specs[f]['flags'],f)
-            self.assertEqual(p.file_specs[f]['revision'],5)
+            self.assertEqual(p.file_specs[f]['revision'],6)
         backend=SimpleNamespace()
         def invoke(binary,cfg):
             return struct.pack('<4sI16s5I',b'A67F',1,cfg[8:24],0,0,1|(515<<8),0,0)
@@ -549,7 +550,7 @@ class FileRevisionNativeTests(unittest.TestCase):
         self.assertTrue(custom_sound_availability())
         p=Package()
         self.assertEqual(set(p.carriers),{1,2,3,4,5,6,7})
-        self.assertEqual(p.manifest['carrier_revision'],5)
+        self.assertEqual(p.manifest['carrier_revision'],6)
         self.assertIsNotNone(p.menu_ui)
         self.assertEqual(p.menu_ui['manifest']['sector_count'],23)
 
@@ -744,6 +745,136 @@ class CustomSoundPackageOptionsTests(unittest.TestCase):
 
     def test_known_incompatible_carriers_block_writes_but_allow_closing_custom_sound(self):
         self.run_flow(check_conflicts=True)
+
+    def test_lossless_custom_sound_recovery_preserves_menu_cp_and_slots(self):
+        import contextlib
+        import a6700_unlock.fl23_package as module
+        from a6700_unlock.custom_sound_capability_package import load_custom_sound_menu_ui_assets
+        recipe = synthetic()
+        entries = []
+        for index, device in enumerate((0, 1, 0, 2)):
+            entry = dict(index=index, device=device, device_offset=512 * (index + 1),
+                         unmanaged_sha256=sha(bytes(512)),
+                         edits=[dict(offset=4, disabled='00000000', enabled='01010101')])
+            if index < 2:
+                entry['boot_entry'] = True
+            entries.append(entry)
+        recipe['entries'] = entries
+        recipe['cp_units'] = [dict(key=123, bytes=2, before_sha256=sha(b'\0\0'),
+                                   after_sha256=sha(b'\1\0'),
+                                   edits=[dict(offset=0, disabled='00', enabled='01')])]
+        real_menu = load_custom_sound_menu_ui_assets()
+        package = SimpleNamespace(recipe=recipe, profile=Profile(recipe), manifest=dict(carrier_revision=6),
+                                  carriers={i: bytes([i]) * 1100 for i in range(1, 8)}, menu_ui=real_menu)
+        enabled_blocks = [bytes([0, 0, 0, 0, 1, 1, 1, 1]) + bytes(504) for _ in entries]
+        state = dict(file_id=(5 << 8) | 7, present=True, mask=1, blocks=list(enabled_blocks),
+                     unit=b'\1\0', menu_state='enabled', menu_calls=[], wipes=0, clear_pending=0,
+                     events=[], upload=b'', upload_flags=0)
+
+        class Channel:
+            def send(self, *args):
+                raise AssertionError(f'CP SAVE must not run during lossless recovery: {args}')
+
+        backend = SimpleNamespace(channel=Channel())
+
+        class Fake:
+            def __init__(self, p, b, i, d):
+                self.package = p
+                self.backend = b
+                self.directory = Path(d)
+
+            def blocks(self, old=None, new=None):
+                if old is None:
+                    return list(state['blocks'])
+                if old != state['blocks']:
+                    raise DeviceError('stale preimage')
+                changed = [i for i, (a, b) in enumerate(zip(old, new)) if a != b]
+                if changed != [0, 1]:
+                    raise AssertionError('Lossless recovery touched CP/code blocks')
+                state['events'].append(('branches', new[0][4]))
+                state['blocks'] = list(new)
+                return []
+
+            def units(self):
+                return [state['unit']]
+
+            def selection(self):
+                return 0
+
+            def file(self, op=0, offset=0, data=b'', length=0, flags=1):
+                if op in (1, 2, 3):
+                    if state['blocks'][0][4] or state['blocks'][1][4]:
+                        raise AssertionError('Startup branches still active during upload')
+                    state['events'].append(('file', op))
+                if op == 1:
+                    state['upload'] = b''
+                    state['upload_flags'] = flags or 1
+                elif op == 2:
+                    state['upload'] += data
+                elif op == 3:
+                    expected_flags = flags or state['upload_flags']
+                    assert state['upload'] == package.carriers[expected_flags]
+                    state.update(file_id=expected_flags, present=True, mask=1)
+                    state['events'].append(('file-commit', expected_flags))
+                ident = state['file_id']
+                actual = ident & 7
+                rev = ident >> 8 or package.manifest['carrier_revision']
+                return dict(present=state['present'], flags=actual, file_id=ident, revision=rev,
+                            mask=state['mask'], owned_mask=state['mask'],
+                            data=package.carriers[actual][offset:offset + length] if length and actual else b'')
+
+            def inspect_menu_ui(self):
+                return dict(state=state['menu_state'], parts=[])
+
+            def apply_menu_ui(self, *args):
+                raise AssertionError('Menu UI sectors must not be modified during lossless recovery')
+
+            def wipe_csnd(self):
+                raise AssertionError('wipe_csnd must NEVER run during lossless recovery')
+
+            def clear_pending_autoload(self):
+                state['clear_pending'] += 1
+                state['events'].append(('clear-pending',))
+                return dict(status=0, markers_cleared=True)
+
+        @contextlib.contextmanager
+        def files(*_):
+            yield None
+
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(module, 'Session', Fake), \
+             mock.patch.object(module, 'service_files', files):
+            # Case 1: Legacy rev-5 -> upgrades carrier to rev 6 and clears pending markers only
+            res1 = module.perform_options(package, backend, 'recover-custom-sound', Path(tmp), lambda _: None)
+            self.assertEqual(res1['status'], 'completed', res1)
+            self.assertTrue(res1['verified'])
+            self.assertTrue(res1['package_updated'])
+            self.assertTrue(res1['custom_sound_recovered'])
+            self.assertTrue(res1['markers_cleared'])
+            self.assertEqual(state['clear_pending'], 1)
+            self.assertEqual(state['wipes'], 0)
+            self.assertEqual(state['file_id'], 7)
+            self.assertEqual(state['blocks'], enabled_blocks)
+            self.assertEqual(state['events'][0], ('branches', 0))
+            self.assertIn(('file-commit', 7), state['events'])
+            self.assertEqual(state['events'][-2:], [('branches', 1), ('clear-pending',)])
+
+            # Case 2: Already on rev 6 -> skips carrier write, only clears lock markers
+            state['events'].clear()
+            res2 = module.perform_options(package, backend, 'recover-custom-sound', Path(tmp), lambda _: None)
+            self.assertEqual(res2['status'], 'completed', res2)
+            self.assertFalse(res2['package_updated'])
+            self.assertEqual(state['clear_pending'], 2)
+            self.assertEqual(state['events'], [('clear-pending',)])
+
+            # Case 3: Partial / incomplete menu state refuses without writing
+            state['menu_state'] = 'disabled'
+            state['events'].clear()
+            res3 = module.perform_options(package, backend, 'recover-custom-sound', Path(tmp), lambda _: None)
+            self.assertEqual(res3['status'], 'error')
+            self.assertFalse(res3['write_attempted'])
+            self.assertEqual(state['clear_pending'], 2)
+            self.assertEqual(state['events'], [])
 
 
 if __name__=='__main__':unittest.main()

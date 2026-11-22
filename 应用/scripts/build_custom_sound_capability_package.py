@@ -138,12 +138,14 @@ def main() -> None:
             "probe_sha256": binding_manifest["files"]["probe.elf"],
             "loader_version": binding_manifest["loader_version"],
             "receipts": binding_manifest["receipts"],
+            "legacy_receipts": binding_manifest.get("legacy_receipts", {}),
         },
         "slot_writer": {
             "manifest_sha256": sha(writer_manifest_bytes),
             "binary_sha256": writer_row["sha256"],
             "bytes": writer_row["bytes"],
             "wipe_version": 4,
+            "clear_pending_version": 5,
         },
         "menu_ui": {
             "status": menu_ui_manifest["status"],

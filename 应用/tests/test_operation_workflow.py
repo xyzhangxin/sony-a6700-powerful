@@ -37,14 +37,32 @@ class OperationWorkflowTests(unittest.TestCase):
         self.assertEqual(guide['evidence']['stages']['transaction']['status'], 'no_op')
 
     def test_custom_sound_or_names_unlock_adds_resident_startup_wait(self):
-        for fid, name in (('custom_shutter_sound', '自定义快门声'), ('creative_look_names', '创意外观中文名称')):
+        for fid, name, expected_seconds in (
+                ('custom_shutter_sound', '自定义快门声', 90),
+                ('creative_look_names', '创意外观中文名称', 40),
+        ):
             with self.subTest(fid=fid):
                 row = dict(id=fid, name=name, state='disabled')
                 guide = build_aftercare('unlock', report(features=[row], final=[dict(row, state='enabled')]), [fid], False)
                 self.assertIsNotNone(guide['startup_notice'])
+                self.assertIn(f'{expected_seconds} 秒', guide['startup_notice'])
                 ready = next((step for step in guide['workflow']['steps'] if step['id'] == 'fl23_ready'), None)
                 self.assertIsNotNone(ready)
-                self.assertEqual(ready['timing']['seconds'], 40)
+                self.assertEqual(ready['timing']['seconds'], expected_seconds)
+
+        # Updating/unlocking FL23 while custom_shutter_sound is already enabled must also advise ~90s.
+        fl23 = dict(id='fl23', name='FL2／FL3', state='disabled')
+        sound = dict(id='custom_shutter_sound', name='自定义快门声', state='enabled')
+        combined_guide = build_aftercare(
+            'unlock',
+            report(features=[fl23, sound], final=[dict(fl23, state='enabled'), sound]),
+            ['fl23'],
+            False,
+        )
+        self.assertIn('90 秒', combined_guide['startup_notice'])
+        ready = next((step for step in combined_guide['workflow']['steps'] if step['id'] == 'fl23_ready'), None)
+        self.assertIsNotNone(ready)
+        self.assertEqual(ready['timing']['seconds'], 90)
 
     def test_close_never_adds_fl23_startup_wait(self):
         row = dict(id='fl23', name='FL2／FL3', state='enabled')

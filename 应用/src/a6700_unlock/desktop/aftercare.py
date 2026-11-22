@@ -13,15 +13,18 @@ FL23_STARTUP_NOTICE = ('每次取出电池并重新装入后，开机需等待�
 
 CUSTOM_SOUND_STARTUP_CHECK = ('开机后保持 USB 断开，先静置约 90 秒，再到相机的「声音选项」检查'
                               '「电子快门声」及槽位。')
+CUSTOM_SOUND_STARTUP_NOTICE = ('包含自定义快门声时，每次取出电池并重新装入后，请保持 USB 断开、'
+                               '开机静置约 90 秒，待 FL2／FL3 与声音加载器全部就绪后再检查菜单或连接快门声市场；'
+                               '切勿在未等待约 90 秒时提前插线。')
 AUDIO_IMPORT_RESTART_NOTICE = (
     '全部声音写入完成后，关闭此窗口，在快门声市场点击「断开相机」。'
     '确认断开后正常关机，等存储指示灯熄灭，再拔 USB、取出电池并断开外接供电。'
     '断电至少 10 秒后装回电池并开机。' + CUSTOM_SOUND_STARTUP_CHECK
 )
 CUSTOM_SOUND_RECOVERY_NOTICE = (
-    '请先断开相机并完全断电重启。' + CUSTOM_SOUND_STARTUP_CHECK
-    + '如果菜单仍不可用，可在「功能管理」切换到「关闭」，仅勾选「自定义快门声」。'
-    '关闭会清除全部 10 槽的声音和自定义快门声设置，完成后可重新解锁。'
+    '请先断开相机 USB 与外接供电、取出电池至少 10 秒后装回再开机；' + CUSTOM_SOUND_STARTUP_CHECK
+    + '若完整等待约 90 秒后菜单仍不可用且确需重建加载环境，可在「功能管理」切换到「关闭」，仅勾选「自定义快门声」。'
+    '关闭会清除 `/setting/csnd` 下全部 10 槽音频与自定义快门声设置，完成后可重新解锁。'
 )
 
 
@@ -62,9 +65,10 @@ MENU_CHECKS = {
         close_note='若菜单停在已移除的选项、无法上下切换或高亮异常，用触摸选回“开”或“关”。'),
     'custom_shutter_sound': dict(
         path='MENU → 设置 → 声音选项 → 音频信号 ／ 电子快门声（含“默认”及槽位 1–10）',
-        unlock='断电重启并等待约 40 秒加载后，音频菜单显示“默认”与槽位 1–10；可在快门声市场导入并试听 WAV。',
+        unlock='取出电池并断开外接供电至少 10 秒后装回，保持 USB 断开开机静置约 90 秒加载完成，音频菜单显示“默认”与槽位 1–10；随后可在快门声市场导入并试听 WAV。',
         close='自定义快门声菜单 UI 已恢复并清除 `/setting/csnd` 下全部音频和设置文件；基础“电子快门声音”按你的选择保留或关闭。',
-        note='请先确保“电子快门声音”为开、静音模式为关；开机等待约 40 秒常驻加载就绪后，再检查菜单或连接快门声市场。',
+        note='请先确保“电子快门声音”为开、静音模式为关；断电拔电池 10 秒冷启动后保持 USB 断开，静置约 90 秒再检查菜单或连接快门声市场。',
+        unlock_notice=CUSTOM_SOUND_STARTUP_NOTICE,
         close_note='若同时关闭所有常驻功能（FL2／FL3、中文名称、自定义快门声），请断电重启使 RAM 中旧状态完全退出。'),
 }
 
@@ -79,10 +83,31 @@ RESTART_STEPS = [
 
 
 def build_aftercare(action, report, selected, simulation):
-    """Only verified unlock/close results receive a camera check guide."""
-    if (action not in ('unlock', 'close') or not report.get('verified')
+    """Only verified unlock/close/recover_custom_sound results receive a camera check guide."""
+    if (action not in ('unlock', 'close', 'recover_custom_sound') or not report.get('verified')
             or report.get('status') not in ('completed', 'no-op', 'settings-prepared')):
         return None
+    if action == 'recover_custom_sound':
+        menu = MENU_CHECKS['custom_shutter_sound']
+        outcome = '已升级常驻并无损清锁 · 回读通过' if report.get('package_updated') else '已无损清锁（10 槽音频完整保留） · 回读通过'
+        checks = [dict(
+            id='custom_shutter_sound',
+            name='自定义快门声（保留原 10 槽音频）',
+            path=menu['path'],
+            expected='取出电池并断开供电至少 10 秒后装回，保持 USB 断开开机静置约 90 秒；原有 10 槽音频完整保留，音频菜单显示“默认”与槽位 1–10 且可连接快门声市场。',
+            note=menu['note'],
+            outcome=outcome,
+        )]
+        steps = [dict(step) for step in RESTART_STEPS]
+        return dict(
+            simulation=simulation,
+            restart_required=True,
+            steps=steps,
+            features=checks,
+            startup_notice=CUSTOM_SOUND_STARTUP_NOTICE,
+            workflow=build_workflow(action, steps, checks, {'custom_shutter_sound'}, True, wait_seconds=90),
+            evidence=build_evidence(action, report, checks, True),
+        )
     target = 'enabled' if action == 'unlock' else 'disabled'
     before = {row['id']: row for row in report.get('plan', {}).get('features', [])}
     final = {row['id']: row for row in report.get('final_features', [])}
@@ -106,12 +131,26 @@ def build_aftercare(action, report, selected, simulation):
                                                        if action == 'close' else menu['note']),
                            outcome=('原已%s，未重复写入' % verb if unchanged
                                     else '已%s · 回读通过' % verb)))
+    enabled_after = {
+        row.get('id')
+        for row in (report.get('final_features') or (report.get('plan') or {}).get('features') or ())
+        if isinstance(row, dict) and row.get('state') == 'enabled'
+    }
+    resident_changed = changed_ids & {'fl23', 'creative_look_names', 'custom_shutter_sound'}
+    needs_custom_sound_wait = (
+        action == 'unlock'
+        and ('custom_shutter_sound' in changed_ids or (bool(resident_changed) and 'custom_shutter_sound' in enabled_after))
+    )
     steps = [dict(step) for step in RESTART_STEPS]
-    startup_notice = (FL23_STARTUP_NOTICE
-                      if action == 'unlock' and (changed_ids & {'fl23', 'creative_look_names', 'custom_shutter_sound'})
-                      else None)
+    startup_notice = (
+        CUSTOM_SOUND_STARTUP_NOTICE if needs_custom_sound_wait
+        else FL23_STARTUP_NOTICE if action == 'unlock' and resident_changed
+        else None
+    )
+    wait_seconds = 90 if needs_custom_sound_wait else 40
     restart_required = report['status'] != 'no-op'
     return dict(simulation=simulation, restart_required=restart_required,
                 steps=steps, features=checks, startup_notice=startup_notice,
-                workflow=build_workflow(action, steps, checks, changed_ids, restart_required),
+                workflow=build_workflow(action, steps, checks, changed_ids, restart_required,
+                                        wait_seconds=wait_seconds),
                 evidence=build_evidence(action, report, checks, restart_required))

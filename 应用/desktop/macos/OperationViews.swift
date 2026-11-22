@@ -67,6 +67,7 @@ struct OperationSuccessView: View {
         if result?.status == "no-op" {
             return model.state?.action == "close" ? "所选功能固件已关闭" : "已经是目标状态"
         }
+        if model.state?.action == "recover_custom_sound" { return "无损恢复完成" }
         let verb = model.state?.action == "close" ? "关闭完成" : "解锁完成"
         return physical ? verb : "模拟" + verb
     }
@@ -170,6 +171,9 @@ struct OperationSuccessView: View {
     private var subtitle: String {
         if !physical { return "合成数据演示已完成；真实相机没有被访问或修改。" }
         if result?.status == "settings-prepared" { return "固件此前已关闭，本次仅恢复机身设置并回读确认。菜单仍需完全断电重启后才会更新。" }
+        if model.state?.action == "recover_custom_sound" {
+            return "已无损清除开机保护锁标记（原有 10 槽音频完整保留），并通过独立回读。请完全断电重启并静置约 90 秒后检查。"
+        }
         if model.state?.action == "close" {
             return result?.status == "no-op"
                 ? "所选功能的固件已经关闭，未重复写入。请完全断电重启后检查菜单。"

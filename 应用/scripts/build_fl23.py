@@ -158,7 +158,7 @@ def build(recipe_path,carrier_path,sha_header,*,destination=None,variants_path=N
         for ident,row in legacy.items():
             key=int(ident)
             if (key<256 or row.get('flags')!=key&7 or row.get('revision')!=key>>8 or
-                row.get('revision') not in (1,2,3,4) or row.get('flags') not in variants or
+                row.get('revision') not in (1,2,3,4,5) or row.get('flags') not in variants or
                     type(row.get('bytes')) is not int or not 1024<=row['bytes']<=2098176 or
                     not isinstance(row.get('sha256'),str) or len(row['sha256'])!=64 or
                     len(bytes.fromhex(row['sha256']))!=32 or row['sha256'] in {sha(v) for v in variants.values()}):
@@ -193,7 +193,7 @@ def build(recipe_path,carrier_path,sha_header,*,destination=None,variants_path=N
         manifest['variants']={str(f):dict(bytes=len(v),sha256=sha(v),
             runtime_sha256=sha((destination/'variants'/str(f)/'runtime/manifest.json').read_bytes())) for f,v in variants.items() if f!=1}
     if legacy:
-        manifest.update(carrier_revision=5,legacy_carriers=legacy)
+        manifest.update(carrier_revision=6,legacy_carriers=legacy)
         (destination/'legacy-carriers.json').write_text(json.dumps(legacy,indent=2)+'\n', encoding='utf-8')
     (destination/'recipe.json').write_text(json.dumps(recipe,indent=2)+'\n', encoding='utf-8')
     (destination/'carrier.bin').write_bytes(carrier)

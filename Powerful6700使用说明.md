@@ -1,13 +1,13 @@
 # Powerful6700 使用说明
 
-当前测试版：**0.5.1**。仅 A6700 固件 2.00；安装包支持 Apple Silicon（M 系列）Mac、macOS 13+ 与 Windows x64，两者由同一份冻结源码成组构建。首次使用建议先体验演示模式。
+当前测试版：**0.5.2**。仅 A6700 固件 2.00；安装包支持 Apple Silicon（M 系列）Mac、macOS 13+ 与 Windows x64，两者由同一份冻结源码成组构建。首次使用建议先体验演示模式。
 
 ## 下载与安装
 
 到 [GitHub Releases](https://github.com/xyzhangxin/sony-a6700-powerful/releases) 下载同一版本的发布材料：
 
-- `Powerful6700-0.5.1-macOS-arm64.zip` 与 `.ed25519`：Mac 应用与更新验签文件；Windows 用 `Powerful6700-0.5.1-Windows-x64.zip`。
-- `Powerful6700-0.5.1-source.zip`：与应用对应的完整源码。
+- `Powerful6700-0.5.2-macOS-arm64.zip` 与 `.ed25519`：Mac 应用与更新验签文件；Windows 用 `Powerful6700-0.5.2-Windows-x64.zip`。
+- `Powerful6700-0.5.2-source.zip`：与应用对应的完整源码。
 - `README-zh.md`：该版本的固定说明。
 - `SHA256SUMS.txt`：上述发布文件的校验值。
 
@@ -55,6 +55,11 @@ FL23与中文名称可独立勾选、分别关闭；关闭一项会保留另一�
 
 旧版FL23保持已解锁状态，另显示“可更新”。独立更新按钮只更新FL23修复包，保留中文名称开关、CP参数和其他功能；首次安装直接使用修复版。完成后按结果页完全断电重启，再等待约40秒自主加载。重新检查应不再提示更新。未知或残缺安装会停止，不能按普通旧版本强行更新。
 
+## 0.5.2 新增／修复
+
+- 统一启动底座升级至 `rev=6`（`flags=4..7`），单次启动中断产生的 `.shutter-autoload-pending` 会在下次启动自动转入 `.shutter-autoload-quarantine` 并放行系统启动，下次正常冷启动自动回收重试；仅连续两次中断时进入隔离保护锁定。
+- 新增原生状态 8 分型诊断与「无损恢复（保留音频）」按钮（仅清除保护锁标记并按需无损升级载体，完整保留全部 10 槽音频与功能组合）；断电等待类状态明确禁止误关自定义快门声。详见 [0.5.2 发布说明](https://github.com/xyzhangxin/sony-a6700-powerful/releases/tag/v0.5.2)。
+
 ## 0.5.1 修订
 
 修复旧版「嘟嘟」冷启动后显示为空、Windows 刷新槽位及覆盖名称显示问题。写入回读完成后，双平台会提示退出 USB 服务、彻底断电重启并等待声音加载。详细步骤与验收范围见 [0.5.1 发布说明](https://github.com/xyzhangxin/sony-a6700-powerful/releases/tag/v0.5.1)。
@@ -73,9 +78,9 @@ FL23与中文名称可独立勾选、分别关闭；关闭一项会保留另一�
 
 关闭 FTP、电子快门声音、关机快门帘或灵活曝光时，点击“恢复设置并关闭”，应用先自动恢复对应机身默认设置，再撤回所选固件功能；结果页分别列出两部分。FTP 退出尚未完成时，按提示重启后继续，不重复发送设置。该流程只调整所选功能相关设置，不重置整个相机。
 
-## Windows x64 0.5.1
+## Windows x64 0.5.2
 
-从同一发布页下载 `Powerful6700-0.5.1-Windows-x64.zip`、对应源码、说明和校验文件。完整解压后运行 `Powerful6700.exe`，保留 `_internal`、`service` 和依赖文件，无需另装 Python。
+从同一发布页下载 `Powerful6700-0.5.2-Windows-x64.zip`、对应源码、说明和校验文件。完整解压后运行 `Powerful6700.exe`，保留 `_internal`、`service` 和依赖文件，无需另装 Python。
 
 首次点击“连接并自动准备驱动”时，在系统 UAC 窗口授权专用驱动助手。助手处理安装 WinUSB 并预注册 0336；主应用与固件操作不提升权限，后续已有绑定／预注册时直接复用，无需手动 Zadig。不要为其他 USB 设备安装驱动。Windows 版同步提供快门声市场、Media Foundation 音频解码与 10 槽导入流程；具体离线自检、`.77` 桌面交互测试与实机直连写入边界见[验证记录](应用/docs/VALIDATION.md)。
 

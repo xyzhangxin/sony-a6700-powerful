@@ -76,5 +76,29 @@
     "revision": 4,
     "bytes": 1301232,
     "sha256": "9855f3dbc57fec65b3869dd12a3ddb0a934bd41039d63fe0d1335a00438595dd"
+  },
+  "1284": {
+    "flags": 4,
+    "revision": 5,
+    "bytes": 352680,
+    "sha256": "e5241fc6ac90bb789f36296b875998465c0f4657fa957092ea2d7838022de5b9"
+  },
+  "1285": {
+    "flags": 5,
+    "revision": 5,
+    "bytes": 1301504,
+    "sha256": "4008a049bdeab1770f3404c4f5c51711bde8ed30c2c064dea99f216d74822dc2"
+  },
+  "1286": {
+    "flags": 6,
+    "revision": 5,
+    "bytes": 401752,
+    "sha256": "1499b2fb93bcf777b4552951477a82f3e071b8445473936a16db9f73eef43448"
+  },
+  "1287": {
+    "flags": 7,
+    "revision": 5,
+    "bytes": 1301552,
+    "sha256": "29c1c689b44782dc06fafcb99db1c783d2c34174aa423df135e0f9376e775ff5"
   }
 }

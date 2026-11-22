@@ -394,6 +394,27 @@ class DesktopController:
     def reserve_ftp_update(self):
         return self.reserve_update('ftp')
 
+    def reserve_custom_sound_recovery(self):
+        """Losslessly clear autoload lock markers while keeping all 10 custom audio slots."""
+        with self.lock:
+            self._require_selection_editable()
+            if self.mode != 'physical' or not getattr(self.service, 'custom_sound_available', False):
+                raise ValueError('当前模式不支持自定义快门声无损恢复。')
+            cs = self.custom_sound or {}
+            if cs.get('state') != 'error' or not cs.get('installable'):
+                raise ValueError('当前自定义快门声状态不需要或不支持无损恢复；请先重新检查状态。')
+            if cs.get('recoverable') is False:
+                raise ValueError('当前为断电等待类状态，请先断开供电取出电池至少 10 秒，保持 USB 断开开机静置约 90 秒后再检查。')
+            self.cancel.clear()
+            self.inspect_summary = None
+            self.operation_id = str(uuid.uuid4())
+            self.busy = True
+            self.action = 'recover_custom_sound'
+            self.backup_id = None
+            self.phase = 'running'
+            self.result = None
+            self.revision += 1
+
     def end_session(self):
         with self.lock:
             if self.busy:
@@ -621,9 +642,9 @@ class DesktopController:
                                                              self.mode == 'simulation'))
                 if checks:
                     self.result['compatibility_checks'] = checks
-                if not self.compatible or action in ('unlock', 'close'):
+                if not self.compatible or action in ('unlock', 'close', 'recover_custom_sound'):
                     self.custom_sound = None
-                if action in ('unlock', 'close'):
+                if action in ('unlock', 'close', 'recover_custom_sound'):
                     # The result remains visible, but its inspection cannot
                     # authorize another operation after a camera power cycle.
                     self.compatible = False

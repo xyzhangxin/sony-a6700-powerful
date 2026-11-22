@@ -40,6 +40,8 @@ static char wipe_stack[4][384];
 static const char result_path[] = "/tmp/jiritsu/tmmc.jit";
 static const char setting_directory[] = "/setting";
 static const char directory[] = "/setting/csnd";
+static const char pending_marker_path[] = "/setting/csnd/.shutter-autoload-pending";
+static const char quarantine_marker_path[] = "/setting/csnd/.shutter-autoload-quarantine";
 static char primary_path[32];
 static char temporary_path[32];
 static char backup_path[32];
@@ -137,7 +139,7 @@ static int read_request(void) {
     int ok = io(SYS_READ, fd, request, REQUEST_HEADER);
     unsigned version = get32(4);
     unsigned record_bytes = get32(64);
-    if (ok && version == 4u) {
+    if (ok && (version == 4u || version == 5u)) {
         if (record_bytes != 0u) ok = 0;
     } else {
         if (ok && (record_bytes < 128 || record_bytes > MAX_RECORD)) ok = 0;
@@ -187,6 +189,20 @@ static int sync_path_directory(const char *path) {
 
 static int sync_directory(void) {
     return sync_path_directory(directory);
+}
+
+static int sync_optional_directory(const char *path) {
+    long fd = call4(SYS_OPENAT, AT_FDCWD, (long)path, DIR_FLAGS, 0);
+    if (fd == -ENOENT) return 1;
+    if (fd < 0) return 0;
+    int ok = 0;
+    for (unsigned i = 0; i < 16; ++i) {
+        long result = call4(SYS_FSYNC, fd, 0, 0, 0);
+        if (result == 0) { ok = 1; break; }
+        if (result != -EINTR) break;
+    }
+    call4(SYS_CLOSE, fd, 0, 0, 0);
+    return ok;
 }
 
 static int remove_optional(const char *path) {
@@ -324,7 +340,7 @@ static int matches_primary(const unsigned char *expected, unsigned size) {
 
 __attribute__((constructor)) static void run(void) {
     if (!read_request() || !same(request, (const unsigned char *)"CSND", 4)
-        || get32(4) < 1 || get32(4) > 4) {
+        || get32(4) < 1 || get32(4) > 5) {
         finish(2, 0xffffffffU, 0); return;
     }
     unsigned version = get32(4);
@@ -341,6 +357,21 @@ __attribute__((constructor)) static void run(void) {
             finish(8, 0xffffffffU, 0); return;
         }
         finish(0, 0xffffffffU, 0); return;
+    }
+    if (version == 5u) {
+        if (slot || generation || record_bytes || get32(68)) {
+            finish(2, 0xffffffffU, 0); return;
+        }
+        int had_markers = !verified_absent(pending_marker_path)
+            || !verified_absent(quarantine_marker_path);
+        if (!remove_optional(pending_marker_path)
+            || !remove_optional(quarantine_marker_path)
+            || !sync_optional_directory(directory)
+            || !verified_absent(pending_marker_path)
+            || !verified_absent(quarantine_marker_path)) {
+            finish(8, 0xffffffffU, 0); return;
+        }
+        finish(0, 0xffffffffU, had_markers ? 4u : 0u); return;
     }
     if (version != 2u && get32(68)) { finish(2, 0xffffffffU, 0); return; }
     if (record_bytes < 128 || record_bytes > MAX_RECORD

@@ -7,14 +7,14 @@ import sys
 import uuid
 import time
 import zipfile
-from .diagnostic_records import FEATURES, feature_rows
+from .diagnostic_records import FEATURES, custom_sound_runtime_summary, feature_rows
 
 FAILURES = {
     'error', 'blocked', 'rejected', 'uncertain', 'verification-failed',
     'recovery-required', 'rolled-back', 'partial', 'connection-busy',
     'close-preparation-required', 'close-preparation-uncertain',
 }
-ACTIONS = {'inspect', 'unlock', 'close', 'update_fl23', 'update_ftp', 'restore'}
+ACTIONS = {'inspect', 'unlock', 'close', 'update_fl23', 'update_ftp', 'recover_custom_sound', 'restore'}
 CHECK_IDS = {'python', 'platform', 'pyusb', 'capture-compiler', 'libusb', 'payload-integrity'}
 SUPERBLOCK_DIFFERENCES = {'magic_mismatch', 'runtime_fields_only', 'other_fields_changed'}
 COMPATIBILITY_DETAILS = {
@@ -226,6 +226,18 @@ def failure_details(report, outcome, snapshot, known_edits=()):
             result[key] = sorted({item for item in value if isinstance(item, str) and item in FEATURES})
     if report.get('package_set_sha256'):
         result['adapter_set_sha256'] = report['package_set_sha256']
+    fl23_inspection = outcome.get('fl23_inspection')
+    runtime_source = (fl23_inspection.get('custom_sound_runtime')
+                      if isinstance(fl23_inspection, dict) else None)
+    if runtime_source is None and isinstance(outcome.get('custom_sound'), dict):
+        custom_row = outcome['custom_sound']
+        if isinstance(custom_row.get('diagnostic'), dict):
+            runtime_source = dict(status=custom_row.get('state'),
+                                  native_status=custom_row['diagnostic'].get('native_status'),
+                                  diagnostic=custom_row['diagnostic'])
+    runtime_summary = custom_sound_runtime_summary(runtime_source)
+    if runtime_summary is not None:
+        result['custom_sound_runtime'] = runtime_summary
 
     files = {'result.json': result}
     plan = outcome.get('plan')

@@ -41,7 +41,7 @@ class OperationConfirmation(QDialog):
         if any(f['id']=='creative_look_names' for f in features):
             body.addWidget(label('中文名称可独立关闭；未选择关闭的 FL2／FL3 保持。' if action=='close' else '中文名称覆盖主列表及编号 1～6；未选择的 FL2／FL3 保持当前状态。','muted'))
         if any(f['id']=='custom_shutter_sound' for f in features):
-            body.addWidget(label('关闭自定义快门声会恢复 23 扇区菜单并清理 /setting/csnd；基础「电子快门声音」保留（除非一并勾选关闭）。' if action=='close' else '解锁自定义快门声会自动启用「电子快门声音」，写入 23 扇区菜单与十槽底座；断电装回电池开机需等待约 40 秒。','muted'))
+            body.addWidget(label('关闭自定义快门声会恢复 23 扇区菜单并清理 /setting/csnd；基础「电子快门声音」保留（除非一并勾选关闭）。' if action=='close' else '解锁自定义快门声会自动启用「电子快门声音」，写入 23 扇区菜单与十槽底座；断电取出电池至少 10 秒后装回，保持 USB 断开开机静置约 90 秒后再检查或连接。','muted'))
         line(body)
         buttons=row(body,10);buttons.addStretch()
         self.cancel_button=button(buttons,'返回调整',self.reject,'secondary')
