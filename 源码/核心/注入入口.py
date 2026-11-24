@@ -60,7 +60,7 @@ def main():
     if not args.port:
         parser.error('检查Pico和开始注入都需要明确指定--串口')
     if args.arm:
-        print('请先读硬件说明.md。相机OFF、取电池至少5秒、测试板先不要插相机。')
+        print('相机OFF、取电池至少5秒、测试板先不要插相机。')
         input('保持Pico USB数据线连接电脑，并确认测试板由Pico VBUS供电。回车启动载波，看到ARMED后才给相机上电：')
     import serial  # Optional dependency, imported only for explicit device access.
     with serial.Serial(args.port, 115200, timeout=5, write_timeout=5, exclusive=True) as port:

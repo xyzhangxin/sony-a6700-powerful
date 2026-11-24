@@ -1,49 +1,11 @@
-个人对 Sony A6700 固件与 USB 维护协议的学习记录，分享已走通的教程和 **Powerful6700** 实验工具，与 Sony 官方无关。
+# Powerful6700
 
-目前仅针对 **A6700、2.00 固件**。操作可能影响保修，存在无法启动及数据丢失风险；请先阅读[声明与使用边界](声明与使用边界.md)。
+Sony A6700 固件与 USB 维护协议的个人研究项目。
 
-## 从这里开始
+Powerful6700 通过 USB 维护接口读取相机状态，并按机型和固件校验结果更新或还原受支持的功能。另有基于 Pico 与 Fastboot 的独立研究路线。
 
-| 想做什么 | 入口 |
-|---|---|
-| 使用一键解锁应用 | [下载测试版](https://github.com/xyzhangxin/sony-a6700-powerful/releases) · [使用说明](Powerful6700使用说明.md) |
-| 理解普通 USB 如何取得临时 root 执行能力 | [USB 进入 root 教程](USB进入root教程.md) |
-| 从源码执行功能解锁／关闭 | [USB 功能刷写教程](USB功能刷写教程.md) |
-| 用 Pico 进入 Fastboot 并读取备份 | [硬件说明](硬件说明.md) · [操作手册](操作手册.md) |
+[下载应用与校验值](https://github.com/xyzhangxin/sony-a6700-powerful/releases/latest) · [应用源码](应用/) · [Pico 源码](源码/)
 
-**Powerful6700 0.5.2** 提供 macOS（Apple Silicon、macOS 13+）与 Windows x64 两个基于同一份冻结源码构建的独立安装包，内置运行环境，保留演示模式。当前开放 **7 项功能**（FTP、关机快门帘、灵活曝光、电子快门声音、FL2／FL3、创意外观中文名称、**十槽自定义快门声**），并包含**快门声市场**（内置 7 个默认／示例快门声、支持试听、收藏、多格式导入、`<=350 ms` 波形裁剪与 10 槽替换）以及 `flags=4..7 rev=6` 防永久死锁统一底座与保留 10 槽音频的「无损恢复」入口。位移多帧合成、动态增强防抖暂禁用。
+仅适配 **Sony A6700 固件 2.00**。应用提供 macOS Apple Silicon 和 Windows x64 版本。请完整解压后使用，首次操作前可先打开应用内的演示模式。修改固件可能影响保修、导致数据丢失或无法启动。本项目与 Sony 官方无关。
 
-<img width="1100" alt="Powerful6700 功能管理界面：FL2／FL3 与创意外观中文名称独立开关" src="图片/Powerful6700功能管理.png" />
-
-
-0.5.2 在 0.5.1 的基础上升级自定义快门声统一启动底座至 `rev=6`（单次异常自动隔离并在下次正常冷启动重试恢复，保留 `rev=5` 收据与双版本 `probe.elf` 兼容），新增原生状态 8 分型诊断与保留 10 槽音频和设置的「无损恢复（保留音频）」流程，同时保留默认开启的自愿匿名统计、自动故障上传（不含联系邮箱）、Mac Ed25519 应用内验签升级与健康回滚。更新详情见[变更记录](应用/CHANGELOG.md)。
-
-Windows x64 0.5.2 与 Mac 版从同一份冻结源码包成组构建，同步「快门声市场」（7 个默认声音、10 槽覆盖确认、64 段波形裁剪、`winsound` 试听与 Media Foundation 多格式解码）、无损恢复按钮与状态 8 分型引导、功能列表右侧对齐与「去快门声市场」按钮、以及统一菜单与诊断链路；首次连接仍通过一次性驱动助手安装 WinUSB，主应用与固件操作不提升权限。安装与实测边界见[Windows说明](应用/docs/WINDOWS.md)及[验证记录](应用/docs/VALIDATION.md)。
-
-## 开发计划与进展
-
-- **功能开发**：先完善现有四项功能的兼容性与测试，FL2／FL3已完成机身验收并接入应用，动态增强防抖等仍在研究；未验证项不作为可用能力。
-- **开源与工具**：公开教程、应用及对应源码，逐步改善跨机身适配和连接体验；完整备份／恢复、更多平台及功能包更新后续推进。
-
-详见[开发计划与进展](开发计划与进展.md)。应用源码在[应用/](应用/)，Pico 源码在[源码/](源码/)；参与改进见[参与开发](参与开发.md)和 [AGENTS.md](AGENTS.md)。
-
-## 支持项目
-
-如果这个项目对你有帮助，欢迎自愿支持一点 AI Token 费用，帮助加快开发与验证。
-
-<p align="center">
-  <img src="图片/支持项目.png" alt="支持项目：微信支付与支付宝收款码" width="760">
-</p>
-
-## 参考项目
-
-- [ILCE-7M4-RE](https://github.com/DavidBuchanan314/ILCE-7M4-RE)：BootROM、Pico 引导与 RAM Fastboot 参考。
-- [Arduino-Pico](https://github.com/earlephilhower/arduino-pico)：RP2040 编译环境。
-- [Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE)：USB 维护协议与认证参考。
-
-自有代码与文档采用 GPL-3.0-only；第三方来源及许可状态见 [NOTICE](NOTICE) 与[应用第三方归属](应用/THIRD_PARTY_NOTICES.md)。请勿上传固件、私人备份、机身数据或凭据。
-
-## 贡献者与致谢
-
-- [@zhuorantiancheng](https://github.com/zhuorantiancheng)：通过 [PR #7](https://github.com/xyzhangxin/sony-a6700-powerful/pull/7) 修复 ext2 inode 时间戳漂移导致的兼容性检查误报。
-- [@wanghm105](https://github.com/wanghm105)：提供相机重启后兼容性检查失败的实机问题报告，帮助定位上述问题。
+自有代码采用 GPL-3.0-only，第三方来源及许可见 [LICENSE](LICENSE)、[NOTICE](NOTICE) 和 [应用归属说明](应用/THIRD_PARTY_NOTICES.md)。

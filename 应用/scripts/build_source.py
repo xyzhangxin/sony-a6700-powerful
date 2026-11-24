@@ -54,7 +54,7 @@ def main():
     args = parser.parse_args()
     # Explicit source roots, independent of the maintainer's Git index. No
     # backups, validation reports, virtualenvs, build trees or firmware images.
-    paths = [ROOT / name for name in ('README.md', 'AGENTS.md', 'CONTRIBUTING.md', 'CHANGELOG.md', 'pyproject.toml', 'LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md',
+    paths = [ROOT / name for name in ('README.md', 'AGENTS.md', 'pyproject.toml', 'LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md',
                                       '.gitignore', 'start.sh', '启动工具.command')]
     suffixes = {'.py', '.json', '.elf', '.bin', '.c', '.h', '.S', '.ld', '.m', '.txt', '.md', '.sh', '.yml', '.yaml', '.swift', '.png', '.icns', '.exe'}
     for folder in ('src/a6700_unlock', 'tests', 'docs', 'scripts', 'verified', '.github', 'desktop'):

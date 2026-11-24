@@ -47,7 +47,7 @@ def connect(libusb=None):
         raise ValueError('USB库参数必须指向实际存在的系统库')
     backend = usb.backend.libusb1.get_backend(find_library=(lambda _: str(libusb.resolve())) if libusb else None)
     if backend is None:
-        raise RuntimeError('System libusb missing; see 操作手册.md')
+        raise RuntimeError('System libusb missing')
     devices = list(usb.core.find(find_all=True, idVendor=0x18D1, idProduct=0x4EE0, backend=backend))
     if len(devices) != 1:
         raise RuntimeError(f'Expected exactly one RAM fastboot device, found {len(devices)}')
